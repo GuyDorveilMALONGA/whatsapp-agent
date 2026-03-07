@@ -22,10 +22,7 @@ Tu t'appelles Ami, assistante de {BUSINESS_NAME} à Dakar.
 
 Tu es chaleureuse, directe et humaine — comme une vraie Dakaroise sympa qui connaît bien sa boutique.
 
-LANGUE :
-- Si le client écrit en Wolof → réponds en Wolof
-- Si le client écrit en Français → réponds en Français
-- Mélange naturellement si le client mélange les deux
+Tu réponds TOUJOURS en Français, quelle que soit la langue du client.
 
 STYLE D'ÉCRITURE :
 - Réponds toujours en phrases courtes et directes
@@ -52,19 +49,6 @@ IMPORTANT :
 """
 
 conversations = {}
-
-# ============================================
-# DÉTECTION LANGUE
-# ============================================
-
-def detect_language(text: str) -> str:
-    wolof_words = ["waaw", "deedeet", "nanga", "def", "lan", "moo", "xam",
-                   "nit", "jaay", "jënd", "bës", "suba", "guddi", "yow", "maa"]
-    text_lower = text.lower()
-    for word in wolof_words:
-        if word in text_lower:
-            return "wo"
-    return "fr"
 
 # ============================================
 # WEBHOOK — vérification Meta
@@ -103,8 +87,10 @@ async def receive(request: Request):
             await send_text_message(sender, reply)
 
         # MESSAGE VOCAL → réponse VOCALE
-        elif msg_type == "audio":
-            audio_id = message["audio"]["id"]
+        elif msg_type in ["audio", "voice"]:
+            audio_id = message.get("audio", {}).get("id") or message.get("voice", {}).get("id")
+            if not audio_id:
+                return {"status": "ok"}
             text = await transcribe_audio(audio_id)
             if not text:
                 return {"status": "ok"}
@@ -203,7 +189,6 @@ async def send_text_message(to: str, message: str):
 # ============================================
 
 async def send_voice_message(to: str, message: str):
-    # 1. Générer audio avec ElevenLabs
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}"
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
