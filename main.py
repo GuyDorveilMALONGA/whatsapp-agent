@@ -94,19 +94,15 @@ async def receive(request: Request):
         sender = message["from"]
         msg_type = message.get("type")
 
-        # MESSAGE TEXTE
+        # MESSAGE TEXTE → réponse TEXTE
         if msg_type == "text":
             text = message.get("text", {}).get("body", "")
             if not text:
                 return {"status": "ok"}
             reply = await generate_reply(sender, text)
-            lang = detect_language(text)
-            if lang == "fr":
-                await send_voice_message(sender, reply)  # Vocal ElevenLabs
-            else:
-                await send_text_message(sender, reply)   # Texte Wolof
+            await send_text_message(sender, reply)
 
-        # MESSAGE VOCAL
+        # MESSAGE VOCAL → réponse VOCALE
         elif msg_type == "audio":
             audio_id = message["audio"]["id"]
             text = await transcribe_audio(audio_id)
@@ -114,11 +110,7 @@ async def receive(request: Request):
                 return {"status": "ok"}
             print(f"Transcription: {text}")
             reply = await generate_reply(sender, text)
-            lang = detect_language(text)
-            if lang == "fr":
-                await send_voice_message(sender, reply)  # Vocal ElevenLabs
-            else:
-                await send_text_message(sender, reply)   # Texte Wolof
+            await send_voice_message(sender, reply)
 
         return {"status": "ok"}
 
@@ -227,16 +219,13 @@ async def send_voice_message(to: str, message: str):
     }
 
     async with httpx.AsyncClient() as http:
-        # Générer l'audio
         tts_res = await http.post(url, json=payload, headers=headers)
         audio_data = tts_res.content
 
-        # 2. Sauvegarder temporairement
         with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
             f.write(audio_data)
             tmp_path = f.name
 
-        # 3. Uploader sur Meta
         upload_url = f"https://graph.facebook.com/v18.0/{WHATSAPP_PHONE_ID}/media"
         meta_headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
 
@@ -249,7 +238,6 @@ async def send_voice_message(to: str, message: str):
             )
         media_id = upload_res.json().get("id")
 
-        # 4. Envoyer la note vocale
         payload_msg = {
             "messaging_product": "whatsapp",
             "to": to,
