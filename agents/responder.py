@@ -96,7 +96,7 @@ async def generate_wolof_response(
 ) -> dict:
     """Génère une réponse en Wolof via Google Gemini"""
     try:
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        model = genai.GenerativeModel("gemini-2.0-flash")
 
         system = SYSTEM_PROMPT_WOLOF.format(
             business_name=business_name,
