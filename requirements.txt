@@ -3,4 +3,4 @@ uvicorn
 groq
 httpx
 python-dotenv
-edge-tts
+supabase
