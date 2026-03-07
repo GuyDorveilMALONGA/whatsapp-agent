@@ -105,10 +105,8 @@ async def generate_reply(sender: str, message: str) -> str:
 async def send_message(to: str, message: str):
     url = f"https://graph.facebook.com/v18.0/{WHATSAPP_PHONE_ID}/messages"
     
-    # DEBUG — on affiche les infos pour voir ce qui se passe
-    print(f"📤 Envoi à: {to}")
-    print(f"🔑 Token (20 premiers caractères): {WHATSAPP_TOKEN[:20] if WHATSAPP_TOKEN else 'TOKEN VIDE!'}")
-    print(f"📱 Phone ID: {WHATSAPP_PHONE_ID}")
+    print(f"Token: {WHATSAPP_TOKEN[:20] if WHATSAPP_TOKEN else 'VIDE!'}")
+    print(f"Phone ID: {WHATSAPP_PHONE_ID}")
     
     headers = {
         "Authorization": f"Bearer {WHATSAPP_TOKEN}",
@@ -122,10 +120,7 @@ async def send_message(to: str, message: str):
     }
     async with httpx.AsyncClient() as http:
         response = await http.post(url, json=payload, headers=headers)
-        
-        # DEBUG — on affiche la réponse exacte de Meta
-        print(f"📨 Réponse Meta: {response.status_code}")
-        print(f"📨 Détail: {response.text}")
+        print(f"Meta réponse: {response.status_code} - {response.text}")
 
 # ============================================
 # TEST
