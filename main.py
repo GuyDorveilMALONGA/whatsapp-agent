@@ -3,6 +3,7 @@ from groq import Groq
 import httpx
 import os
 import tempfile
+import edge_tts
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -14,10 +15,37 @@ BUSINESS_NAME = "Ma Boutique Dakar"
 WHATSAPP_TOKEN = os.getenv("WHATSAPP_TOKEN")
 WHATSAPP_PHONE_ID = os.getenv("WHATSAPP_PHONE_ID")
 VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-VOICE_ID = "O31r762Gb3WFygrEOGh0"
 
-SYSTEM_PROMPT = "Tu es Ami, assistante de Ma Boutique Dakar. Réponds toujours en français, sois chaleureuse et directe."
+SYSTEM_PROMPT = f"""
+Tu t'appelles Ami, assistante de {BUSINESS_NAME} à Dakar.
+
+Tu es chaleureuse, directe et humaine — comme une vraie Dakaroise sympa qui connaît bien sa boutique.
+
+Tu réponds TOUJOURS en Français, quelle que soit la langue du client.
+
+STYLE D'ÉCRITURE :
+- Réponds toujours en phrases courtes et directes
+- Maximum 2-3 phrases par paragraphe
+- Laisse une ligne vide entre chaque idée
+- Jamais de longues listes ennuyeuses
+- Utilise des mots simples, chaleureux, du quotidien
+
+STYLE VOCAL :
+- Parle comme si tu souriais
+- Utilise des petites expressions naturelles : "Bien sûr !", "Absolument !", "Avec plaisir !"
+- Rythme naturel — ni trop vite, ni trop lent
+
+COMPORTEMENT :
+- Va droit au but, ne tourne pas autour du pot
+- Si tu ne sais pas → dis-le honnêtement et propose d'aider autrement
+- Si le client est en colère → reste calme, empathique, solution d'abord
+- Ne répète jamais la question du client avant de répondre
+- Ne dis jamais "Je suis une IA" sauf si on te le demande directement
+
+IMPORTANT :
+- Tu représentes {BUSINESS_NAME} avec fierté
+- Chaque client doit se sentir accueilli comme à la boutique
+"""
 
 conversations = {}
 
@@ -40,6 +68,7 @@ async def receive(request: Request):
         sender = message["from"]
         msg_type = message.get("type")
 
+        # MESSAGE TEXTE → réponse TEXTE
         if msg_type == "text":
             text = message.get("text", {}).get("body", "")
             if not text:
@@ -47,6 +76,7 @@ async def receive(request: Request):
             reply = await generate_reply(sender, text)
             await send_text_message(sender, reply)
 
+        # MESSAGE VOCAL → réponse VOCALE
         elif msg_type in ["audio", "voice"]:
             audio_id = message.get("audio", {}).get("id") or message.get("voice", {}).get("id")
             if not audio_id:
@@ -104,28 +134,14 @@ async def send_text_message(to: str, message: str):
         print(f"Texte réponse: {res.status_code}")
 
 async def send_voice_message(to: str, message: str):
-    print(f"ElevenLabs KEY: {ELEVENLABS_API_KEY[:10] if ELEVENLABS_API_KEY else 'VIDE!'}")
-
-    # 1. Générer audio ElevenLabs
-    async with httpx.AsyncClient(timeout=30) as http:
-        tts_res = await http.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
-            headers={"xi-api-key": ELEVENLABS_API_KEY, "Content-Type": "application/json"},
-            json={
-                "text": message,
-                "model_id": "eleven_multilingual_v2",
-                "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
-            }
-        )
-        print(f"ElevenLabs status: {tts_res.status_code}")
-        audio_data = tts_res.content
-
-    # 2. Sauvegarder
+    # 1. Générer audio avec Edge TTS (Microsoft, gratuit)
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as f:
-        f.write(audio_data)
         tmp_path = f.name
+    communicate = edge_tts.Communicate(message, voice="fr-FR-DeniseNeural")
+    await communicate.save(tmp_path)
+    print("Audio généré avec Edge TTS ✅")
 
-    # 3. Uploader + envoyer sur WhatsApp
+    # 2. Uploader + envoyer sur WhatsApp
     async with httpx.AsyncClient(timeout=30) as http:
         meta_headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
         with open(tmp_path, "rb") as f:
@@ -137,7 +153,6 @@ async def send_voice_message(to: str, message: str):
             )
         media_id = upload_res.json().get("id")
         print(f"Media ID: {media_id}")
-
         res = await http.post(
             f"https://graph.facebook.com/v18.0/{WHATSAPP_PHONE_ID}/messages",
             headers={**meta_headers, "Content-Type": "application/json"},

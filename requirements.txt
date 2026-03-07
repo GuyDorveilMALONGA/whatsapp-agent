@@ -1,6 +1,6 @@
-fastapi 
-uvicorn 
-groq 
-httpx 
+fastapi
+uvicorn
+groq
+httpx
 python-dotenv
-gtts
+edge-tts
