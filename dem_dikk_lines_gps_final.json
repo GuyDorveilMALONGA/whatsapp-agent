@@ -1,0 +1,4167 @@
+{
+  "source": "https://demdikk.sn/reseau-urbain-dakar/",
+  "scraped_at": "2026-03-08",
+  "total_lines": 38,
+  "categories": {
+    "urbain": [
+      {
+        "id": "L1",
+        "number": "1",
+        "name": "LIGNE 1",
+        "category": "urbain",
+        "terminus_a": "PARCELLES ASSAINIES",
+        "terminus_b": "PLACE LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Parcelles Assainies",
+            "lat": 14.7603996,
+            "lon": -17.4394029
+          },
+          {
+            "nom": "Sapeur Pompiers",
+            "lat": 14.7791837,
+            "lon": -17.3227533
+          },
+          {
+            "nom": "Unités 09 10 15",
+            "lat": 14.769103600000001,
+            "lon": -17.38494905
+          },
+          {
+            "nom": "Ecole Dior",
+            "lat": 14.7590235,
+            "lon": -17.4471448
+          },
+          {
+            "nom": "Terrain Acapes",
+            "lat": 14.7560153,
+            "lon": -17.4472442
+          },
+          {
+            "nom": "Unités 22 24",
+            "lat": 14.75172785,
+            "lon": -17.446065
+          },
+          {
+            "nom": "Marché Grand Médine",
+            "lat": 14.7474404,
+            "lon": -17.4448858
+          },
+          {
+            "nom": "Rond point 26",
+            "lat": 14.7308875,
+            "lon": -17.4565734
+          },
+          {
+            "nom": "VDN-Foire",
+            "lat": 14.7413124,
+            "lon": -17.4716862
+          },
+          {
+            "nom": "Cité Keur Gorgui",
+            "lat": 14.7116889,
+            "lon": -17.4687165
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Rond point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Marché Tilène",
+            "lat": 14.6794172,
+            "lon": -17.4481891
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Avenue George Pompidou",
+            "lat": 14.6693744,
+            "lon": -17.4348576
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Gare TER",
+            "lat": 14.7017075,
+            "lon": -17.45041775
+          },
+          {
+            "nom": "Embarcadère",
+            "lat": 14.71780495,
+            "lon": -17.459839575
+          },
+          {
+            "nom": "Terminus Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          }
+        ]
+      },
+      {
+        "id": "L4",
+        "number": "4",
+        "name": "LIGNE 4",
+        "category": "urbain",
+        "terminus_a": "LIBERTÉ 5",
+        "terminus_b": "PLACE LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 5 (Dieuppeul)",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Cité Derklé",
+            "lat": 14.7200435,
+            "lon": -17.4491281
+          },
+          {
+            "nom": "Rond point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Cité Marine",
+            "lat": 14.7311906,
+            "lon": -17.4552178
+          },
+          {
+            "nom": "CEM Dieuppeul 3",
+            "lat": 14.70483975,
+            "lon": -17.45118415
+          },
+          {
+            "nom": "Eglise Martyrs de l'Ouganda",
+            "lat": 14.7186529,
+            "lon": -17.4559881
+          },
+          {
+            "nom": "SDE",
+            "lat": 14.6784889,
+            "lon": -17.4471505
+          },
+          {
+            "nom": "Collège Sacré Cœur",
+            "lat": 14.7167429,
+            "lon": -17.4640648
+          },
+          {
+            "nom": "Sicap Karack",
+            "lat": 14.70661055,
+            "lon": -17.46412325
+          },
+          {
+            "nom": "Point E",
+            "lat": 14.6964782,
+            "lon": -17.4641817
+          },
+          {
+            "nom": "Université Amphate BA",
+            "lat": 14.69793945,
+            "lon": -17.45787645
+          },
+          {
+            "nom": "Canal 4",
+            "lat": 14.6994007,
+            "lon": -17.4515712
+          },
+          {
+            "nom": "Marché Fass",
+            "lat": 14.6931717,
+            "lon": -17.4520362
+          },
+          {
+            "nom": "Gueule Tapée",
+            "lat": 14.7760159,
+            "lon": -17.392881
+          },
+          {
+            "nom": "Rond Point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Marché Tilène",
+            "lat": 14.6794172,
+            "lon": -17.4481891
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "ASECNA",
+            "lat": 14.7375719,
+            "lon": -17.5144749
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Gare TER",
+            "lat": 14.7017075,
+            "lon": -17.45041775
+          },
+          {
+            "nom": "Embarcadère",
+            "lat": 14.71780495,
+            "lon": -17.459839575
+          },
+          {
+            "nom": "Terminus Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          }
+        ]
+      },
+      {
+        "id": "L7",
+        "number": "7",
+        "name": "LIGNE 7",
+        "category": "urbain",
+        "terminus_a": "OUAKAM",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Cité Assemblée",
+            "lat": 14.7304522,
+            "lon": -17.4941587
+          },
+          {
+            "nom": "Cité Comico",
+            "lat": 14.7189488,
+            "lon": -17.484277849999998
+          },
+          {
+            "nom": "Sortie Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Hopital IHO",
+            "lat": 14.71609105,
+            "lon": -17.4797316
+          },
+          {
+            "nom": "Mermoz",
+            "lat": 14.7074454,
+            "lon": -17.474397
+          },
+          {
+            "nom": "ENEA",
+            "lat": 14.704603,
+            "lon": -17.4793648
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Rond point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Marché Tilène",
+            "lat": 14.6794172,
+            "lon": -17.4481891
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Avenue George Pompidou",
+            "lat": 14.6693744,
+            "lon": -17.4348576
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L8",
+        "number": "8",
+        "name": "LIGNE 8",
+        "category": "urbain",
+        "terminus_a": "AEROPORT LSS",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Aéroport LSS",
+            "lat": 14.7456071,
+            "lon": -17.4894464
+          },
+          {
+            "nom": "Cité Asecna",
+            "lat": 14.730648,
+            "lon": -17.4905442
+          },
+          {
+            "nom": "Yoff Village",
+            "lat": 14.7610378,
+            "lon": -17.4638582
+          },
+          {
+            "nom": "Pond Foire",
+            "lat": 14.7539047,
+            "lon": -17.4578861
+          },
+          {
+            "nom": "Stade Léopold Sédar Senghor - Patte d'Oie",
+            "lat": 14.7467716,
+            "lon": -17.451914
+          },
+          {
+            "nom": "Grand Yoff",
+            "lat": 14.7366826,
+            "lon": -17.4528126
+          },
+          {
+            "nom": "Hopital Général Idrissa Pouye (Ex CTO)",
+            "lat": 14.730763750000001,
+            "lon": -17.4485622
+          },
+          {
+            "nom": "Cité des Eaux",
+            "lat": 14.7248449,
+            "lon": -17.4443118
+          },
+          {
+            "nom": "Station Castor",
+            "lat": 14.71795765,
+            "lon": -17.45047555
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Jet d'eau",
+            "lat": 14.7132388,
+            "lon": -17.4547052
+          },
+          {
+            "nom": "Stade Demba Diop",
+            "lat": 14.7108526,
+            "lon": -17.4576045
+          },
+          {
+            "nom": "Dial Diop (ex rue 10)",
+            "lat": 14.6987902,
+            "lon": -17.4529522
+          },
+          {
+            "nom": "Zone B",
+            "lat": 14.6994048,
+            "lon": -17.4555604
+          },
+          {
+            "nom": "Point E",
+            "lat": 14.6964782,
+            "lon": -17.4641817
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Rond point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Marché Tilène",
+            "lat": 14.6794172,
+            "lon": -17.4481891
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "ASECNA",
+            "lat": 14.7375719,
+            "lon": -17.5144749
+          },
+          {
+            "nom": "Bld de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L9",
+        "number": "9",
+        "name": "LIGNE 9",
+        "category": "urbain",
+        "terminus_a": "LIBERTÉ 6",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 6",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Rond Point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Sacré Cœur",
+            "lat": 14.7169443,
+            "lon": -17.4664899
+          },
+          {
+            "nom": "IPG",
+            "lat": 14.7192155,
+            "lon": -17.4615388
+          },
+          {
+            "nom": "Terminus Dieuppeul",
+            "lat": 14.7198137,
+            "lon": -17.4532312
+          },
+          {
+            "nom": "Allées Ababacar Sy",
+            "lat": 14.7167646,
+            "lon": -17.4556399
+          },
+          {
+            "nom": "Rond Point Jet d'Eau",
+            "lat": 14.7132388,
+            "lon": -17.4547052
+          },
+          {
+            "nom": "Niary Tally",
+            "lat": 14.7069003,
+            "lon": -17.4525544
+          },
+          {
+            "nom": "Eglise Sainte Thérèse",
+            "lat": 14.6864512,
+            "lon": -17.4554847
+          },
+          {
+            "nom": "Lycée Blaise Diagne",
+            "lat": 14.6968878,
+            "lon": -17.4528486
+          },
+          {
+            "nom": "Lycée Kennedy",
+            "lat": 14.6966734,
+            "lon": -17.449098
+          },
+          {
+            "nom": "Obélisque",
+            "lat": 14.6944767,
+            "lon": -17.448354
+          },
+          {
+            "nom": "Centenaire",
+            "lat": 14.6916453,
+            "lon": -17.4374779
+          },
+          {
+            "nom": "Rond point RTS",
+            "lat": 14.6795834,
+            "lon": -17.4437388
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Avenue George Pompidou",
+            "lat": 14.6693744,
+            "lon": -17.4348576
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L10",
+        "number": "10",
+        "name": "LIGNE 10",
+        "category": "urbain",
+        "terminus_a": "LIBERTÉ 5",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 5 (Dieuppeul)",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Cité Derklé",
+            "lat": 14.7200435,
+            "lon": -17.4491281
+          },
+          {
+            "nom": "Rond point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Cité Marine",
+            "lat": 14.7311906,
+            "lon": -17.4552178
+          },
+          {
+            "nom": "CEM Ousmane Socé Diop",
+            "lat": 14.7125368,
+            "lon": -17.2712969
+          },
+          {
+            "nom": "Eglise Martyrs de l'Ouganda",
+            "lat": 14.7186529,
+            "lon": -17.4559881
+          },
+          {
+            "nom": "SDE",
+            "lat": 14.6784889,
+            "lon": -17.4471505
+          },
+          {
+            "nom": "Dakar Sacré Coeur",
+            "lat": 14.7169443,
+            "lon": -17.4664899
+          },
+          {
+            "nom": "Stade Demba Diop",
+            "lat": 14.7108526,
+            "lon": -17.4576045
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "Poste Fann",
+            "lat": 14.6960571,
+            "lon": -17.4661893
+          },
+          {
+            "nom": "Rue Aimé Césaire",
+            "lat": 14.6938794,
+            "lon": -17.4687301
+          },
+          {
+            "nom": "Ministère de la Santé",
+            "lat": 14.6932985,
+            "lon": -17.4688318
+          },
+          {
+            "nom": "Corniche Ouest",
+            "lat": 14.6672536,
+            "lon": -17.4427806
+          },
+          {
+            "nom": "IFAN",
+            "lat": 14.6835662,
+            "lon": -17.4677413
+          },
+          {
+            "nom": "Hotel Terrou",
+            "lat": 14.6772222,
+            "lon": -17.4670535
+          },
+          {
+            "nom": "Tunnel de Soumbédioune",
+            "lat": 14.6751334,
+            "lon": -17.4561008
+          },
+          {
+            "nom": "Village Artisanal de Soumbédioune",
+            "lat": 14.6768522,
+            "lon": -17.4578103
+          },
+          {
+            "nom": "Prison Rebeus",
+            "lat": 14.672248,
+            "lon": -17.446297
+          },
+          {
+            "nom": "Tribunal de Dakar",
+            "lat": 14.6703514,
+            "lon": -17.4438206
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Sorano",
+            "lat": 14.6663171,
+            "lon": -17.4394706
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L13",
+        "number": "13",
+        "name": "LIGNE 13",
+        "category": "urbain",
+        "terminus_a": "LIBERTÉ 5",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 5 (Dieuppeul)",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Avenue Cheikh Ahmadou Bamba",
+            "lat": 14.6995093,
+            "lon": -17.4472538
+          },
+          {
+            "nom": "Station Castors",
+            "lat": 14.7027741,
+            "lon": -17.44589905
+          },
+          {
+            "nom": "Marché HLM",
+            "lat": 14.7060389,
+            "lon": -17.4445443
+          },
+          {
+            "nom": "Ouagou Niayes",
+            "lat": 14.7073664,
+            "lon": -17.4490029
+          },
+          {
+            "nom": "BOP",
+            "lat": 14.7103652,
+            "lon": -17.4484168
+          },
+          {
+            "nom": "Masalikul Djinane",
+            "lat": 14.704201399999999,
+            "lon": -17.4481661
+          },
+          {
+            "nom": "CSS",
+            "lat": 14.6980376,
+            "lon": -17.4479154
+          },
+          {
+            "nom": "Lycée Kennedy",
+            "lat": 14.6966734,
+            "lon": -17.449098
+          },
+          {
+            "nom": "Boulevard Général De Gaule",
+            "lat": 14.6811593,
+            "lon": -17.4435433
+          },
+          {
+            "nom": "Centenaire",
+            "lat": 14.6916453,
+            "lon": -17.4374779
+          },
+          {
+            "nom": "RTS",
+            "lat": 14.6795834,
+            "lon": -17.4437388
+          },
+          {
+            "nom": "Grande Mosquée",
+            "lat": 14.6825044,
+            "lon": -17.4442152
+          },
+          {
+            "nom": "Allées Papa Guèye Fall",
+            "lat": 14.6766438,
+            "lon": -17.4406354
+          },
+          {
+            "nom": "Petersen",
+            "lat": 14.6758222,
+            "lon": -17.4412971
+          },
+          {
+            "nom": "Avenue Faidherbe",
+            "lat": 14.6764877,
+            "lon": -17.4424371
+          },
+          {
+            "nom": "Esso Port",
+            "lat": 14.6742772,
+            "lon": -17.4320345
+          },
+          {
+            "nom": "Gare de Dakar",
+            "lat": 14.6739709,
+            "lon": -17.4325478
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L18",
+        "number": "18",
+        "name": "LIGNE 18",
+        "category": "urbain",
+        "terminus_a": "DIEUPPEUL",
+        "terminus_b": "CENTRE-VILLE",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 5 (Dieuppeul)",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Cité Derklé",
+            "lat": 14.7200435,
+            "lon": -17.4491281
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Cité Marine",
+            "lat": 14.7311906,
+            "lon": -17.4552178
+          },
+          {
+            "nom": "Avenue Cheikh Ahmadou Bamba",
+            "lat": 14.6995093,
+            "lon": -17.4472538
+          },
+          {
+            "nom": "Station Castors",
+            "lat": 14.7027741,
+            "lon": -17.44589905
+          },
+          {
+            "nom": "Marché HLM",
+            "lat": 14.7060389,
+            "lon": -17.4445443
+          },
+          {
+            "nom": "Ouagou Niayes",
+            "lat": 14.7073664,
+            "lon": -17.4490029
+          },
+          {
+            "nom": "BOP",
+            "lat": 14.7103652,
+            "lon": -17.4484168
+          },
+          {
+            "nom": "Masalikul Djinane",
+            "lat": 14.704201399999999,
+            "lon": -17.4481661
+          },
+          {
+            "nom": "CSS",
+            "lat": 14.6980376,
+            "lon": -17.4479154
+          },
+          {
+            "nom": "Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Service des Mines",
+            "lat": 14.7272321,
+            "lon": -17.4457692
+          },
+          {
+            "nom": "Place BAKOU",
+            "lat": 14.71196635,
+            "lon": -17.4442283
+          },
+          {
+            "nom": "Police Bel Air",
+            "lat": 14.6967006,
+            "lon": -17.4426874
+          },
+          {
+            "nom": "Grand Moulin de Dakar",
+            "lat": 14.7773717,
+            "lon": -17.3234725
+          },
+          {
+            "nom": "Bel Air",
+            "lat": 14.7022198,
+            "lon": -17.4284736
+          },
+          {
+            "nom": "Arsenal",
+            "lat": 14.688095350000001,
+            "lon": -17.4305107
+          },
+          {
+            "nom": "Gare de Dakar",
+            "lat": 14.6739709,
+            "lon": -17.4325478
+          },
+          {
+            "nom": "Esso Port",
+            "lat": 14.6742772,
+            "lon": -17.4320345
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Georges Pompidou",
+            "lat": 14.66971725,
+            "lon": -17.434646
+          },
+          {
+            "nom": "Rond point Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Avenue André Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Lat Dior",
+            "lat": 14.7467716,
+            "lon": -17.451914
+          },
+          {
+            "nom": "Route de la Corniche",
+            "lat": 14.7073379,
+            "lon": -17.4844577
+          },
+          {
+            "nom": "Reubeuss",
+            "lat": 14.6746812,
+            "lon": -17.4462647
+          },
+          {
+            "nom": "Mosquée Seydou Nourrou Tall",
+            "lat": 14.6872104,
+            "lon": -17.45424405
+          },
+          {
+            "nom": "Rue 6",
+            "lat": 14.6997396,
+            "lon": -17.4622234
+          },
+          {
+            "nom": "Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Gueule Tapée",
+            "lat": 14.7760159,
+            "lon": -17.392881
+          },
+          {
+            "nom": "Lycée Delafosse",
+            "lat": 14.6701674,
+            "lon": -17.4413796
+          },
+          {
+            "nom": "Canal 4",
+            "lat": 14.6994007,
+            "lon": -17.4515712
+          },
+          {
+            "nom": "Rond point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Avenue Cheikh Anta Diop",
+            "lat": 14.7059779,
+            "lon": -17.4786725
+          },
+          {
+            "nom": "Ecole Normale Supérieure",
+            "lat": 14.6785278,
+            "lon": -17.4653083
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Stade Demba DIOP",
+            "lat": 14.7108526,
+            "lon": -17.4576045
+          },
+          {
+            "nom": "Rond Point Jet d'Eau",
+            "lat": 14.7132388,
+            "lon": -17.4547052
+          },
+          {
+            "nom": "Allées Ababacar Sy",
+            "lat": 14.7167646,
+            "lon": -17.4556399
+          },
+          {
+            "nom": "Terminus Liberté 5 (Dieuppeul)",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          }
+        ]
+      },
+      {
+        "id": "L20",
+        "number": "20",
+        "name": "LIGNE 20",
+        "category": "urbain",
+        "terminus_a": "DIEUPPEUL",
+        "terminus_b": "CENTRE-VILLE",
+        "stops": [
+          {
+            "nom": "Terminus Dieuppeul",
+            "lat": 14.7198137,
+            "lon": -17.4532312
+          },
+          {
+            "nom": "Allées Ababacar Sy",
+            "lat": 14.7167646,
+            "lon": -17.4556399
+          },
+          {
+            "nom": "Jet d'Eau",
+            "lat": 14.7132388,
+            "lon": -17.4547052
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Stade Demba Diop",
+            "lat": 14.7108526,
+            "lon": -17.4576045
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "Poste Fann",
+            "lat": 14.6960571,
+            "lon": -17.4661893
+          },
+          {
+            "nom": "Avenue Cheikh Anta Diop",
+            "lat": 14.7059779,
+            "lon": -17.4786725
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Canal 4",
+            "lat": 14.6994007,
+            "lon": -17.4515712
+          },
+          {
+            "nom": "Lycée Delafosse",
+            "lat": 14.6701674,
+            "lon": -17.4413796
+          },
+          {
+            "nom": "Gueule Tapée",
+            "lat": 14.7760159,
+            "lon": -17.392881
+          },
+          {
+            "nom": "Rue 6",
+            "lat": 14.6997396,
+            "lon": -17.4622234
+          },
+          {
+            "nom": "Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "DAF",
+            "lat": 14.6743283,
+            "lon": -17.449595
+          },
+          {
+            "nom": "Mosquée Seydou Nourrou Tall",
+            "lat": 14.6872104,
+            "lon": -17.45424405
+          },
+          {
+            "nom": "Reubeuss",
+            "lat": 14.6746812,
+            "lon": -17.4462647
+          },
+          {
+            "nom": "Lat Dior",
+            "lat": 14.7467716,
+            "lon": -17.451914
+          },
+          {
+            "nom": "Avenue Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Rond point Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Avenue Georges Pompidou",
+            "lat": 14.66971725,
+            "lon": -17.434646
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Gare TER",
+            "lat": 14.7017075,
+            "lon": -17.45041775
+          },
+          {
+            "nom": "Esso Port",
+            "lat": 14.6742772,
+            "lon": -17.4320345
+          },
+          {
+            "nom": "Boulevard de l'Arsenal",
+            "lat": 14.7055585,
+            "lon": -17.432388250000002
+          },
+          {
+            "nom": "Central Bel Air (MTOA)",
+            "lat": 14.7368398,
+            "lon": -17.432742
+          },
+          {
+            "nom": "Grands Moulin de Dakar",
+            "lat": 14.7773717,
+            "lon": -17.3234725
+          },
+          {
+            "nom": "Police Bel Air",
+            "lat": 14.6967006,
+            "lon": -17.4426874
+          },
+          {
+            "nom": "Service des Mines",
+            "lat": 14.7272321,
+            "lon": -17.4457692
+          },
+          {
+            "nom": "Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "CSS",
+            "lat": 14.6980376,
+            "lon": -17.4479154
+          },
+          {
+            "nom": "Masalikul Djinane",
+            "lat": 14.704201399999999,
+            "lon": -17.4481661
+          },
+          {
+            "nom": "Cité Port",
+            "lat": 14.7011067,
+            "lon": -17.4465997
+          },
+          {
+            "nom": "Ouagou Niayes",
+            "lat": 14.7073664,
+            "lon": -17.4490029
+          },
+          {
+            "nom": "Marché HLM",
+            "lat": 14.7060389,
+            "lon": -17.4445443
+          },
+          {
+            "nom": "Station Castors",
+            "lat": 14.7027741,
+            "lon": -17.44589905
+          },
+          {
+            "nom": "Avenue Cheikh Ahmadou Bamba",
+            "lat": 14.6995093,
+            "lon": -17.4472538
+          },
+          {
+            "nom": "Cité Marine",
+            "lat": 14.7311906,
+            "lon": -17.4552178
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Cité Derklé",
+            "lat": 14.7200435,
+            "lon": -17.4491281
+          },
+          {
+            "nom": "Terminus Dieuppeul",
+            "lat": 14.7198137,
+            "lon": -17.4532312
+          }
+        ]
+      },
+      {
+        "id": "L23",
+        "number": "23",
+        "name": "LIGNE 23",
+        "category": "urbain",
+        "terminus_a": "PARCELLES ASSAINIES",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus des Parcelles",
+            "lat": 14.7621721,
+            "lon": -17.425006
+          },
+          {
+            "nom": "Ecole Dior",
+            "lat": 14.7590235,
+            "lon": -17.4471448
+          },
+          {
+            "nom": "Diamalaye",
+            "lat": 14.7614948,
+            "lon": -17.4527315
+          },
+          {
+            "nom": "HLM Grand Médine",
+            "lat": 14.7474404,
+            "lon": -17.4448858
+          },
+          {
+            "nom": "Dior",
+            "lat": 14.7108167,
+            "lon": -17.4629827
+          },
+          {
+            "nom": "Acapes",
+            "lat": 14.7568651,
+            "lon": -17.4468822
+          },
+          {
+            "nom": "Dispensaire Norade",
+            "lat": 14.7557348,
+            "lon": -17.4464172
+          },
+          {
+            "nom": "Hopital Mame Abdou",
+            "lat": 14.720270150000001,
+            "lon": -17.4452305
+          },
+          {
+            "nom": "Eglise",
+            "lat": 14.6848055,
+            "lon": -17.4440438
+          },
+          {
+            "nom": "Unité 11",
+            "lat": 14.7578002,
+            "lon": -17.4336152
+          },
+          {
+            "nom": "Croisement 22",
+            "lat": 14.7534168,
+            "lon": -17.4340762
+          },
+          {
+            "nom": "Police Parcelles",
+            "lat": 14.7507412,
+            "lon": -17.4396325
+          },
+          {
+            "nom": "Pont Emergent",
+            "lat": 14.745883150000001,
+            "lon": -17.44582135
+          },
+          {
+            "nom": "Ecole Hyacinthe Thiandoum",
+            "lat": 14.7410251,
+            "lon": -17.4520102
+          },
+          {
+            "nom": "Rond point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Front de Terre",
+            "lat": 14.7203605,
+            "lon": -17.4341879
+          },
+          {
+            "nom": "Cité des Eaux",
+            "lat": 14.7248449,
+            "lon": -17.4443118
+          },
+          {
+            "nom": "Station Castor",
+            "lat": 14.71795765,
+            "lon": -17.45047555
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Stade Demba Diop",
+            "lat": 14.7108526,
+            "lon": -17.4576045
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "Poste Fann",
+            "lat": 14.6960571,
+            "lon": -17.4661893
+          },
+          {
+            "nom": "Avenue Cheikh Anta Diop",
+            "lat": 14.7059779,
+            "lon": -17.4786725
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Rond Point Sahm",
+            "lat": 14.6856378,
+            "lon": -17.4542992
+          },
+          {
+            "nom": "Canal 4",
+            "lat": 14.6994007,
+            "lon": -17.4515712
+          },
+          {
+            "nom": "Gueule Tapée",
+            "lat": 14.7760159,
+            "lon": -17.392881
+          },
+          {
+            "nom": "Rue 6",
+            "lat": 14.6997396,
+            "lon": -17.4622234
+          },
+          {
+            "nom": "DAF",
+            "lat": 14.6743283,
+            "lon": -17.449595
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "ASECNA",
+            "lat": 14.7375719,
+            "lon": -17.5144749
+          },
+          {
+            "nom": "Bld de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hopital Principale",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Rond point Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Institut Pasteur",
+            "lat": 14.6561847,
+            "lon": -17.4350339
+          },
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          }
+        ]
+      },
+      {
+        "id": "L121",
+        "number": "121",
+        "name": "LIGNE 121",
+        "category": "urbain",
+        "terminus_a": "SCAT URBAM",
+        "terminus_b": "LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Scat Urban",
+            "lat": 14.6692555,
+            "lon": -17.441483
+          },
+          {
+            "nom": "Mairie Grand Yoff",
+            "lat": 14.7554731,
+            "lon": -17.4745059
+          },
+          {
+            "nom": "Pentola",
+            "lat": 14.7350165,
+            "lon": -17.4618016
+          },
+          {
+            "nom": "Les deux voies de Sipres",
+            "lat": 14.693807,
+            "lon": -17.4694731
+          },
+          {
+            "nom": "Camp Penal",
+            "lat": 14.7331719,
+            "lon": -17.4590601
+          },
+          {
+            "nom": "Les deux voies de Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Rond point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Boulangerie Zone",
+            "lat": 14.7031717,
+            "lon": -17.4570036
+          },
+          {
+            "nom": "Collège Sacré Cœur",
+            "lat": 14.7167429,
+            "lon": -17.4640648
+          },
+          {
+            "nom": "Scor Liberté",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Sicap rue 10",
+            "lat": 14.71129405,
+            "lon": -17.456267349999997
+          },
+          {
+            "nom": "Lycée Blaise Diagne",
+            "lat": 14.6968878,
+            "lon": -17.4528486
+          },
+          {
+            "nom": "Place ONU",
+            "lat": 14.6969405,
+            "lon": -17.4514063
+          },
+          {
+            "nom": "Canal 4",
+            "lat": 14.6994007,
+            "lon": -17.4515712
+          },
+          {
+            "nom": "HLM Fass",
+            "lat": 14.6958602,
+            "lon": -17.4509571
+          },
+          {
+            "nom": "Travaux Communaux",
+            "lat": 14.69220425,
+            "lon": -17.4528773
+          },
+          {
+            "nom": "Rue 22 Prolongée",
+            "lat": 14.6885483,
+            "lon": -17.4547975
+          },
+          {
+            "nom": "RTS",
+            "lat": 14.6795834,
+            "lon": -17.4437388
+          },
+          {
+            "nom": "Allées Papa Guèye Fall",
+            "lat": 14.6766438,
+            "lon": -17.4406354
+          },
+          {
+            "nom": "Petersen",
+            "lat": 14.6758222,
+            "lon": -17.4412971
+          },
+          {
+            "nom": "Avenue Faidherbe",
+            "lat": 14.6764877,
+            "lon": -17.4424371
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Albert Sarraut",
+            "lat": 14.669681,
+            "lon": -17.4294523
+          },
+          {
+            "nom": "BCEAO",
+            "lat": 14.6700982,
+            "lon": -17.4263936
+          },
+          {
+            "nom": "Terminus Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          }
+        ]
+      },
+      {
+        "id": "L319",
+        "number": "319",
+        "name": "LIGNE 319",
+        "category": "urbain",
+        "terminus_a": "LIBERTÉ 6",
+        "terminus_b": "OUAKAM",
+        "stops": [
+          {
+            "nom": "Terminus Liberté 6",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Deux voies Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Rond point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Boulangerie Jaune",
+            "lat": 14.7189886,
+            "lon": -17.466291
+          },
+          {
+            "nom": "Immeuble Mariama",
+            "lat": 14.716055,
+            "lon": -17.470838
+          },
+          {
+            "nom": "Rond point Cheikh Bethio",
+            "lat": 14.719346600000002,
+            "lon": -17.464364850000003
+          },
+          {
+            "nom": "Ancien Piste",
+            "lat": 14.7209924,
+            "lon": -17.461128275
+          },
+          {
+            "nom": "IHO",
+            "lat": 14.7218153,
+            "lon": -17.4595099875
+          },
+          {
+            "nom": "Entrée Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Pharmacie Cité Aviation",
+            "lat": 14.7323375,
+            "lon": -17.4991891
+          },
+          {
+            "nom": "Pharmacie Mame Seynabou",
+            "lat": 14.751544,
+            "lon": -17.396413
+          },
+          {
+            "nom": "Case des tous petit",
+            "lat": 14.7097353,
+            "lon": -17.4420776
+          },
+          {
+            "nom": "Station Shell",
+            "lat": 14.7226382,
+            "lon": -17.4578917
+          },
+          {
+            "nom": "Lycée d'excellence privée",
+            "lat": 14.7552855,
+            "lon": -17.4381778
+          },
+          {
+            "nom": "Boulangerie N'wely",
+            "lat": 14.7069003,
+            "lon": -17.4525544
+          },
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          }
+        ]
+      },
+      {
+        "id": "LTO1",
+        "number": "TO1",
+        "name": "LIGNE TAF TAF OUAKAM",
+        "category": "urbain",
+        "terminus_a": "OUAKAM",
+        "terminus_b": "PALAIS 2",
+        "stops": [
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Brioche Dorée Ouakam",
+            "lat": 14.729235,
+            "lon": -17.491328
+          },
+          {
+            "nom": "Monument de la Renaissance",
+            "lat": 14.7221402,
+            "lon": -17.4949654
+          },
+          {
+            "nom": "Corniche Ouest",
+            "lat": 14.6672536,
+            "lon": -17.4427806
+          },
+          {
+            "nom": "Avenue Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Avenue Pompidou",
+            "lat": 14.6693744,
+            "lon": -17.4348576
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Palais 2",
+            "lat": 14.652875,
+            "lon": -17.433433
+          }
+        ]
+      },
+      {
+        "id": "L501",
+        "number": "501",
+        "name": "LIGNE 501",
+        "category": "urbain",
+        "terminus_a": "PALAIS 2",
+        "terminus_b": "LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Palais 2",
+            "lat": 14.7822247,
+            "lon": -17.373001
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Esso Port Embarcadère",
+            "lat": 14.7017075,
+            "lon": -17.45041775
+          },
+          {
+            "nom": "Terminus Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          }
+        ]
+      },
+      {
+        "id": "L502",
+        "number": "502",
+        "name": "LIGNE 502",
+        "category": "urbain",
+        "terminus_a": "GARE COLOBANE",
+        "terminus_b": "GARE COLOBANE",
+        "stops": [
+          {
+            "nom": "Gare Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Maison du Parti",
+            "lat": 14.7546145,
+            "lon": -17.3903462
+          },
+          {
+            "nom": "Hampathé Ba",
+            "lat": 14.6948273,
+            "lon": -17.4541521
+          },
+          {
+            "nom": "UCAD",
+            "lat": 14.6932398,
+            "lon": -17.4620743
+          },
+          {
+            "nom": "Lycée De Lafosse",
+            "lat": 14.6701674,
+            "lon": -17.4413796
+          },
+          {
+            "nom": "Police 4ème",
+            "lat": 14.67804765,
+            "lon": -17.447813850000003
+          },
+          {
+            "nom": "Rond Point Sham",
+            "lat": 14.6859279,
+            "lon": -17.4542481
+          },
+          {
+            "nom": "Gare Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          }
+        ]
+      },
+      {
+        "id": "L503",
+        "number": "503",
+        "name": "LIGNE 503",
+        "category": "urbain",
+        "terminus_a": "GARE COLOBANE",
+        "terminus_b": "GARE COLOBANE",
+        "stops": [
+          {
+            "nom": "Gare de Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Rond Point Bel Air",
+            "lat": 14.7022198,
+            "lon": -17.4284736
+          },
+          {
+            "nom": "Mole 8",
+            "lat": 14.6846512,
+            "lon": -17.42435
+          },
+          {
+            "nom": "Cité ISRA",
+            "lat": 14.7210113,
+            "lon": -17.4344117
+          },
+          {
+            "nom": "Zone Industrielle",
+            "lat": 14.7417489,
+            "lon": -17.3427045
+          },
+          {
+            "nom": "Service des Mines",
+            "lat": 14.7272321,
+            "lon": -17.4457692
+          },
+          {
+            "nom": "Gare de Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          }
+        ]
+      },
+      {
+        "id": "LTAFTAF",
+        "number": "TAF TAF",
+        "name": "LIGNE TAF TAF",
+        "category": "urbain",
+        "terminus_a": "OUAKAM",
+        "terminus_b": "AIBD",
+        "stops": [
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Mamelles",
+            "lat": 14.7311563,
+            "lon": -17.5003005
+          },
+          {
+            "nom": "Croisement Almadies",
+            "lat": 14.7441857,
+            "lon": -17.5175251
+          },
+          {
+            "nom": "Ngor",
+            "lat": 14.7487915,
+            "lon": -17.5149607
+          },
+          {
+            "nom": "Yoff",
+            "lat": 14.7603583,
+            "lon": -17.468149
+          },
+          {
+            "nom": "Rte de l'Aéroport",
+            "lat": 14.7498009,
+            "lon": -17.4640409
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "VDN",
+            "lat": 14.7842013,
+            "lon": -17.3936821
+          },
+          {
+            "nom": "Direction Générale DDD",
+            "lat": 14.7152524,
+            "lon": -17.4708124
+          },
+          {
+            "nom": "Rond Point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Itinéraire 213",
+            "lat": 14.716417,
+            "lon": -17.273844
+          },
+          {
+            "nom": "Police Grand Yoff",
+            "lat": 14.7390094,
+            "lon": -17.4476686
+          },
+          {
+            "nom": "Pharmacie Patte d'Oie",
+            "lat": 14.7415624,
+            "lon": -17.4457879
+          },
+          {
+            "nom": "Autoroute à Péage",
+            "lat": 14.734376,
+            "lon": -17.2487861
+          },
+          {
+            "nom": "Diamniadio",
+            "lat": 14.7202187,
+            "lon": -17.1842439
+          },
+          {
+            "nom": "AIBD",
+            "lat": 14.7444099,
+            "lon": -17.4540095
+          }
+        ]
+      }
+    ],
+    "banlieue": [
+      {
+        "id": "L2",
+        "number": "2",
+        "name": "LIGNE 2",
+        "category": "banlieue",
+        "terminus_a": "DAROUKHANE",
+        "terminus_b": "PLACE LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Daroukhane",
+            "lat": 14.7815469,
+            "lon": -17.3720364
+          },
+          {
+            "nom": "Corniche",
+            "lat": 14.7073379,
+            "lon": -17.4844577
+          },
+          {
+            "nom": "Hamo",
+            "lat": 14.7849453,
+            "lon": -17.3842327
+          },
+          {
+            "nom": "Terminus Guédiawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Marché Sahm",
+            "lat": 14.7736922,
+            "lon": -17.3951347
+          },
+          {
+            "nom": "Ravin",
+            "lat": 14.7708556,
+            "lon": -17.3992582
+          },
+          {
+            "nom": "Ecole Canada",
+            "lat": 14.75783275,
+            "lon": -17.4230894
+          },
+          {
+            "nom": "Rte des Niayes",
+            "lat": 14.7448099,
+            "lon": -17.4469206
+          },
+          {
+            "nom": "Tally Boumack",
+            "lat": 14.7594072,
+            "lon": -17.4384546
+          },
+          {
+            "nom": "Bountou Pikine",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "Route Nationale n°1",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "PEAGE Pikine",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "Cité des Eaux",
+            "lat": 14.7248449,
+            "lon": -17.4443118
+          },
+          {
+            "nom": "Station Castors",
+            "lat": 14.7027741,
+            "lon": -17.44589905
+          },
+          {
+            "nom": "Avenue Cheikh Ahmadou Bamba",
+            "lat": 14.6995093,
+            "lon": -17.4472538
+          },
+          {
+            "nom": "Marché HLM",
+            "lat": 14.7060389,
+            "lon": -17.4445443
+          },
+          {
+            "nom": "Masalikul Djinane",
+            "lat": 14.704201399999999,
+            "lon": -17.4481661
+          },
+          {
+            "nom": "BOPP",
+            "lat": 14.7036306,
+            "lon": -17.4487455
+          },
+          {
+            "nom": "Rond Point Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Lycée Kennedy",
+            "lat": 14.6966734,
+            "lon": -17.449098
+          },
+          {
+            "nom": "Boulevard Général De Gaule",
+            "lat": 14.6811593,
+            "lon": -17.4435433
+          },
+          {
+            "nom": "Obélisque",
+            "lat": 14.6944767,
+            "lon": -17.448354
+          },
+          {
+            "nom": "Rue 39",
+            "lat": 14.75525,
+            "lon": -17.443162
+          },
+          {
+            "nom": "Douta Seck",
+            "lat": 14.6820218,
+            "lon": -17.4517405
+          },
+          {
+            "nom": "Avenue Blaise Diagne",
+            "lat": 14.6809182,
+            "lon": -17.4495727
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Difoncé",
+            "lat": 14.6804866,
+            "lon": -17.4509285
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "ASECNA",
+            "lat": 14.7375719,
+            "lon": -17.5144749
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Gare de Dakar",
+            "lat": 14.6739709,
+            "lon": -17.4325478
+          },
+          {
+            "nom": "Embarcadère",
+            "lat": 14.71780495,
+            "lon": -17.459839575
+          },
+          {
+            "nom": "Terminus Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          }
+        ]
+      },
+      {
+        "id": "L5",
+        "number": "5",
+        "name": "LIGNE 5",
+        "category": "banlieue",
+        "terminus_a": "GUÉDIAWAYE",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Guédiawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Marché Jeudi",
+            "lat": 14.7759513,
+            "lon": -17.4000369
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Case PA",
+            "lat": 14.757043724999999,
+            "lon": -17.4297336
+          },
+          {
+            "nom": "Police de Parcelles Assainies",
+            "lat": 14.7507412,
+            "lon": -17.4396325
+          },
+          {
+            "nom": "Pont Sénégal 92 (Pont de l'émergence)",
+            "lat": 14.7486146,
+            "lon": -17.4401606
+          },
+          {
+            "nom": "Patte d'Oie",
+            "lat": 14.746488,
+            "lon": -17.4406887
+          },
+          {
+            "nom": "Autoroute",
+            "lat": 14.711332,
+            "lon": -17.1972744
+          },
+          {
+            "nom": "Intendance",
+            "lat": 14.6781115,
+            "lon": -17.4369984
+          },
+          {
+            "nom": "Avenue Lamine Gueye",
+            "lat": 14.6643802,
+            "lon": -17.4370088
+          },
+          {
+            "nom": "Avenue André Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Avenue Jean Jaurès",
+            "lat": 14.6704603,
+            "lon": -17.4401573
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L6",
+        "number": "6",
+        "name": "LIGNE 6",
+        "category": "banlieue",
+        "terminus_a": "GUÉDIAWAYE",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Guédiawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Marché Jeudi",
+            "lat": 14.7759513,
+            "lon": -17.4000369
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Camberene",
+            "lat": 14.7710028,
+            "lon": -17.4236972
+          },
+          {
+            "nom": "Case PA",
+            "lat": 14.757043724999999,
+            "lon": -17.4297336
+          },
+          {
+            "nom": "Police de Parcelles Assainies",
+            "lat": 14.7507412,
+            "lon": -17.4396325
+          },
+          {
+            "nom": "Marché Grand Médine",
+            "lat": 14.7474404,
+            "lon": -17.4448858
+          },
+          {
+            "nom": "Rond point 26",
+            "lat": 14.7308875,
+            "lon": -17.4565734
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "Sipres",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Rond point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Terminus Liberté 5",
+            "lat": 14.7274063,
+            "lon": -17.4602533
+          },
+          {
+            "nom": "Allées Khalifa Ababacar Sy",
+            "lat": 14.7142227,
+            "lon": -17.4553096
+          },
+          {
+            "nom": "Jet d'Eau",
+            "lat": 14.7132388,
+            "lon": -17.4547052
+          },
+          {
+            "nom": "Niary Tally",
+            "lat": 14.7069003,
+            "lon": -17.4525544
+          },
+          {
+            "nom": "Eglise Sainte Thérèse",
+            "lat": 14.6864512,
+            "lon": -17.4554847
+          },
+          {
+            "nom": "ENA",
+            "lat": 14.6996665,
+            "lon": -17.4523652
+          },
+          {
+            "nom": "Boulevard Général De Gaule",
+            "lat": 14.6811593,
+            "lon": -17.4435433
+          },
+          {
+            "nom": "Allées Papa Gueye Fall",
+            "lat": 14.6766438,
+            "lon": -17.4406354
+          },
+          {
+            "nom": "Avenue Faidherbe",
+            "lat": 14.6764877,
+            "lon": -17.4424371
+          },
+          {
+            "nom": "Avenue Lamine Gueye",
+            "lat": 14.6643802,
+            "lon": -17.4370088
+          },
+          {
+            "nom": "Avenue André Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Avenue Jean Jaurès",
+            "lat": 14.6704603,
+            "lon": -17.4401573
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L11",
+        "number": "11",
+        "name": "LIGNE 11",
+        "category": "banlieue",
+        "terminus_a": "KEUR MASSAR",
+        "terminus_b": "LAT DIOR",
+        "stops": [
+          {
+            "nom": "Terminus Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Station Keur Massar",
+            "lat": 14.7829553,
+            "lon": -17.323666
+          },
+          {
+            "nom": "Croisement Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Fass Mbao",
+            "lat": 14.7438683,
+            "lon": -17.3136734
+          },
+          {
+            "nom": "Diamaguène",
+            "lat": 14.7560561,
+            "lon": -17.3515872
+          },
+          {
+            "nom": "Poste Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Autoroute à Péage",
+            "lat": 14.734376,
+            "lon": -17.2487861
+          },
+          {
+            "nom": "Corniche des HLM",
+            "lat": 14.7174032,
+            "lon": -17.34522605
+          },
+          {
+            "nom": "Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Boulevard Général De Gaule (Centenaire)",
+            "lat": 14.6900069,
+            "lon": -17.4427024
+          },
+          {
+            "nom": "RTS",
+            "lat": 14.6795834,
+            "lon": -17.4437388
+          },
+          {
+            "nom": "Rond Point",
+            "lat": 14.7875758,
+            "lon": -17.3767342
+          },
+          {
+            "nom": "Poste Médina",
+            "lat": 14.6833902,
+            "lon": -17.4524284
+          },
+          {
+            "nom": "Blaise Diagne",
+            "lat": 14.6796626,
+            "lon": -17.449177
+          },
+          {
+            "nom": "Sandaga",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Terminus Lat Dior",
+            "lat": 14.6692555,
+            "lon": -17.441483
+          }
+        ]
+      },
+      {
+        "id": "L12",
+        "number": "12",
+        "name": "LIGNE 12",
+        "category": "banlieue",
+        "terminus_a": "GUÉDIAWAYE",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Guédiawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Lycée Canada",
+            "lat": 14.7647261,
+            "lon": -17.390672549999998
+          },
+          {
+            "nom": "Tally Boubess",
+            "lat": 14.7563333,
+            "lon": -17.3926042
+          },
+          {
+            "nom": "Marché Sandika",
+            "lat": 14.6699219,
+            "lon": -17.4377179
+          },
+          {
+            "nom": "Bountou Pikine",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "National 1",
+            "lat": 14.6999424,
+            "lon": -17.4613466
+          },
+          {
+            "nom": "Croisement Camberene",
+            "lat": 14.7710028,
+            "lon": -17.4236972
+          },
+          {
+            "nom": "Autoroute",
+            "lat": 14.711332,
+            "lon": -17.1972744
+          },
+          {
+            "nom": "Cité des Eaux",
+            "lat": 14.7248449,
+            "lon": -17.4443118
+          },
+          {
+            "nom": "Station Castors",
+            "lat": 14.7027741,
+            "lon": -17.44589905
+          },
+          {
+            "nom": "Avenue Bourguiba",
+            "lat": 14.7110704,
+            "lon": -17.4566393
+          },
+          {
+            "nom": "Ecole Normale",
+            "lat": 14.698692,
+            "lon": -17.466078
+          },
+          {
+            "nom": "Avenue Cheikh Anta Diop (Hôpital Fann)",
+            "lat": 14.7059779,
+            "lon": -17.4786725
+          },
+          {
+            "nom": "Rond Point Sahm",
+            "lat": 14.6856378,
+            "lon": -17.4542992
+          },
+          {
+            "nom": "Avenue Blaise Diagne",
+            "lat": 14.6809182,
+            "lon": -17.4495727
+          },
+          {
+            "nom": "Avenue Jean Jaurès",
+            "lat": 14.6704603,
+            "lon": -17.4401573
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L15",
+        "number": "15",
+        "name": "LIGNE 15",
+        "category": "banlieue",
+        "terminus_a": "RUFISQUE",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Rufisque",
+            "lat": 14.716417,
+            "lon": -17.273844
+          },
+          {
+            "nom": "Djoutiba",
+            "lat": 14.7469981,
+            "lon": -17.3325946
+          },
+          {
+            "nom": "Sortie Rufisque",
+            "lat": 14.7305809,
+            "lon": -17.2064435
+          },
+          {
+            "nom": "Croisement Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Fass Mbao",
+            "lat": 14.7438683,
+            "lon": -17.3136734
+          },
+          {
+            "nom": "Diamaguène",
+            "lat": 14.7560561,
+            "lon": -17.3515872
+          },
+          {
+            "nom": "Poste Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Croisement Bountou Pikine",
+            "lat": 14.745654,
+            "lon": -17.4009333
+          },
+          {
+            "nom": "National 1",
+            "lat": 14.6999424,
+            "lon": -17.4613466
+          },
+          {
+            "nom": "Croisement Camberene",
+            "lat": 14.7710028,
+            "lon": -17.4236972
+          },
+          {
+            "nom": "Autoroute",
+            "lat": 14.711332,
+            "lon": -17.1972744
+          },
+          {
+            "nom": "Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "SCOA",
+            "lat": 14.6768175,
+            "lon": -17.4392915
+          },
+          {
+            "nom": "Esso Port",
+            "lat": 14.6742772,
+            "lon": -17.4320345
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Avenue Nelson Mandela",
+            "lat": 14.663481,
+            "lon": -17.4402388
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L16A",
+        "number": "16A",
+        "name": "LIGNE 16A",
+        "category": "banlieue",
+        "terminus_a": "MALIKA",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Malika",
+            "lat": 14.7596385,
+            "lon": -17.4527135
+          },
+          {
+            "nom": "Malika Plage",
+            "lat": 14.8066907,
+            "lon": -17.3389391
+          },
+          {
+            "nom": "Terminus 221 (Gadaye)",
+            "lat": 14.755186,
+            "lon": -17.442056
+          },
+          {
+            "nom": "Hamo",
+            "lat": 14.7849453,
+            "lon": -17.3842327
+          },
+          {
+            "nom": "Terminus Guédiawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Marché Sahm",
+            "lat": 14.7736922,
+            "lon": -17.3951347
+          },
+          {
+            "nom": "Ecole Canada",
+            "lat": 14.75783275,
+            "lon": -17.4230894
+          },
+          {
+            "nom": "Icotaf",
+            "lat": 14.7437034,
+            "lon": -17.398993
+          },
+          {
+            "nom": "Cité Lobatt Fall",
+            "lat": 14.7466713,
+            "lon": -17.4096891
+          },
+          {
+            "nom": "Rond Point Lobatt Fall",
+            "lat": 14.7466713,
+            "lon": -17.4096891
+          },
+          {
+            "nom": "Autoroute",
+            "lat": 14.711332,
+            "lon": -17.1972744
+          },
+          {
+            "nom": "Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Rond Point Colobane",
+            "lat": 14.7004304,
+            "lon": -17.441666
+          },
+          {
+            "nom": "Place Bakou",
+            "lat": 14.694262875,
+            "lon": -17.43608835
+          },
+          {
+            "nom": "Cfao Technologies",
+            "lat": 14.6873005,
+            "lon": -17.4377826
+          },
+          {
+            "nom": "Cyrnos",
+            "lat": 14.6768175,
+            "lon": -17.4392915
+          },
+          {
+            "nom": "Arsenal",
+            "lat": 14.688095350000001,
+            "lon": -17.4305107
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L16B",
+        "number": "16B",
+        "name": "LIGNE 16B",
+        "category": "banlieue",
+        "terminus_a": "MALIKA",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Terminus Malika",
+            "lat": 14.7596385,
+            "lon": -17.4527135
+          },
+          {
+            "nom": "Station Keur Massar",
+            "lat": 14.7829553,
+            "lon": -17.323666
+          },
+          {
+            "nom": "Croisement Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "LGI Mbao",
+            "lat": 14.7438683,
+            "lon": -17.3136734
+          },
+          {
+            "nom": "Diamaguène",
+            "lat": 14.7560561,
+            "lon": -17.3515872
+          },
+          {
+            "nom": "Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Sips",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Sotiba (Seras)",
+            "lat": 14.6972829,
+            "lon": -17.4356749
+          },
+          {
+            "nom": "Yarakh",
+            "lat": 14.7354486,
+            "lon": -17.4161783
+          },
+          {
+            "nom": "Capa Virmaud",
+            "lat": 14.7056049,
+            "lon": -17.4809367
+          },
+          {
+            "nom": "Place Bakou",
+            "lat": 14.694262875,
+            "lon": -17.43608835
+          },
+          {
+            "nom": "SCOA",
+            "lat": 14.6768175,
+            "lon": -17.4392915
+          },
+          {
+            "nom": "Police Bel Air",
+            "lat": 14.6967006,
+            "lon": -17.4426874
+          },
+          {
+            "nom": "Bel Air",
+            "lat": 14.7022198,
+            "lon": -17.4284736
+          },
+          {
+            "nom": "GMD",
+            "lat": 14.68951865,
+            "lon": -17.43388255
+          },
+          {
+            "nom": "Sofrigal (Môle 8)",
+            "lat": 14.6841052,
+            "lon": -17.4312569
+          },
+          {
+            "nom": "Cyrnos",
+            "lat": 14.6768175,
+            "lon": -17.4392915
+          },
+          {
+            "nom": "Caserne Sapeurs Pompiers",
+            "lat": 14.6834036,
+            "lon": -17.4396092
+          },
+          {
+            "nom": "Avenue Lamine Guèye (Sandaga)",
+            "lat": 14.6643802,
+            "lon": -17.4370088
+          },
+          {
+            "nom": "Avenue André Peytavin",
+            "lat": 14.6691405,
+            "lon": -17.4387289
+          },
+          {
+            "nom": "Avenue Jean Jaurès",
+            "lat": 14.6704603,
+            "lon": -17.4401573
+          },
+          {
+            "nom": "Boulevard de la République",
+            "lat": 14.7037656,
+            "lon": -17.47345645
+          },
+          {
+            "nom": "Avenue Léopold Sédar Senghor",
+            "lat": 14.6699593,
+            "lon": -17.432438
+          },
+          {
+            "nom": "Hôpital Principal",
+            "lat": 14.6625583,
+            "lon": -17.4349547
+          },
+          {
+            "nom": "Assemblée Nationale",
+            "lat": 14.6628158,
+            "lon": -17.4380612
+          },
+          {
+            "nom": "Hôpital Le Dantec",
+            "lat": 14.6572465,
+            "lon": -17.4366635
+          },
+          {
+            "nom": "Palais 1",
+            "lat": 14.6510408,
+            "lon": -17.433456
+          }
+        ]
+      },
+      {
+        "id": "L208",
+        "number": "208",
+        "name": "LIGNE 208",
+        "category": "banlieue",
+        "terminus_a": "BAYAKH",
+        "terminus_b": "RUFISQUE",
+        "stops": [
+          {
+            "nom": "Gorom 01",
+            "lat": 14.8210671,
+            "lon": -17.1524873
+          },
+          {
+            "nom": "Gorom 02",
+            "lat": 14.8210671,
+            "lon": -17.1524873
+          },
+          {
+            "nom": "Bambilor",
+            "lat": 14.8039119,
+            "lon": -17.1840413
+          },
+          {
+            "nom": "Noflaye",
+            "lat": 14.786413,
+            "lon": -17.2157
+          },
+          {
+            "nom": "Sangalkam",
+            "lat": 14.779304,
+            "lon": -17.228261
+          },
+          {
+            "nom": "Keur Ndiaye Lo",
+            "lat": 14.743114,
+            "lon": -17.243779
+          },
+          {
+            "nom": "Rufisque",
+            "lat": 14.716417,
+            "lon": -17.273844
+          }
+        ]
+      },
+      {
+        "id": "L213",
+        "number": "213",
+        "name": "LIGNE 213",
+        "category": "banlieue",
+        "terminus_a": "RUFISQUE",
+        "terminus_b": "DIEUPPEUL",
+        "stops": [
+          {
+            "nom": "Gare de Rufisque",
+            "lat": 14.716417,
+            "lon": -17.273844
+          },
+          {
+            "nom": "HLM SIPRES",
+            "lat": 14.693807,
+            "lon": -17.4694731
+          },
+          {
+            "nom": "ZAC Mbao",
+            "lat": 14.7304126,
+            "lon": -17.3021447
+          },
+          {
+            "nom": "Rond Point Grand Mbao",
+            "lat": 14.7312408,
+            "lon": -17.3166792
+          },
+          {
+            "nom": "Keur Mbaye Fall",
+            "lat": 14.7463453,
+            "lon": -17.3193691
+          },
+          {
+            "nom": "Croisement Petit Mbao",
+            "lat": 14.7469981,
+            "lon": -17.3325946
+          },
+          {
+            "nom": "Diamaguene",
+            "lat": 14.7560561,
+            "lon": -17.3515872
+          },
+          {
+            "nom": "Poste Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Péage",
+            "lat": 14.7453024,
+            "lon": -17.2818498
+          },
+          {
+            "nom": "Sortie Croisement Cambérène",
+            "lat": 14.7710028,
+            "lon": -17.4236972
+          },
+          {
+            "nom": "Patte d'Oie",
+            "lat": 14.746488,
+            "lon": -17.4406887
+          },
+          {
+            "nom": "Marché Grand Yoff",
+            "lat": 14.7554731,
+            "lon": -17.4745059
+          },
+          {
+            "nom": "Police Grand Yoff",
+            "lat": 14.7390094,
+            "lon": -17.4476686
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "2 voies Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Rond Point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Terminus Dieuppeul",
+            "lat": 14.7198137,
+            "lon": -17.4532312
+          }
+        ]
+      },
+      {
+        "id": "L217",
+        "number": "217",
+        "name": "LIGNE 217",
+        "category": "banlieue",
+        "terminus_a": "THIAROYE",
+        "terminus_b": "OUAKAM",
+        "stops": [
+          {
+            "nom": "Dépôt Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Sipses",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Bountou Pikine",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "Patte d'Oie",
+            "lat": 14.746488,
+            "lon": -17.4406887
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "VDN",
+            "lat": 14.7842013,
+            "lon": -17.3936821
+          },
+          {
+            "nom": "Sipres",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Ancienne Piste",
+            "lat": 14.712421,
+            "lon": -17.4768687
+          },
+          {
+            "nom": "Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Marché Ouakam",
+            "lat": 14.7236906,
+            "lon": -17.4875037
+          },
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Route des Mamelles",
+            "lat": 14.7236436,
+            "lon": -17.5014671
+          },
+          {
+            "nom": "Route des Almadies",
+            "lat": 14.741693,
+            "lon": -17.5185059
+          },
+          {
+            "nom": "Ngor",
+            "lat": 14.7487915,
+            "lon": -17.5149607
+          },
+          {
+            "nom": "Terminus Aéroport LSS",
+            "lat": 14.7456071,
+            "lon": -17.4894464
+          }
+        ]
+      },
+      {
+        "id": "L218",
+        "number": "218",
+        "name": "LIGNE 218",
+        "category": "banlieue",
+        "terminus_a": "THIAROYE",
+        "terminus_b": "AÉROPORT LSS",
+        "stops": [
+          {
+            "nom": "Dépôt Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Sipses",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Bountou Pikine",
+            "lat": 14.7499118,
+            "lon": -17.3916261
+          },
+          {
+            "nom": "Patte d'Oie",
+            "lat": 14.746488,
+            "lon": -17.4406887
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "VDN",
+            "lat": 14.7842013,
+            "lon": -17.3936821
+          },
+          {
+            "nom": "Sipres",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "Ancienne Piste",
+            "lat": 14.712421,
+            "lon": -17.4768687
+          },
+          {
+            "nom": "Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Marché Ouakam",
+            "lat": 14.7236906,
+            "lon": -17.4875037
+          },
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          },
+          {
+            "nom": "Route des Mamelles",
+            "lat": 14.7236436,
+            "lon": -17.5014671
+          },
+          {
+            "nom": "Route des Almadies",
+            "lat": 14.741693,
+            "lon": -17.5185059
+          },
+          {
+            "nom": "Ngor",
+            "lat": 14.7487915,
+            "lon": -17.5149607
+          },
+          {
+            "nom": "Terminus Aéroport LSS",
+            "lat": 14.7456071,
+            "lon": -17.4894464
+          }
+        ]
+      },
+      {
+        "id": "L219",
+        "number": "219",
+        "name": "LIGNE 219",
+        "category": "banlieue",
+        "terminus_a": "DAROUKHANE",
+        "terminus_b": "OUAKAM",
+        "stops": [
+          {
+            "nom": "Daroukhane",
+            "lat": 14.7815469,
+            "lon": -17.3720364
+          },
+          {
+            "nom": "Marché Ndiarème",
+            "lat": 14.7797188,
+            "lon": -17.3822992
+          },
+          {
+            "nom": "Deux voies Notaire",
+            "lat": 14.771532525,
+            "lon": -17.40106695
+          },
+          {
+            "nom": "Sapeur Pompier Guédiawaye",
+            "lat": 14.771516,
+            "lon": -17.3879959
+          },
+          {
+            "nom": "Marché Jeudi Corniche",
+            "lat": 14.7759513,
+            "lon": -17.4000369
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Case Bi",
+            "lat": 14.7583533,
+            "lon": -17.4297359
+          },
+          {
+            "nom": "Pont Sénégal 92",
+            "lat": 14.749689199999999,
+            "lon": -17.44087305
+          },
+          {
+            "nom": "Collège Hyacinthe Thiandoum",
+            "lat": 14.7410251,
+            "lon": -17.4520102
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Rond Point JVC",
+            "lat": 14.7222542,
+            "lon": -17.463973
+          },
+          {
+            "nom": "Rond Point Boulangerie Jaune",
+            "lat": 14.7189886,
+            "lon": -17.466291
+          },
+          {
+            "nom": "Immeuble Mariama",
+            "lat": 14.716055,
+            "lon": -17.470838
+          },
+          {
+            "nom": "Ancienne Piste",
+            "lat": 14.712421,
+            "lon": -17.4768687
+          },
+          {
+            "nom": "Hôpital Militaire de Ouakam",
+            "lat": 14.7150546,
+            "lon": -17.480816
+          },
+          {
+            "nom": "Comico",
+            "lat": 14.7269953,
+            "lon": -17.4835303
+          },
+          {
+            "nom": "Cité Asecna",
+            "lat": 14.730648,
+            "lon": -17.4905442
+          },
+          {
+            "nom": "Cité Assemblée",
+            "lat": 14.7304522,
+            "lon": -17.4941587
+          },
+          {
+            "nom": "Terminus Ouakam",
+            "lat": 14.7247367,
+            "lon": -17.4850662
+          }
+        ]
+      },
+      {
+        "id": "L220",
+        "number": "220",
+        "name": "LIGNE 220",
+        "category": "banlieue",
+        "terminus_a": "RUFISQUE",
+        "terminus_b": "GUÉDIAWAYE",
+        "stops": [
+          {
+            "nom": "Terminus Rufisque",
+            "lat": 14.716417,
+            "lon": -17.273844
+          },
+          {
+            "nom": "Djoutiba",
+            "lat": 14.7469981,
+            "lon": -17.3325946
+          },
+          {
+            "nom": "HLM Rufisque",
+            "lat": 14.8113661,
+            "lon": -17.2523593
+          },
+          {
+            "nom": "SIPRES",
+            "lat": 14.7431906,
+            "lon": -17.391191
+          },
+          {
+            "nom": "SEDIMA",
+            "lat": 14.7748234,
+            "lon": -17.3165861
+          },
+          {
+            "nom": "Lycée Jaxaay",
+            "lat": 14.7555784,
+            "lon": -17.2854867
+          },
+          {
+            "nom": "2 voies",
+            "lat": 14.7199844,
+            "lon": -17.4650702
+          },
+          {
+            "nom": "Jaxaay",
+            "lat": 14.7705679,
+            "lon": -17.2823744
+          },
+          {
+            "nom": "Station Keur Massar",
+            "lat": 14.7829553,
+            "lon": -17.323666
+          },
+          {
+            "nom": "Terminus Malika",
+            "lat": 14.7596385,
+            "lon": -17.4527135
+          },
+          {
+            "nom": "Malika Plage",
+            "lat": 14.8066907,
+            "lon": -17.3389391
+          },
+          {
+            "nom": "Gadaye",
+            "lat": 14.7864738,
+            "lon": -17.3688528
+          },
+          {
+            "nom": "Serigne Assane",
+            "lat": 14.6827349,
+            "lon": -17.4481688
+          },
+          {
+            "nom": "Marché Boubess",
+            "lat": 14.7762875,
+            "lon": -17.3738245
+          },
+          {
+            "nom": "Lycée Limamoulaye",
+            "lat": 14.7768042,
+            "lon": -17.3797301
+          },
+          {
+            "nom": "Terminus Guediawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          }
+        ]
+      },
+      {
+        "id": "L221",
+        "number": "221",
+        "name": "LIGNE 221",
+        "category": "banlieue",
+        "terminus_a": "GADAYE",
+        "terminus_b": "ALMADIES",
+        "stops": [
+          {
+            "nom": "Terminus Gadaye (Filaos)",
+            "lat": 14.7864738,
+            "lon": -17.3688528
+          },
+          {
+            "nom": "Corniche Daroukhane",
+            "lat": 14.78570955,
+            "lon": -17.37654275
+          },
+          {
+            "nom": "Hamo 6",
+            "lat": 14.7849453,
+            "lon": -17.3842327
+          },
+          {
+            "nom": "Arrêt Dial Mbaye",
+            "lat": 14.774946,
+            "lon": -17.3913507
+          },
+          {
+            "nom": "PAI",
+            "lat": 14.769146124999999,
+            "lon": -17.4055927
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Case",
+            "lat": 14.7565712,
+            "lon": -17.4290535
+          },
+          {
+            "nom": "Police PA",
+            "lat": 14.7516959,
+            "lon": -17.4414267
+          },
+          {
+            "nom": "Pont Sénégal Emergent (92)",
+            "lat": 14.750748399999999,
+            "lon": -17.4527338
+          },
+          {
+            "nom": "Route de l'Aéroport",
+            "lat": 14.7498009,
+            "lon": -17.4640409
+          },
+          {
+            "nom": "Yoff Tonghor",
+            "lat": 14.762249,
+            "lon": -17.4805925
+          },
+          {
+            "nom": "Cité Asecna",
+            "lat": 14.730648,
+            "lon": -17.4905442
+          },
+          {
+            "nom": "Rond Point Ngor",
+            "lat": 14.7489389,
+            "lon": -17.5143999
+          },
+          {
+            "nom": "Ngor Village",
+            "lat": 14.7542887,
+            "lon": -17.4835567
+          },
+          {
+            "nom": "Terminus Almadies",
+            "lat": 14.7596385,
+            "lon": -17.4527135
+          }
+        ]
+      },
+      {
+        "id": "L227",
+        "number": "227",
+        "name": "LIGNE 227",
+        "category": "banlieue",
+        "terminus_a": "KEUR MASSAR",
+        "terminus_b": "TERMINUS PARCELLES",
+        "stops": [
+          {
+            "nom": "Terminus Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Tolou Abdoulaye Wade",
+            "lat": 14.7460754,
+            "lon": -17.445984
+          },
+          {
+            "nom": "Croisement Tivaoune Peulh",
+            "lat": 14.8110278,
+            "lon": -17.2778014
+          },
+          {
+            "nom": "APIX",
+            "lat": 14.6654412,
+            "lon": -17.4342858
+          },
+          {
+            "nom": "Malika Plage",
+            "lat": 14.8066907,
+            "lon": -17.3389391
+          },
+          {
+            "nom": "Police Wakhinane",
+            "lat": 14.787721,
+            "lon": -17.3764047
+          },
+          {
+            "nom": "Hamo 6",
+            "lat": 14.7849453,
+            "lon": -17.3842327
+          },
+          {
+            "nom": "Arrêt Dial Mbaye",
+            "lat": 14.774946,
+            "lon": -17.3913507
+          },
+          {
+            "nom": "Terminus Guediawaye",
+            "lat": 14.7731189,
+            "lon": -17.3887409
+          },
+          {
+            "nom": "Stade Amadou Barry",
+            "lat": 14.7708965,
+            "lon": -17.390062
+          },
+          {
+            "nom": "CES Canada",
+            "lat": 14.767121374999999,
+            "lon": -17.404948349999998
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Case Bi",
+            "lat": 14.7583533,
+            "lon": -17.4297359
+          },
+          {
+            "nom": "Croisement 22",
+            "lat": 14.7534168,
+            "lon": -17.4340762
+          },
+          {
+            "nom": "Eglise PA",
+            "lat": 14.7524819,
+            "lon": -17.4540611
+          },
+          {
+            "nom": "Terminus Parcelles",
+            "lat": 14.7621721,
+            "lon": -17.425006
+          }
+        ]
+      },
+      {
+        "id": "L232",
+        "number": "232",
+        "name": "LIGNE 232",
+        "category": "banlieue",
+        "terminus_a": "BAUX MARAICHERS",
+        "terminus_b": "AEROPORT LSS",
+        "stops": [
+          {
+            "nom": "Baux Maraichers",
+            "lat": 14.7396223,
+            "lon": -17.4035181
+          },
+          {
+            "nom": "Yarakh",
+            "lat": 14.7354486,
+            "lon": -17.4161783
+          },
+          {
+            "nom": "Cafétéria",
+            "lat": 14.699118,
+            "lon": -17.4557642
+          },
+          {
+            "nom": "Hann Maristes",
+            "lat": 14.7302558,
+            "lon": -17.432528
+          },
+          {
+            "nom": "Cours Sainte Marie de Hann",
+            "lat": 14.7332829,
+            "lon": -17.436071
+          },
+          {
+            "nom": "Sortie Mariste",
+            "lat": 14.7314366,
+            "lon": -17.4293338
+          },
+          {
+            "nom": "Usine des Eaux",
+            "lat": 14.72589855,
+            "lon": -17.43176085
+          },
+          {
+            "nom": "Front de Terre",
+            "lat": 14.7203605,
+            "lon": -17.4341879
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Deux voies vers Camp Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          },
+          {
+            "nom": "VDN",
+            "lat": 14.7842013,
+            "lon": -17.3936821
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "Yoff",
+            "lat": 14.7603583,
+            "lon": -17.468149
+          },
+          {
+            "nom": "Terminus Aéroport LSS",
+            "lat": 14.7456071,
+            "lon": -17.4894464
+          }
+        ]
+      },
+      {
+        "id": "L233",
+        "number": "233",
+        "name": "LIGNE 233",
+        "category": "banlieue",
+        "terminus_a": "BAUX MARAICHERS",
+        "terminus_b": "PALAIS 1",
+        "stops": [
+          {
+            "nom": "Baux Maraichers",
+            "lat": 14.7396223,
+            "lon": -17.4035181
+          },
+          {
+            "nom": "Yarakh",
+            "lat": 14.7354486,
+            "lon": -17.4161783
+          },
+          {
+            "nom": "Cafétéria",
+            "lat": 14.699118,
+            "lon": -17.4557642
+          },
+          {
+            "nom": "Hann Maristes",
+            "lat": 14.7302558,
+            "lon": -17.432528
+          },
+          {
+            "nom": "Cours Sainte Marie de Hann",
+            "lat": 14.7332829,
+            "lon": -17.436071
+          },
+          {
+            "nom": "Sortie Mariste",
+            "lat": 14.7314366,
+            "lon": -17.4293338
+          },
+          {
+            "nom": "Usine des Eaux",
+            "lat": 14.72589855,
+            "lon": -17.43176085
+          },
+          {
+            "nom": "Front de Terre",
+            "lat": 14.7203605,
+            "lon": -17.4341879
+          },
+          {
+            "nom": "Khar Yalla",
+            "lat": 14.7320392,
+            "lon": -17.4564326
+          },
+          {
+            "nom": "Rond Point Liberté 6",
+            "lat": 14.7257003,
+            "lon": -17.4596861
+          },
+          {
+            "nom": "Deux voies vers Camp Leclerc",
+            "lat": 14.7339024,
+            "lon": -17.4692614
+          },
+          {
+            "nom": "VDN",
+            "lat": 14.7842013,
+            "lon": -17.3936821
+          },
+          {
+            "nom": "Foire",
+            "lat": 14.7493864,
+            "lon": -17.4702084
+          },
+          {
+            "nom": "Yoff",
+            "lat": 14.7603583,
+            "lon": -17.468149
+          },
+          {
+            "nom": "Terminus Aéroport LSS",
+            "lat": 14.7456071,
+            "lon": -17.4894464
+          }
+        ]
+      },
+      {
+        "id": "L234",
+        "number": "234",
+        "name": "LIGNE 234",
+        "category": "banlieue",
+        "terminus_a": "JAXAAY",
+        "terminus_b": "LECLERC",
+        "stops": [
+          {
+            "nom": "Terminus Jaxaay (Mosquée Niakoul Rab)",
+            "lat": 14.7705679,
+            "lon": -17.2823744
+          },
+          {
+            "nom": "Terminus 56",
+            "lat": 14.7400558,
+            "lon": -17.468943
+          },
+          {
+            "nom": "2 voies Jaxaay",
+            "lat": 14.7705679,
+            "lon": -17.2823744
+          },
+          {
+            "nom": "Station Keur Massar",
+            "lat": 14.7829553,
+            "lon": -17.323666
+          },
+          {
+            "nom": "Croisement Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Fass Mbao",
+            "lat": 14.7438683,
+            "lon": -17.3136734
+          },
+          {
+            "nom": "Diamaguene",
+            "lat": 14.7560561,
+            "lon": -17.3515872
+          },
+          {
+            "nom": "Poste Thiaroye",
+            "lat": 14.7587693,
+            "lon": -17.3802603
+          },
+          {
+            "nom": "Péage",
+            "lat": 14.7453024,
+            "lon": -17.2818498
+          },
+          {
+            "nom": "Grand Théâtre",
+            "lat": 14.6802174,
+            "lon": -17.43677
+          },
+          {
+            "nom": "Esso Port",
+            "lat": 14.6742772,
+            "lon": -17.4320345
+          },
+          {
+            "nom": "Place de l'Indépendance",
+            "lat": 14.6695126,
+            "lon": -17.4315741
+          },
+          {
+            "nom": "Avenue Sarraut",
+            "lat": 14.669681,
+            "lon": -17.4294523
+          },
+          {
+            "nom": "Leclerc",
+            "lat": 14.672134,
+            "lon": -17.4275808
+          }
+        ]
+      },
+      {
+        "id": "L311",
+        "number": "311",
+        "name": "LIGNE 311",
+        "category": "banlieue",
+        "terminus_a": "LAC ROSE",
+        "terminus_b": "CROISEMENT KEUR MASSAR",
+        "stops": [
+          {
+            "nom": "Lac Rose Croisement Niague",
+            "lat": 14.8447328,
+            "lon": -17.216659
+          },
+          {
+            "nom": "Croisement Tivaoune Peulh",
+            "lat": 14.8110278,
+            "lon": -17.2778014
+          },
+          {
+            "nom": "Terminus Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Station Keur Massar",
+            "lat": 14.7829553,
+            "lon": -17.323666
+          },
+          {
+            "nom": "Croisement Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          }
+        ]
+      },
+      {
+        "id": "L327",
+        "number": "327",
+        "name": "LIGNE 327",
+        "category": "banlieue",
+        "terminus_a": "KEUR MASSAR",
+        "terminus_b": "TERMINUS PARCELLES",
+        "stops": [
+          {
+            "nom": "Terminus Keur Massar",
+            "lat": 14.7822567,
+            "lon": -17.311199
+          },
+          {
+            "nom": "Tolou Abdoulaye Wade",
+            "lat": 14.7460754,
+            "lon": -17.445984
+          },
+          {
+            "nom": "Croisement Tivaoune Peulh",
+            "lat": 14.8110278,
+            "lon": -17.2778014
+          },
+          {
+            "nom": "APIX",
+            "lat": 14.6654412,
+            "lon": -17.4342858
+          },
+          {
+            "nom": "Malika Plage",
+            "lat": 14.8066907,
+            "lon": -17.3389391
+          },
+          {
+            "nom": "Malibu",
+            "lat": 14.7752884,
+            "lon": -17.4081038
+          },
+          {
+            "nom": "Hôpital Dalal Diam",
+            "lat": 14.76334625,
+            "lon": -17.4198347
+          },
+          {
+            "nom": "Case Bi",
+            "lat": 14.7583533,
+            "lon": -17.4297359
+          },
+          {
+            "nom": "Croisement 22",
+            "lat": 14.7534168,
+            "lon": -17.4340762
+          },
+          {
+            "nom": "Eglise PA",
+            "lat": 14.7524819,
+            "lon": -17.4540611
+          },
+          {
+            "nom": "Terminus Parcelles",
+            "lat": 14.7621721,
+            "lon": -17.425006
+          }
+        ]
+      },
+      {
+        "id": "LRUFYENNE",
+        "number": "RUF-YENNE",
+        "name": "RUFISQUE - YENNE",
+        "category": "banlieue",
+        "terminus_a": "RUFISQUE",
+        "terminus_b": "YENNE",
+        "stops": [
+          {
+            "nom": "Terminus Rufisque",
+            "lat": 14.716417,
+            "lon": -17.273844
+          },
+          {
+            "nom": "Ville de Rufisque",
+            "lat": 14.7130132,
+            "lon": -17.2767318
+          },
+          {
+            "nom": "Bargny",
+            "lat": 14.693829,
+            "lon": -17.229741
+          },
+          {
+            "nom": "Diamniadio Yenne",
+            "lat": 14.7202187,
+            "lon": -17.1842439
+          }
+        ]
+      }
+    ]
+  },
+  "stats": {
+    "total_urbain": 17,
+    "total_banlieue": 22,
+    "key_hubs": [
+      "Place de l'Indépendance",
+      "Sandaga",
+      "Palais 1",
+      "Palais 2",
+      "Terminus Leclerc",
+      "UCAD",
+      "Rond Point Sham",
+      "Liberté 6",
+      "Patte d'Oie",
+      "Colobane"
+    ]
+  }
+}

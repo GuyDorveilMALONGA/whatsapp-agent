@@ -252,3 +252,104 @@ def purge_sessions_expires():
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     db.table("sessions").delete().lt("expires_at", now).execute()
+
+"""
+AJOUTS À COLLER À LA FIN DE db/queries.py
+==========================================
+Ces fonctions sont appelées par api/buses.py et api/leaderboard.py.
+Colle ce code à la fin de ton db/queries.py existant.
+"""
+
+# ── API Buses ─────────────────────────────────────────────
+
+def get_all_signalements_actifs() -> list[dict]:
+    """Retourne tous les signalements non expirés (toutes lignes)."""
+    db = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    res = (db.table("signalements")
+             .select("*")
+             .gt("expires_at", now)
+             .order("created_at", desc=True)
+             .execute())
+    return res.data or []
+
+
+def get_network_memory() -> list[dict]:
+    """Retourne les données de ponctualité par ligne."""
+    db = get_client()
+    res = db.table("network_memory").select("*").execute()
+    return res.data or []
+
+
+# ── API Leaderboard ───────────────────────────────────────
+
+def get_leaderboard(limit: int = 10) -> list[dict]:
+    """
+    Top signaleurs : joint contacts + count signalements.
+    Retourne les contacts triés par nb_signalements DESC.
+    """
+    db = get_client()
+    # Compte les signalements par phone (historique complet)
+    # On passe par messages pour avoir l'historique long terme
+    res = (db.table("messages")
+             .select("conversations(contacts(phone, fiabilite_score))")
+             .eq("intent", "signalement")
+             .eq("role", "user")
+             .execute())
+
+    # Agréger manuellement
+    compteur: dict[str, dict] = {}
+    for row in (res.data or []):
+        try:
+            contact = row["conversations"]["contacts"]
+            phone   = contact["phone"]
+            score   = contact.get("fiabilite_score", 0.5)
+            if phone not in compteur:
+                compteur[phone] = {"phone": phone,
+                                   "fiabilite_score": score,
+                                   "nb_signalements": 0}
+            compteur[phone]["nb_signalements"] += 1
+        except (KeyError, TypeError):
+            continue
+
+    sorted_data = sorted(compteur.values(),
+                         key=lambda x: x["nb_signalements"],
+                         reverse=True)
+    return sorted_data[:limit]
+
+
+def get_stats_communaute() -> dict:
+    """Stats globales : total aujourd'hui, all time, nb contributeurs."""
+    db = get_client()
+    from datetime import date
+    today_start = datetime.combine(
+        date.today(),
+        datetime.min.time()
+    ).replace(tzinfo=timezone.utc).isoformat()
+
+    # Signalements aujourd'hui
+    res_today = (db.table("signalements")
+                   .select("id", count="exact")
+                   .gte("created_at", today_start)
+                   .execute())
+    aujourd_hui = res_today.count or 0
+
+    # All time via messages
+    res_all = (db.table("messages")
+                 .select("id", count="exact")
+                 .eq("intent", "signalement")
+                 .eq("role", "user")
+                 .execute())
+    all_time = res_all.count or 0
+
+    # Nb contributeurs uniques
+    res_contacts = (db.table("contacts")
+                      .select("id", count="exact")
+                      .execute())
+    nb_contributeurs = res_contacts.count or 0
+
+    return {
+        "aujourd_hui":     aujourd_hui,
+        "all_time":        all_time,
+        "nb_contributeurs": nb_contributeurs,
+    }

@@ -1,14 +1,15 @@
 """
-main.py — V3.1
+main.py — V4.0
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-FIX #2 : Routing avant DB
-→ normalize → route → ensuite seulement DB (~30ms gagnés)
+V4.0 : + CORS + /api/buses + /api/leaderboard
+FIX #2 : Routing avant DB → normalize → route → DB (~30ms gagnés)
 """
 import re
 import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
+from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE
 from services.whatsapp import parse_incoming_message, send_message
@@ -31,6 +32,10 @@ from core.session_manager import (
     get_context, is_abandon, reset_context
 )
 
+# ── Nouveaux routers API (V4) ─────────────────────────────
+from api.buses import router as buses_router
+from api.leaderboard import router as leaderboard_router
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s — %(message)s"
@@ -38,6 +43,18 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar")
+
+# ── CORS (V4) — permet au dashboard public d'appeler l'API ──
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # Restreindre à ton domaine en prod
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+# ── Enregistrement des routers API (V4) ──────────────────
+app.include_router(buses_router)
+app.include_router(leaderboard_router)
 
 _MAX_MESSAGE_LENGTH = 500
 _MIN_MESSAGE_LENGTH = 1
@@ -48,14 +65,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V3.1 démarré")
+    logger.info("🚌 Xëtu V4.0 démarré")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "3.1"}
+    return {"status": "ok", "service": "Xëtu", "version": "4.0"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -155,7 +172,6 @@ async def _process_message_safe(phone: str, text: str):
         # ── 4. ABANDON DE FLOW ────────────────────────────
         if session.etat and is_abandon(text):
             reset_context(phone)
-            # DB seulement maintenant
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
@@ -174,7 +190,6 @@ async def _process_message_safe(phone: str, text: str):
         from skills.itineraire import handle_origin_response
 
         if session.etat == "attente_arret":
-            # DB maintenant (flow actif)
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
@@ -195,7 +210,6 @@ async def _process_message_safe(phone: str, text: str):
             return
 
         # ── 6. ROUTING (AVANT DB) ─────────────────────────
-        # FIX #2 : on route AVANT de toucher Supabase
         route_result = await route_async(normalized, history=None)
 
         # ── 7. DB — seulement maintenant ──────────────────
