@@ -62,6 +62,18 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(passe\s+par|par\s+où)\b", 0.6),
         (r"\b(\d{1,3}[A-Z]?)\b", 0.2),
     ],
+
+    "itineraire": [
+        (r"\b(comment\s+(aller|arriver|me\s+rendre))\b", 0.8),
+        (r"\b(quel\s+bus\s+pour|quel\s+bus\s+prendre)\b", 0.8),
+        (r"\b(itinéraire|trajet|chemin)\b", 0.8),
+        (r"\b(je\s+(suis|me\s+trouve|suis\s+à))\b", 0.3),
+        (r"\b(je\s+vais|je\s+veux\s+aller|je\s+veux\s+me\s+rendre)\b", 0.5),
+        (r"\b(depuis|de)\b.{2,30}\b(jusqu|vers|à|pour)\b", 0.7),
+        (r"\b(→|->|➔)\b", 0.6),
+        # Wolof
+        (r"\b(dem\s+ci|dem\s+fa|def\s+naa\s+dem)\b", 0.8),
+    ],
 }
 
 _SCORE_THRESHOLD = 0.85  # En dessous → LLM prend la main
@@ -83,7 +95,7 @@ def _fast_classify(text: str) -> tuple[str, float]:
         scores[intent] = min(score, 1.0)
 
     best_intent = max(scores, key=scores.get)
-    best_score = scores[best_intent]
+    best_score  = scores[best_intent]
 
     if best_score < 0.3:
         return "out_of_scope", 1.0
@@ -106,7 +118,7 @@ def route(text: str) -> RouteResult:
     Version synchrone — utilisée en fallback si route_async non disponible.
     """
     normalized = normalize(text)
-    cache_key = normalize_for_cache(text)
+    cache_key  = normalize_for_cache(text)
 
     # Niveau 1 — Cache
     cached = intent_cache.get(cache_key)

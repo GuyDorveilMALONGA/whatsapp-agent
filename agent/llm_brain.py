@@ -34,19 +34,22 @@ genai.configure(api_key=GEMINI_API_KEY)
 # ── Intents valides ───────────────────────────────────────
 _VALID_INTENTS = {
     "signalement", "question", "abonnement",
-    "escalade", "liste_arrets", "out_of_scope"
+    "escalade", "liste_arrets", "itineraire", "out_of_scope"
 }
 
 # ── Prompt classify ───────────────────────────────────────
+# Lignes source : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes)
 _CLASSIFY_SYSTEM = """Tu es un classificateur d'intentions pour Sëtu, assistant transport à Dakar.
-Réseau Dem Dikk — lignes : 1A, 2A, 6C, 7O, 8A, 9L, 10L, 11K, 12G, 13L, 14C, 15R, 16A, 16B, 18L, 20L, 23P, 45M, 121H, 208G, 401, 319.
+Réseau Dem Dikk — lignes urbaines : 1, 4, 7, 8, 9, 10, 13, 18, 20, 23, 121, 319, TO1, 501, 502, 503, TAF TAF.
+Lignes banlieue : 2, 5, 6, 11, 12, 15, 16A, 16B, 208, 213, 217, 218, 219, 220, 221, 227, 232, 233, 234, 311, 327, RUF-YENNE.
 
 Intentions possibles :
-- signalement : l'usager signale la position d'un bus ("Bus 15 à Liberté 5", "le 15 est devant HLM")
-- question : l'usager demande où est un bus ou quand il arrive ("où est le 15 ?", "le bus est passé ?")
-- abonnement : l'usager veut être alerté pour une ligne ("préviens-moi pour le 15", "waar ma bus bi")
-- liste_arrets : l'usager veut les arrêts d'une ligne ("arrêts du 15", "par où passe le 15 ?")
-- escalade : l'usager veut un humain ou signale un problème
+- signalement  : l'usager signale la position d'un bus ("Bus 15 à Liberté 5", "le 8 est devant HLM")
+- question     : l'usager demande où est un bus ou quand il arrive ("où est le 15 ?", "le bus est passé ?")
+- abonnement   : l'usager veut être alerté pour une ligne ("préviens-moi pour le 15", "waar ma bus bi")
+- liste_arrets : l'usager veut les arrêts d'une ligne ("arrêts du 15", "par où passe le 8 ?")
+- itineraire   : l'usager veut savoir comment aller d'un endroit à un autre ("comment aller à Palais depuis Ouakam", "quel bus pour UCAD", "je suis à Yoff je vais à Sandaga")
+- escalade     : l'usager veut un humain ou signale un problème grave
 - out_of_scope : tout autre message (salutations, hors transport)
 
 Retourne UNIQUEMENT un JSON valide, rien d'autre, pas de markdown :
@@ -86,8 +89,8 @@ async def classify_intent(
             response_format={"type": "json_object"}
         )
         content = response.choices[0].message.content.strip()
-        data = json.loads(content)
-        intent = data.get("intent", "").lower()
+        data    = json.loads(content)
+        intent  = data.get("intent", "").lower()
 
         if intent in _VALID_INTENTS:
             logger.info(
@@ -118,7 +121,7 @@ async def generate_response(
     history : liste de {role, content} pour la mémoire de conversation
     """
     provider = LLM_ROUTING.get(langue, "groq")
-    prompt = _build_prompt(context, langue, history or [])
+    prompt   = _build_prompt(context, langue, history or [])
 
     if provider == "gemini":
         return await _call_gemini(prompt)
@@ -128,10 +131,10 @@ async def generate_response(
 
 def _build_prompt(context: str, langue: str, history: list[dict]) -> str:
     langue_label = {
-        "fr": "français",
-        "en": "anglais",
-        "wolof": "wolof (langue naturelle, pas de traduction littérale du français)",
-        "pulaar": "pulaar",
+        "fr":      "français",
+        "en":      "anglais",
+        "wolof":   "wolof (langue naturelle, pas de traduction littérale du français)",
+        "pulaar":  "pulaar",
         "unknown": "français",
     }.get(langue, "français")
 
@@ -170,7 +173,7 @@ async def _call_groq(prompt: str) -> str:
 
 async def _call_gemini(prompt: str) -> str:
     try:
-        model = genai.GenerativeModel(GEMINI_MODEL)
+        model    = genai.GenerativeModel(GEMINI_MODEL)
         response = model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:

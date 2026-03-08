@@ -21,6 +21,7 @@ import skills.signalement as skill_signalement
 import skills.question as skill_question
 import skills.abonnement as skill_abonnement
 import skills.escalade as skill_escalade
+import skills.itineraire as skill_itineraire
 from heartbeat.runner import start_heartbeat
 from memory import user_memory
 
@@ -52,7 +53,7 @@ async def health():
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
-    params = dict(request.query_params)
+    params    = dict(request.query_params)
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
@@ -113,17 +114,17 @@ async def _process_message_safe(phone: str, text: str):
         langue = detect_language(text)
 
         # 2. CONTEXTE DB
-        contact = queries.get_or_create_contact(phone, langue)
+        contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
-        conv_id = conversation["id"]
-        history = queries.get_recent_messages(conv_id)
+        conv_id      = conversation["id"]
+        history      = queries.get_recent_messages(conv_id)
 
-        # 3. FLOW MULTI-TOUR — si Sëtu attend l’arrêt de l’usager
+        # 3. FLOW MULTI-TOUR — si Sëtu attend l'arrêt de l'usager
         from core.session_manager import is_waiting_for_arret
         from skills.question import handle_arret_response
         if is_waiting_for_arret(phone):
             response = await handle_arret_response(phone, text, langue)
-            queries.save_message(conv_id, "user", text, langue, "question")
+            queries.save_message(conv_id, "user",      text,     langue, "question")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "question")
             return
@@ -131,10 +132,10 @@ async def _process_message_safe(phone: str, text: str):
         # 4. ROUTING — async avec fallback LLM si ambiguïté
         route_result = await route_async(text, history)
 
-        # 4. SAUVEGARDE message entrant
+        # 5. SAUVEGARDE message entrant
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # 5. DISPATCH vers le skill
+        # 6. DISPATCH vers le skill
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -144,18 +145,18 @@ async def _process_message_safe(phone: str, text: str):
             history=history,
         )
 
-        # 6. ENVOI réponse
+        # 7. ENVOI réponse
         await send_message(phone, response)
 
-        # 7. PROACTIVITÉ — après signalement, propose l'abonnement si pas encore abonné
+        # 8. PROACTIVITÉ — après signalement, propose l'abonnement si pas encore abonné
         extracted = extract(text)
         if route_result.intent == "signalement" and extracted.ligne:
             await _proposer_abonnement_si_nouveau(phone, extracted.ligne, langue)
 
-        # 8. SAUVEGARDE réponse
+        # 9. SAUVEGARDE réponse
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # 9. MISE À JOUR mémoire usager (fire-and-forget)
+        # 10. MISE À JOUR mémoire usager (fire-and-forget)
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact,
@@ -189,6 +190,9 @@ async def _dispatch(text: str, intent: str, contact: dict,
     elif intent == "escalade":
         return await skill_escalade.handle(text, contact, langue, conv_id)
 
+    elif intent == "itineraire":
+        return await skill_itineraire.handle(text, contact, langue)
+
     else:  # out_of_scope
         if langue == "wolof":
             return (
@@ -201,6 +205,7 @@ async def _dispatch(text: str, intent: str, contact: dict,
             "Tu peux :\n"
             "• Signaler un bus : *Bus 15 à Liberté 5*\n"
             "• Demander sa position : *Bus 15 est où ?*\n"
+            "• Itinéraire : *Comment aller de Yoff à Sandaga ?*\n"
             "• T'abonner : *Préviens-moi pour le Bus 15*"
         )
 
@@ -208,11 +213,11 @@ async def _dispatch(text: str, intent: str, contact: dict,
 async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
     """
     Après un signalement, propose l'abonnement si l'usager n'est pas encore abonné.
-    Envoyé en message séparé, 1 seconde après la réponse principale.
+    Envoyé en message séparé, après la réponse principale.
     """
     try:
-        abonnes = queries.get_abonnes(ligne)
-        deja_abonne = any(a["phone"] == phone for a in abonnes)
+        abonnes      = queries.get_abonnes(ligne)
+        deja_abonne  = any(a["phone"] == phone for a in abonnes)
         if not deja_abonne:
             if langue == "wolof":
                 suggestion = (

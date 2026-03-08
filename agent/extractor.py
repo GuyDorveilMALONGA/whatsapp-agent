@@ -1,43 +1,64 @@
 """
 agent/extractor.py
 Extraction ligne + arrêt — ZÉRO LLM.
-Regex sur les 22 lignes Dem Dikk + normalisation des arrêts connus.
+Source : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
 """
 import re
 import json
 import os
 from dataclasses import dataclass, field
 
-# ── Données réseau Dem Dikk ───────────────────────────────
+# ── Chargement réseau officiel ────────────────────────────
 
 def _load_network() -> dict:
-    """Charge demdikk_clean.json depuis la racine du projet."""
+    """
+    Charge dem_dikk_lines.json depuis la racine du projet.
+    Retourne un dict indexé par number (ex: "15", "16A", "RUF-YENNE").
+    """
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "demdikk_clean.json")
+    path = os.path.join(base, "dem_dikk_lines.json")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        return {ligne["numero"]: ligne for ligne in data}
+        network = {}
+        for cat, lines in data["categories"].items():
+            for line in lines:
+                num = line["number"]
+                network[num] = {
+                    "id":          line["id"],
+                    "number":      num,
+                    "name":        line["name"],
+                    "description": f"{line['terminus_a']} → {line['terminus_b']}",
+                    "category":    line["category"],
+                    "terminus_a":  line["terminus_a"],
+                    "terminus_b":  line["terminus_b"],
+                    # Le fichier officiel n'a qu'une liste unique d'arrêts
+                    # On l'expose en aller ET retour pour compatibilité avec
+                    # question.py et les calculs de distance
+                    "arrets_aller":  line["stops"],
+                    "arrets_retour": list(reversed(line["stops"])),
+                    "stops":         line["stops"],
+                }
+        return network
     except FileNotFoundError:
         return {}
 
 NETWORK: dict = _load_network()
 
-# Numéros de lignes valides (ex: "1A", "15R", "BRT", "401")
+# Numéros de lignes valides (ex: "15", "16A", "RUF-YENNE", "TAF TAF")
 VALID_LINES: set[str] = set(NETWORK.keys())
 
 # Index numéro de base → liste de lignes (ex: "16" → ["16A", "16B"])
 _BASE_TO_LIGNES: dict[str, list[str]] = {}
 for _num in VALID_LINES:
-    _base = re.sub(r'[A-Z]+$', '', _num)
+    _base = re.sub(r'[A-Z\-]+$', '', _num)
     _BASE_TO_LIGNES.setdefault(_base, []).append(_num)
 
-# Tous les arrêts connus (en minuscules pour matching)
-_ALL_ARRETS: list[str] = []
-for _l in NETWORK.values():
-    _ALL_ARRETS.extend(_l.get("arrets_aller", []))
-    _ALL_ARRETS.extend(_l.get("arrets_retour", []))
-_ALL_ARRETS_LOWER = {a.lower(): a for a in _ALL_ARRETS}
+# Index de tous les arrêts connus (minuscules → nom officiel)
+_ALL_ARRETS_LOWER: dict[str, str] = {}
+for _line in NETWORK.values():
+    for _stop in _line["stops"]:
+        _ALL_ARRETS_LOWER[_stop.lower()] = _stop
 
 # Numéros en toutes lettres → chiffres
 _CHIFFRES = {
@@ -65,10 +86,10 @@ _STOPWORDS = {
 
 @dataclass
 class ExtractResult:
-    ligne: str | None            # ex: "15R", "1A", None si non trouvée
-    arret: str | None            # ex: "Liberté 5", None si non trouvé
-    ligne_valide: bool           # False si la ligne n'existe pas dans le réseau
-    arret_normalise: str | None  # Nom officiel de l'arrêt si trouvé
+    ligne: str | None             # ex: "15", "16A", None si non trouvée
+    arret: str | None             # ex: "Liberté 5", None si non trouvé
+    ligne_valide: bool            # False si la ligne n'existe pas dans le réseau
+    arret_normalise: str | None   # Nom officiel de l'arrêt si trouvé
     ambigues: list[str] = field(default_factory=list)  # ex: ["16A", "16B"] si ambigu
 
 
@@ -84,17 +105,30 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
     """
     Cherche un numéro de ligne dans le texte.
     Retourne (ligne_résolue, ambigues).
-    - Match exact → (ligne, [])
-    - "15" → résolution silencieuse en "15R" si une seule ligne → ("15R", [])
-    - "16" → ambigu 16A/16B → (None, ["16A", "16B"])
-    - Rien trouvé → (None, [])
+    - Match exact    → (ligne, [])
+    - "15" seul      → résolution silencieuse si une seule ligne → ("15", [])
+    - "16" → 16A/16B → (None, ["16A", "16B"])
+    - Rien           → (None, [])
     """
-    matches = re.findall(r'\b(\d{1,3}[A-Z]?)\b', text.upper())
+    # Cherche patterns : "15", "16A", "TAF TAF", "RUF-YENNE"
+    # D'abord les cas spéciaux textuels
+    text_up = text.upper()
+
+    if "TAF TAF" in text_up:
+        return "TAF TAF", []
+    if "RUF" in text_up and "YENNE" in text_up:
+        return "RUF-YENNE", []
+    if re.search(r'\bTO1\b', text_up):
+        return "TO1", []
+
+    matches = re.findall(r'\b(\d{1,3}[A-Z]?)\b', text_up)
+    # Filtrer les numéros qui sont sous-chaînes d'un nombre plus grand (ex: "9" dans "99")
+    matches = [m for m in matches if re.search(r'(?<!\d)' + re.escape(m) + r'(?!\d)', text_up)]
     for m in matches:
         # Match exact
         if m in VALID_LINES:
             return m, []
-        # Résolution par numéro de base (ex: "15" → "15R")
+        # Résolution par numéro de base (ex: "15" → "15" si existe, sinon cherche variantes)
         candidates = _BASE_TO_LIGNES.get(m, [])
         if len(candidates) == 1:
             return candidates[0], []   # résolution silencieuse
@@ -112,52 +146,50 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     words = [w for w in text.lower().split() if w not in _STOPWORDS]
     cleaned = " ".join(words)
 
-    # Cherche d'abord parmi les arrêts de la ligne spécifique
-    candidates = []
+    # Candidates : arrêts de la ligne spécifique en priorité
     if ligne and ligne in NETWORK:
-        arrets_ligne = (NETWORK[ligne].get("arrets_aller", []) +
-                        NETWORK[ligne].get("arrets_retour", []))
-        candidates = [(a.lower(), a) for a in arrets_ligne]
+        candidates = [(a.lower(), a) for a in NETWORK[ligne]["stops"]]
     else:
         candidates = list(_ALL_ARRETS_LOWER.items())
 
-    # Matching exact ou partiel (2 mots minimum)
+    # Matching : 2 mots en commun minimum
     best_match = None
     best_score = 0
     for arret_lower, arret_officiel in candidates:
         arret_words = set(arret_lower.split())
-        text_words = set(cleaned.split())
+        text_words  = set(cleaned.split())
         overlap = arret_words & text_words
         if len(overlap) >= min(2, len(arret_words)) and len(overlap) > best_score:
             best_score = len(overlap)
             best_match = arret_officiel
 
     if best_match:
-        return (best_match, best_match)
+        return best_match, best_match
 
-    # Fallback : cherche après les prépositions de position
+    # Fallback : cherche après prépositions de position
     pos_match = re.search(
         r'\b(à|au|devant|niveau|près de|ci)\s+(.+?)(?:\s*[,!?.]|$)',
         text, re.IGNORECASE
     )
     if pos_match:
         arret_brut = pos_match.group(2).strip()
-        normalise = _ALL_ARRETS_LOWER.get(arret_brut.lower())
-        return (arret_brut, normalise)
+        normalise  = _ALL_ARRETS_LOWER.get(arret_brut.lower())
+        return arret_brut, normalise
 
-    return (None, None)
+    return None, None
 
 
 def extract(text: str) -> ExtractResult:
     """
     Extrait ligne + arrêt depuis un message brut.
+    Point d'entrée principal — utilisé par tous les skills.
     """
     normalized = _normalize_text(text)
     ligne, ambigues = _find_ligne(normalized.upper())
     ligne_valide = ligne is not None and ligne in VALID_LINES
     arret_brut, arret_normalise = _find_arret(normalized, ligne)
 
-    # V2 : si arrêt trouvé mais pas normalisé → essai via validator
+    # V2 : si arrêt trouvé mais pas normalisé → essai via validator (pgvector)
     if arret_brut and not arret_normalise:
         try:
             from rag.validator import validate_and_suggest
@@ -177,13 +209,16 @@ def extract(text: str) -> ExtractResult:
 
 
 def get_arrets_ligne(ligne: str) -> dict:
-    """Retourne les arrêts aller/retour d'une ligne."""
+    """
+    Retourne les arrêts d'une ligne.
+    Compatibilité : expose aller + retour même si le fichier n'a qu'une liste.
+    """
     if ligne not in NETWORK:
-        return {"exists": False, "aller": [], "retour": []}
+        return {"exists": False, "aller": [], "retour": [], "description": ""}
     data = NETWORK[ligne]
     return {
-        "exists": True,
-        "description": data.get("description", ""),
-        "aller": data.get("arrets_aller", []),
-        "retour": data.get("arrets_retour", []),
+        "exists":      True,
+        "description": data["description"],
+        "aller":       data["arrets_aller"],
+        "retour":      data["arrets_retour"],
     }
