@@ -24,6 +24,8 @@ def _load_network() -> dict:
         for cat, lines in data["categories"].items():
             for line in lines:
                 num = line["number"]
+                # stops = liste de dicts {"nom": str, "lat": float, "lon": float}
+                stop_names = [s["nom"] for s in line["stops"]]
                 network[num] = {
                     "id":          line["id"],
                     "number":      num,
@@ -32,12 +34,10 @@ def _load_network() -> dict:
                     "category":    line["category"],
                     "terminus_a":  line["terminus_a"],
                     "terminus_b":  line["terminus_b"],
-                    # Le fichier officiel n'a qu'une liste unique d'arrêts
-                    # On l'expose en aller ET retour pour compatibilité avec
-                    # question.py et les calculs de distance
-                    "arrets_aller":  line["stops"],
-                    "arrets_retour": list(reversed(line["stops"])),
-                    "stops":         line["stops"],
+                    "arrets_aller":  stop_names,
+                    "arrets_retour": list(reversed(stop_names)),
+                    "stops":         stop_names,
+                    "stops_gps":     line["stops"],  # GPS conservés pour dashboard
                 }
         return network
     except FileNotFoundError:

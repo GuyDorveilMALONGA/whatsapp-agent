@@ -91,8 +91,9 @@ class DemDikkGraph:
                     "terminus_b": line["terminus_b"],
                 }
                 canon_stops = []
-                for raw in line["stops"]:
-                    raw = raw.strip()
+                for stop in line["stops"]:
+                    # stops = dicts {"nom": str, "lat": float, "lon": float}
+                    raw = stop["nom"].strip()
                     c   = _norm(raw)
                     canon_stops.append(c)
                     if c not in self.canon_to_raw:
