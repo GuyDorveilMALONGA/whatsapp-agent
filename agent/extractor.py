@@ -1,7 +1,7 @@
 """
 agent/extractor.py
 Extraction ligne + arrêt — ZÉRO LLM.
-Source : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
+Source : dem_dikk_lines_gps_final.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
 """
 import re
 import json
@@ -12,11 +12,11 @@ from dataclasses import dataclass, field
 
 def _load_network() -> dict:
     """
-    Charge dem_dikk_lines.json depuis la racine du projet.
+    Charge dem_dikk_lines_gps_final.json depuis la racine du projet.
     Retourne un dict indexé par number (ex: "15", "16A", "RUF-YENNE").
     """
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "dem_dikk_lines.json")
+    path = os.path.join(base, "dem_dikk_lines_gps_final.json")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
@@ -110,8 +110,6 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
     - "16" → 16A/16B → (None, ["16A", "16B"])
     - Rien           → (None, [])
     """
-    # Cherche patterns : "15", "16A", "TAF TAF", "RUF-YENNE"
-    # D'abord les cas spéciaux textuels
     text_up = text.upper()
 
     if "TAF TAF" in text_up:
@@ -122,18 +120,15 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
         return "TO1", []
 
     matches = re.findall(r'\b(\d{1,3}[A-Z]?)\b', text_up)
-    # Filtrer les numéros qui sont sous-chaînes d'un nombre plus grand (ex: "9" dans "99")
     matches = [m for m in matches if re.search(r'(?<!\d)' + re.escape(m) + r'(?!\d)', text_up)]
     for m in matches:
-        # Match exact
         if m in VALID_LINES:
             return m, []
-        # Résolution par numéro de base (ex: "15" → "15" si existe, sinon cherche variantes)
         candidates = _BASE_TO_LIGNES.get(m, [])
         if len(candidates) == 1:
-            return candidates[0], []   # résolution silencieuse
+            return candidates[0], []
         elif len(candidates) > 1:
-            return None, sorted(candidates)  # ambigu → poser la question
+            return None, sorted(candidates)
 
     return None, []
 
@@ -146,13 +141,11 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     words = [w for w in text.lower().split() if w not in _STOPWORDS]
     cleaned = " ".join(words)
 
-    # Candidates : arrêts de la ligne spécifique en priorité
     if ligne and ligne in NETWORK:
         candidates = [(a.lower(), a) for a in NETWORK[ligne]["stops"]]
     else:
         candidates = list(_ALL_ARRETS_LOWER.items())
 
-    # Matching : 2 mots en commun minimum
     best_match = None
     best_score = 0
     for arret_lower, arret_officiel in candidates:
@@ -166,7 +159,6 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     if best_match:
         return best_match, best_match
 
-    # Fallback : cherche après prépositions de position
     pos_match = re.search(
         r'\b(à|au|devant|niveau|près de|ci)\s+(.+?)(?:\s*[,!?.]|$)',
         text, re.IGNORECASE
@@ -189,7 +181,6 @@ def extract(text: str) -> ExtractResult:
     ligne_valide = ligne is not None and ligne in VALID_LINES
     arret_brut, arret_normalise = _find_arret(normalized, ligne)
 
-    # V2 : si arrêt trouvé mais pas normalisé → essai via validator (pgvector)
     if arret_brut and not arret_normalise:
         try:
             from rag.validator import validate_and_suggest

@@ -1,6 +1,6 @@
 """
 agent/graph.py — Moteur itinéraire Sëtu
-Source : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
+Source : dem_dikk_lines_gps_final.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
 
 Utilise le même fichier que extractor.py — zéro duplication de données.
 """
@@ -222,7 +222,7 @@ class DemDikkGraph:
 
 _graph: Optional[DemDikkGraph] = None
 
-def get_graph(json_path: str = "dem_dikk_lines.json") -> DemDikkGraph:
+def get_graph(json_path: str = "dem_dikk_lines_gps_final.json") -> DemDikkGraph:
     global _graph
     if _graph is None:
         data   = _load(json_path)
