@@ -29,7 +29,14 @@ def build_context(
     blocks.append(f"[INTENTION DÉTECTÉE] {intent}")
     blocks.append(f"[MESSAGE USAGER] {message}")
 
-    # ── [RÉSEAU] ─────────────────────────────────────────
+    # ── [CONTEXTE CONVERSATION] ───────────────────────────
+    # Si pas de ligne dans le message actuel → cherche dans l'historique
+    if not ligne and history:
+        ligne = _extract_ligne_from_history(history)
+        if ligne:
+            blocks.append(f"[CONTEXTE] Ligne {ligne} mentionnée précédemment dans la conversation.")
+
+    # ── [RÉSEAU] ──────────────────────────────────────────
     if ligne:
         if ligne in VALID_LINES:
             arrets_info = get_arrets_ligne(ligne)
@@ -43,18 +50,19 @@ def build_context(
                 f"Lignes disponibles : {', '.join(sorted(VALID_LINES))}"
             )
 
-    # ── [SIGNALEMENTS ACTIFS] ────────────────────────────
+    # ── [SIGNALEMENTS ACTIFS] ─────────────────────────────
     if signalements is not None:
         if signalements:
             now = datetime.now(timezone.utc)
             sig_lines = []
-            for s in signalements[:3]:  # max 3 signalements
+            for s in signalements[:3]:
                 try:
-                    created = datetime.fromisoformat(s["created_at"].replace("Z", "+00:00"))
+                    # colonne correcte : timestamp (pas created_at)
+                    created = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
                     minutes_ago = int((now - created).total_seconds() / 60)
-                    sig_lines.append(f"  → {s['arret_nom']} il y a {minutes_ago} min")
+                    sig_lines.append(f"  → {s['position']} il y a {minutes_ago} min")  # position, pas arret_nom
                 except Exception:
-                    sig_lines.append(f"  → {s['arret_nom']}")
+                    sig_lines.append(f"  → {s.get('position', '?')}")
             blocks.append(f"[SIGNALEMENTS ACTIFS bus {ligne}]\n" + "\n".join(sig_lines))
         else:
             blocks.append(f"[SIGNALEMENTS] Aucun signalement récent pour le bus {ligne}.")
@@ -63,7 +71,7 @@ def build_context(
     if arret:
         blocks.append(f"[ARRÊT MENTIONNÉ] {arret}")
 
-    # ── [USAGER] ─────────────────────────────────────────
+    # ── [USAGER] ──────────────────────────────────────────
     langue = contact.get("langue", "fr")
     fiabilite = contact.get("fiabilite_score", 0.5)
     profil_summary = user_memory.get_profil_summary(contact)
@@ -75,9 +83,27 @@ def build_context(
 
     # ── [MÉMOIRE RÉSEAU] V2 ───────────────────────────────
     if ligne and ligne in VALID_LINES:
-        eta = network_memory.get_eta_prediction(ligne)
-        mem_ctx = network_memory.format_for_context(eta)
-        if mem_ctx:
-            blocks.append(mem_ctx)
+        try:
+            eta = network_memory.get_eta_prediction(ligne)
+            mem_ctx = network_memory.format_for_context(eta)
+            if mem_ctx:
+                blocks.append(mem_ctx)
+        except Exception:
+            pass
 
     return "\n".join(blocks)
+
+
+def _extract_ligne_from_history(history: list) -> str | None:
+    """
+    Cherche la dernière ligne mentionnée dans l'historique de conversation.
+    Permet à Sëtu de comprendre 'et le 16 ?' après avoir parlé du 15.
+    """
+    from agent.extractor import _find_ligne, _normalize_text
+    for msg in reversed(history):
+        content = msg.get("content", "")
+        normalized = _normalize_text(content)
+        ligne, _ = _find_ligne(normalized.upper())
+        if ligne:
+            return ligne
+    return None

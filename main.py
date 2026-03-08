@@ -88,7 +88,6 @@ async def receive_message(request: Request):
         if not text:
             await send_message(phone, "🎤 Impossible de transcrire le message vocal. Écris-moi !")
             return {"status": "audio_failed"}
-        # Continue normalement avec le texte transcrit
 
     if not text:
         return {"status": "no_text"}
@@ -101,7 +100,6 @@ async def receive_message(request: Request):
 
 async def _process_message(phone: str, text: str):
     try:
-        # V2 : sérialisation par usager (no race conditions)
         async with queue_manager.process(phone):
             await _process_message_safe(phone, text)
     except Exception as e:
@@ -120,11 +118,13 @@ async def _process_message_safe(phone: str, text: str):
         conv_id = conversation["id"]
         history = queries.get_recent_messages(conv_id)
 
-        # 3. SAUVEGARDE message entrant
+        # 3. ROUTING
         route_result = route(text)
+
+        # 4. SAUVEGARDE message entrant
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # 4. DISPATCH vers le skill
+        # 5. DISPATCH vers le skill
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -134,14 +134,18 @@ async def _process_message_safe(phone: str, text: str):
             history=history,
         )
 
-        # 5. ENVOI réponse
+        # 6. ENVOI réponse
         await send_message(phone, response)
 
-        # 6. SAUVEGARDE réponse
+        # 7. PROACTIVITÉ — après signalement, propose l'abonnement si pas encore abonné
+        extracted = extract(text)
+        if route_result.intent == "signalement" and extracted.ligne:
+            await _proposer_abonnement_si_nouveau(phone, extracted.ligne, langue)
+
+        # 8. SAUVEGARDE réponse
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # 7. V2 : mise à jour mémoire usager (fire-and-forget)
-        extracted = extract(text)
+        # 9. MISE À JOUR mémoire usager (fire-and-forget)
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact,
@@ -189,3 +193,27 @@ async def _dispatch(text: str, intent: str, contact: dict,
             "• Demander sa position : *Bus 15 est où ?*\n"
             "• T'abonner : *Préviens-moi pour le Bus 15*"
         )
+
+
+async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
+    """
+    Après un signalement, propose l'abonnement si l'usager n'est pas encore abonné.
+    Envoyé en message séparé, 1 seconde après la réponse principale.
+    """
+    try:
+        abonnes = queries.get_abonnes(ligne)
+        deja_abonne = any(a["phone"] == phone for a in abonnes)
+        if not deja_abonne:
+            if langue == "wolof":
+                suggestion = (
+                    f"💡 Bëgg nga ma la wéer bu ñu signalé Bus {ligne} ? "
+                    f"Yëgël : *Préviens-moi pour le Bus {ligne}*"
+                )
+            else:
+                suggestion = (
+                    f"💡 Tu veux être alerté automatiquement dès que le Bus *{ligne}* "
+                    f"est signalé ? Envoie : *Préviens-moi pour le Bus {ligne}*"
+                )
+            await send_message(phone, suggestion)
+    except Exception as e:
+        logger.error(f"[Proactivité] Erreur suggestion abonnement: {e}")
