@@ -37,8 +37,7 @@ async def _purge_signalements():
 async def _detecter_anomalies():
     """Détecte les lignes sans signalement depuis trop longtemps."""
     try:
-        # Seulement en heures de pointe (7h-10h, 17h-20h)
-        heure = datetime.now(timezone.utc).hour + 0  # UTC → ajuster selon Dakar (UTC+0 en hiver)
+        heure = datetime.now(timezone.utc).hour
         heure_pointe = (7 <= heure <= 10) or (17 <= heure <= 20)
 
         if not heure_pointe:
@@ -63,17 +62,17 @@ async def _alertes_proactives():
         abonnes = queries.get_abonnements_proactifs(ALERTE_PROACTIVE_AVANT)
 
         for abonne in abonnes:
-            ligne = abonne.get("ligne_id")
+            ligne = abonne.get("ligne")          # ← ligne_id → ligne
             if not ligne:
                 continue
 
             signalements = queries.get_signalements_actifs(ligne)
             if not signalements:
-                continue  # Pas de signalement → pas d'alerte
+                continue
 
             s = signalements[0]
             msg = (
-                f"🔔 Bus *{ligne}* signalé à *{s['arret_nom']}* "
+                f"🔔 Bus *{ligne}* signalé à *{s['position']}* "  # ← arret_nom → position
                 f"il y a quelques instants.\n"
                 f"Ton bus approche ! Communauté Sëtu 🚌"
             )

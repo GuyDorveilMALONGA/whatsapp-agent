@@ -38,17 +38,17 @@ async def handle(message: str, contact: dict, langue: str,
         s = signalements[0]
         try:
             now = datetime.now(timezone.utc)
-            created = datetime.fromisoformat(s["created_at"].replace("Z", "+00:00"))
+            created = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))  # ← created_at → timestamp
             minutes_ago = int((now - created).total_seconds() / 60)
             age = f"il y a {minutes_ago} min" if minutes_ago > 0 else "à l'instant"
         except Exception:
             age = "récemment"
 
         if langue == "wolof":
-            return (f"🚌 Bus {result.ligne} — signalé ci *{s['arret_nom']}* "
+            return (f"🚌 Bus {result.ligne} — signalé ci *{s['position']}* "  # ← arret_nom → position
                     f"{age}. Jël ak yëgël ! 🙏")
         return (f"🚌 Dernier signalement Bus *{result.ligne}* :\n"
-                f"📍 *{s['arret_nom']}* — {age}.\n"
+                f"📍 *{s['position']}* — {age}.\n"  # ← arret_nom → position
                 f"Il devrait arriver bientôt !")
 
     # Aucun signalement → réponse LLM avec contexte complet
