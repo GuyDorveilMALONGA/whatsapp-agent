@@ -6,9 +6,16 @@ Jamais d'invention.
 """
 from datetime import datetime, timezone
 from db import queries
-from agent.extractor import extract, VALID_LINES
+from agent.extractor import extract, VALID_LINES, NETWORK
 from agent.llm_brain import generate_response
 from core.context_builder import build_context
+
+
+def _ambigues_message(ambigues: list[str], langue: str) -> str:
+    options = "\n".join([f"• *{l}* — {NETWORK[l].get('description', '')}" for l in ambigues])
+    if langue == "wolof":
+        return f"Bus bii — numéro yi ngi ci :\n{options}\nWax ma lignes bi ?"
+    return f"Quel bus exactement ?\n{options}"
 
 
 async def handle(message: str, contact: dict, langue: str,

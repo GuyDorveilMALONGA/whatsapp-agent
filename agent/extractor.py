@@ -6,7 +6,7 @@ Regex sur les 22 lignes Dem Dikk + normalisation des arrêts connus.
 import re
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 # ── Données réseau Dem Dikk ───────────────────────────────
 
@@ -17,7 +17,6 @@ def _load_network() -> dict:
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
-        # Index : numero → {description, arrets_aller, arrets_retour}
         return {ligne["numero"]: ligne for ligne in data}
     except FileNotFoundError:
         return {}
@@ -26,6 +25,12 @@ NETWORK: dict = _load_network()
 
 # Numéros de lignes valides (ex: "1A", "15R", "BRT", "401")
 VALID_LINES: set[str] = set(NETWORK.keys())
+
+# Index numéro de base → liste de lignes (ex: "16" → ["16A", "16B"])
+_BASE_TO_LIGNES: dict[str, list[str]] = {}
+for _num in VALID_LINES:
+    _base = re.sub(r'[A-Z]+$', '', _num)
+    _BASE_TO_LIGNES.setdefault(_base, []).append(_num)
 
 # Tous les arrêts connus (en minuscules pour matching)
 _ALL_ARRETS: list[str] = []
@@ -60,10 +65,11 @@ _STOPWORDS = {
 
 @dataclass
 class ExtractResult:
-    ligne: str | None        # ex: "15R", "1A", None si non trouvée
-    arret: str | None        # ex: "Liberté 5", None si non trouvé
-    ligne_valide: bool       # False si la ligne n'existe pas dans le réseau
+    ligne: str | None            # ex: "15R", "1A", None si non trouvée
+    arret: str | None            # ex: "Liberté 5", None si non trouvé
+    ligne_valide: bool           # False si la ligne n'existe pas dans le réseau
     arret_normalise: str | None  # Nom officiel de l'arrêt si trouvé
+    ambigues: list[str] = field(default_factory=list)  # ex: ["16A", "16B"] si ambigu
 
 
 def _normalize_text(text: str) -> str:
@@ -74,22 +80,33 @@ def _normalize_text(text: str) -> str:
     return t
 
 
-def _find_ligne(text: str) -> str | None:
-    """Cherche un numéro de ligne valide dans le texte."""
-    # Cherche d'abord les numéros exacts avec suffixe lettre (1A, 15R, etc.)
+def _find_ligne(text: str) -> tuple[str | None, list[str]]:
+    """
+    Cherche un numéro de ligne dans le texte.
+    Retourne (ligne_résolue, ambigues).
+    - Match exact → (ligne, [])
+    - "15" → résolution silencieuse en "15R" si une seule ligne → ("15R", [])
+    - "16" → ambigu 16A/16B → (None, ["16A", "16B"])
+    - Rien trouvé → (None, [])
+    """
     matches = re.findall(r'\b(\d{1,3}[A-Z]?)\b', text.upper())
     for m in matches:
+        # Match exact
         if m in VALID_LINES:
-            return m
-        # Essai sans suffixe → cherche la première correspondance partielle
-        for valid in VALID_LINES:
-            if valid.startswith(m) or m == re.sub(r'[A-Z]$', '', valid):
-                return valid
-    # BRT, TER
+            return m, []
+        # Résolution par numéro de base (ex: "15" → "15R")
+        candidates = _BASE_TO_LIGNES.get(m, [])
+        if len(candidates) == 1:
+            return candidates[0], []   # résolution silencieuse
+        elif len(candidates) > 1:
+            return None, sorted(candidates)  # ambigu → poser la question
+
+    # Lignes spéciales sans chiffres
     for special in ["BRT", "TER"]:
         if special in text.upper() and special in VALID_LINES:
-            return special
-    return None
+            return special, []
+
+    return None, []
 
 
 def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
@@ -97,7 +114,6 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     Cherche un arrêt dans le texte.
     Retourne (arret_brut, arret_normalise).
     """
-    # Nettoyage : retire les mots parasites
     words = [w for w in text.lower().split() if w not in _STOPWORDS]
     cleaned = " ".join(words)
 
@@ -131,7 +147,6 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     )
     if pos_match:
         arret_brut = pos_match.group(2).strip()
-        # Cherche normalisation
         normalise = _ALL_ARRETS_LOWER.get(arret_brut.lower())
         return (arret_brut, normalise)
 
@@ -143,7 +158,7 @@ def extract(text: str) -> ExtractResult:
     Extrait ligne + arrêt depuis un message brut.
     """
     normalized = _normalize_text(text)
-    ligne = _find_ligne(normalized.upper())
+    ligne, ambigues = _find_ligne(normalized.upper())
     ligne_valide = ligne is not None and ligne in VALID_LINES
     arret_brut, arret_normalise = _find_arret(normalized, ligne)
 
@@ -162,6 +177,7 @@ def extract(text: str) -> ExtractResult:
         arret=arret_brut,
         ligne_valide=ligne_valide,
         arret_normalise=arret_normalise,
+        ambigues=ambigues,
     )
 
 

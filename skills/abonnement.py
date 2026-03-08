@@ -4,12 +4,23 @@ Crée un abonnement + confirme à l'usager.
 """
 import re
 from db import queries
-from agent.extractor import extract, VALID_LINES
+from agent.extractor import extract, VALID_LINES, NETWORK
+
+
+def _ambigues_message(ambigues: list[str], langue: str) -> str:
+    options = "\n".join([f"• *{l}* — {NETWORK[l].get('description', '')}" for l in ambigues])
+    if langue == "wolof":
+        return f"Bus bii — numéro yi ngi ci :\n{options}\nWax ma lignes bi ?"
+    return f"Quel bus exactement ?\n{options}"
 
 
 async def handle(message: str, contact: dict, langue: str) -> str:
     phone = contact["phone"]
     result = extract(message)
+
+    # Ambiguïté (ex: 16A ou 16B)
+    if result.ambigues:
+        return _ambigues_message(result.ambigues, langue)
 
     if not result.ligne or not result.ligne_valide:
         ligne_str = result.ligne or "?"
@@ -20,14 +31,10 @@ async def handle(message: str, contact: dict, langue: str) -> str:
                 f"Lignes disponibles : {', '.join(sorted(VALID_LINES)[:10])}...")
 
     arret = result.arret_normalise or result.arret or ""
-
-    # Extrait heure si mentionnée (ex: "07h30", "8h", "7:30")
     heure = _extract_heure(message)
 
-    # Crée l'abonnement (idempotent)
     queries.create_abonnement(phone, result.ligne, arret, heure)
 
-    # Réponse
     arret_str = f" près de *{arret}*" if arret else ""
     heure_str = f" à *{heure}*" if heure else ""
 
