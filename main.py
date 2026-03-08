@@ -1,305 +1,191 @@
-from fastapi import FastAPI, Request
-from dotenv import load_dotenv
-import os
+"""
+main.py
+Chef d'orchestre Sëtu — ZÉRO logique métier ici.
+Reçoit → délègue → répond.
+V2 : queue_manager (no race conditions) + whisper + user_memory
+"""
+import logging
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import PlainTextResponse
 
-load_dotenv()
-
-from services.whatsapp import send_message, download_media
-from services.whisper import transcribe_audio
+from config.settings import VERIFY_TOKEN
+from services.whatsapp import parse_incoming_message, send_message
 from services.language import detect_language
-from agents.router import classify_intent, should_escalate
-from agents.responder import generate_response
-from agents.extractor import extract_signalement, extract_abonnement
-from rag.retriever import hybrid_search, format_context, search_signalements_recents, format_signalements
-from db.context import (
-    get_or_create_contact,
-    get_or_create_conversation,
-    get_recent_messages,
-    save_message,
-    update_contact_language,
-    escalate_conversation,
-    save_signalement,
-    get_abonnes_ligne,
-    save_abonnement,
+from services import whisper
+from db import queries
+from agent.router import route
+from core.context_builder import build_context
+from agent.extractor import extract
+import core.queue_manager as queue_manager
+import skills.signalement as skill_signalement
+import skills.question as skill_question
+import skills.abonnement as skill_abonnement
+import skills.escalade as skill_escalade
+from heartbeat.runner import start_heartbeat
+from memory import user_memory
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s — %(message)s"
 )
+logger = logging.getLogger(__name__)
 
-app = FastAPI()
-
-VERIFY_TOKEN = os.getenv("VERIFY_TOKEN")
-TENANT_ID = os.getenv("TENANT_ID")
-BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Sëtu")
+app = FastAPI(title="Sëtu — Agent Transport Dakar")
 
 
-# ─── WEBHOOK VERIFICATION ─────────────────────────────────────
+# ── Startup ───────────────────────────────────────────────
+
+@app.on_event("startup")
+async def startup():
+    start_heartbeat()
+    logger.info("🚌 Sëtu démarré")
+
+
+# ── Health check ──────────────────────────────────────────
+
+@app.get("/health")
+async def health():
+    return {"status": "ok", "service": "Sëtu"}
+
+
+# ── Webhook Meta — vérification ───────────────────────────
 
 @app.get("/webhook")
-async def verify(request: Request):
+async def verify_webhook(request: Request):
     params = dict(request.query_params)
-    if params.get("hub.verify_token") == VERIFY_TOKEN:
-        return int(params.get("hub.challenge"))
-    return {"error": "Token invalide"}
+    mode      = params.get("hub.mode")
+    token     = params.get("hub.verify_token")
+    challenge = params.get("hub.challenge")
+
+    if mode == "subscribe" and token == VERIFY_TOKEN:
+        logger.info("✅ Webhook Meta vérifié")
+        return PlainTextResponse(challenge)
+
+    raise HTTPException(status_code=403, detail="Token invalide")
 
 
-# ─── WEBHOOK PRINCIPAL ────────────────────────────────────────
+# ── Webhook Meta — messages entrants ─────────────────────
 
 @app.post("/webhook")
-async def receive(request: Request):
-    data = await request.json()
-
+async def receive_message(request: Request):
     try:
-        entry = data["entry"][0]["changes"][0]["value"]
-        if "messages" not in entry:
-            return {"status": "ok"}
+        payload = await request.json()
+    except Exception:
+        return {"status": "invalid_json"}
 
-        message = entry["messages"][0]
-        sender = message["from"]
-        msg_type = message.get("type", "text")
-        print(f"\n📩 Message de {sender} | type: {msg_type}")
+    msg = parse_incoming_message(payload)
+    if not msg:
+        return {"status": "ignored"}
 
-        text = None
-        media_type = "text"
+    phone = msg["phone"]
+    text  = msg.get("text")
 
-        if msg_type == "text":
-            text = message.get("text", {}).get("body", "")
-        elif msg_type == "audio":
-            media_id = message["audio"]["id"]
-            audio_bytes = await download_media(media_id)
-            text = await transcribe_audio(audio_bytes)
-            media_type = "audio"
-            if not text:
-                await send_message(sender, "Baal ma, dugguma ko dégg. Jëkkal.")
-                return {"status": "ok"}
-        else:
-            await send_message(sender, "Sëtu dafa xam text ak vocal rekk ci kañ. 🚌")
-            return {"status": "ok"}
+    # Audio → transcription Whisper (V2)
+    if msg["message_type"] == "audio":
+        audio_id = msg.get("audio_id")
+        if audio_id:
+            text = await whisper.transcribe(audio_id)
+        if not text:
+            await send_message(phone, "🎤 Impossible de transcrire le message vocal. Écris-moi !")
+            return {"status": "audio_failed"}
+        # Continue normalement avec le texte transcrit
 
-        if not text or not text.strip():
-            return {"status": "ok"}
+    if not text:
+        return {"status": "no_text"}
 
-        print(f"💬 Texte: {text}")
+    await _process_message(phone, text)
+    return {"status": "ok"}
 
-        # ── Contexte utilisateur ──
-        contact = await get_or_create_contact(sender, TENANT_ID)
-        contact_id = contact["id"]
-        conversation = await get_or_create_conversation(contact_id, TENANT_ID)
-        conversation_id = conversation["id"]
-        history = await get_recent_messages(conversation_id)
 
-        # ── Détection langue ──
-        language = await detect_language(text)
-        print(f"🌍 Langue: {language}")
-        await update_contact_language(contact_id, language)
+# ── Pipeline principal ────────────────────────────────────
 
-        # ── Classification intention ──
-        intent_result = await classify_intent(text, language)
-        intent = intent_result.get("intent", "question")
-        confidence = intent_result.get("confidence", 0.5)
-        print(f"🎯 Intention: {intent} ({confidence})")
+async def _process_message(phone: str, text: str):
+    try:
+        # V2 : sérialisation par usager (no race conditions)
+        async with queue_manager.process(phone):
+            await _process_message_safe(phone, text)
+    except Exception as e:
+        logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
+        await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
-        # ── Sauvegarde message utilisateur ──
-        await save_message(
-            conversation_id=conversation_id,
-            tenant_id=TENANT_ID,
-            role="user",
-            content=text,
-            language=language,
-            intent=intent,
-            confidence=confidence,
-            media_type=media_type
+
+async def _process_message_safe(phone: str, text: str):
+    try:
+        # 1. LANGUE
+        langue = detect_language(text)
+
+        # 2. CONTEXTE DB
+        contact = queries.get_or_create_contact(phone, langue)
+        conversation = queries.get_or_create_conversation(contact["id"])
+        conv_id = conversation["id"]
+        history = queries.get_recent_messages(conv_id)
+
+        # 3. SAUVEGARDE message entrant
+        route_result = route(text)
+        queries.save_message(conv_id, "user", text, langue, route_result.intent)
+
+        # 4. DISPATCH vers le skill
+        response = await _dispatch(
+            text=text,
+            intent=route_result.intent,
+            contact=contact,
+            langue=langue,
+            conv_id=conv_id,
+            history=history,
         )
 
-        # ══════════════════════════════════════════
-        # PIPELINE SELON L'INTENTION
-        # ══════════════════════════════════════════
+        # 5. ENVOI réponse
+        await send_message(phone, response)
 
-        reply = None
+        # 6. SAUVEGARDE réponse
+        queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # ── CAS 1 : SIGNALEMENT ──────────────────
-        if intent == "signalement":
-            reply = await handle_signalement(
-                text=text,
-                sender=sender,
-                contact_id=contact_id,
-                language=language
-            )
-
-        # ── CAS 2 : ABONNEMENT ───────────────────
-        elif intent == "abonnement":
-            reply = await handle_abonnement(
-                text=text,
-                sender=sender,
-                contact_id=contact_id,
-                language=language
-            )
-
-        # ── CAS 3 : ESCALADE ─────────────────────
-        elif should_escalate(intent, confidence):
-            await escalate_conversation(conversation_id, TENANT_ID, intent)
-            result = await generate_response(
-                message=text,
-                history=history,
-                language=language,
-                intent=intent,
-                rag_context="",
-                business_name=BUSINESS_NAME,
-                is_escalated=True
-            )
-            reply = result["reply"]
-
-        # ── CAS 4 : QUESTION / AUTRE ─────────────
-        else:
-            rag_context = ""
-            extracted = await extract_signalement(text)
-            if extracted.get("ligne"):
-                signalements = await search_signalements_recents(
-                    extracted["ligne"], TENANT_ID
-                )
-                rag_context = format_signalements(signalements, extracted["ligne"])
-
-            if not rag_context:
-                chunks = await hybrid_search(text, TENANT_ID)
-                rag_context = format_context(chunks)
-
-            result = await generate_response(
-                message=text,
-                history=history,
-                language=language,
-                intent=intent,
-                rag_context=rag_context,
-                business_name=BUSINESS_NAME,
-                is_escalated=False
-            )
-            reply = result["reply"]
-            response_confidence = result["confidence"]
-
-            if response_confidence < 0.4:
-                await escalate_conversation(conversation_id, TENANT_ID, "confiance_faible")
-                result = await generate_response(
-                    message=text,
-                    history=history,
-                    language=language,
-                    intent=intent,
-                    rag_context="",
-                    business_name=BUSINESS_NAME,
-                    is_escalated=True
-                )
-                reply = result["reply"]
-
-        if reply:
-            await send_message(sender, reply)
-            await save_message(
-                conversation_id=conversation_id,
-                tenant_id=TENANT_ID,
-                role="assistant",
-                content=reply,
-                language=language,
-                intent=intent,
-                confidence=confidence
-            )
-            print(f"✅ Réponse envoyée à {sender}")
-
-        return {"status": "ok"}
+        # 7. V2 : mise à jour mémoire usager (fire-and-forget)
+        extracted = extract(text)
+        contact["_last_message"] = text
+        user_memory.update_after_message(
+            contact=contact,
+            langue=langue,
+            intent=route_result.intent,
+            ligne=extracted.ligne,
+            arret=extracted.arret,
+        )
 
     except Exception as e:
-        print(f"❌ Erreur pipeline: {e}")
-        import traceback
-        traceback.print_exc()
-        return {"status": "error"}
+        logger.error(f"Erreur pipeline [{phone}]: {e}", exc_info=True)
+        await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
-# ─── HANDLERS MÉTIER ──────────────────────────────────────────
+async def _dispatch(text: str, intent: str, contact: dict,
+                    langue: str, conv_id: str, history: list) -> str:
+    """Dispatch vers le bon skill selon l'intention."""
 
-async def handle_signalement(text: str, sender: str, contact_id: str, language: str) -> str:
-    extracted = await extract_signalement(text)
-    ligne = extracted.get("ligne")
-    position = extracted.get("position")
+    if intent == "signalement":
+        return await skill_signalement.handle(text, contact, langue)
 
-    if not ligne or not position:
-        messages = {
-            "fr": "Je n'ai pas bien compris. Écris par exemple : *Bus 15 à Liberté 5* 🚌",
-            "wo": "Dugguma ko yëgël. Bind ci kañ : *Bus 15 ci Liberté 5* 🚌",
-            "en": "I didn't understand. Write for example: *Bus 15 at Liberté 5* 🚌"
-        }
-        return messages.get(language, messages["fr"])
+    elif intent == "question":
+        return await skill_question.handle(text, contact, langue, history)
 
-    await save_signalement(
-        tenant_id=TENANT_ID,
-        contact_id=contact_id,
-        ligne=ligne,
-        position=position
-    )
-    print(f"📍 Signalement: Bus {ligne} à {position}")
+    elif intent == "liste_arrets":
+        return await skill_question.handle_liste_arrets(text, contact, langue)
 
-    abonnes = await get_abonnes_ligne(ligne, TENANT_ID)
-    alertes_envoyees = 0
-    for abonne in abonnes:
-        phone = abonne.get("contacts", {}).get("phone")
-        if phone and phone != sender:
-            alerte = (
-                f"🔔 Bus {ligne} signalé à *{position}* il y a quelques instants.\n"
-                f"Communauté Sëtu 🚌"
+    elif intent == "abonnement":
+        return await skill_abonnement.handle(text, contact, langue)
+
+    elif intent == "escalade":
+        return await skill_escalade.handle(text, contact, langue, conv_id)
+
+    else:  # out_of_scope
+        if langue == "wolof":
+            return (
+                "Maa ngi seetlu bus Dem Dikk rekk. "
+                "Wax ma position bus bou ngelaw, "
+                "walla tappaliku ci ligne bi. 🚌"
             )
-            await send_message(phone, alerte)
-            alertes_envoyees += 1
-
-    confirmations = {
-        "fr": f"✅ Merci ! Bus {ligne} à *{position}* enregistré.\nTu viens d'aider {alertes_envoyees} personne(s) 🙏",
-        "wo": f"✅ Jërejëf ! Bus {ligne} ci *{position}* dundal na.\nDanga ndimbal nit {alertes_envoyees} yi 🙏",
-        "en": f"✅ Thanks! Bus {ligne} at *{position}* recorded.\nYou just helped {alertes_envoyees} person(s) 🙏"
-    }
-    return confirmations.get(language, confirmations["fr"])
-
-
-async def handle_abonnement(text: str, sender: str, contact_id: str, language: str) -> str:
-    extracted = await extract_abonnement(text)
-    ligne = extracted.get("ligne")
-    arret = extracted.get("arret", "")
-    heure = extracted.get("heure", "")
-
-    if not ligne:
-        messages = {
-            "fr": "Quelle ligne veux-tu suivre ? Écris : *Préviens-moi pour le Bus 15* 🔔",
-            "wo": "Ligne bou fenn bëgg nga suivre ? Bind : *Yëgël ma ci Bus 15* 🔔",
-            "en": "Which line do you want to follow? Write: *Alert me for Bus 15* 🔔"
-        }
-        return messages.get(language, messages["fr"])
-
-    await save_abonnement(
-        tenant_id=TENANT_ID,
-        contact_id=contact_id,
-        ligne=ligne,
-        arret=arret,
-        heure_alerte=heure
-    )
-    print(f"🔔 Abonnement: {sender} → Bus {ligne} @ {arret}")
-
-    confirmations = {
-        "fr": (
-            f"🔔 C'est noté ! Je t'alerterai dès que le Bus {ligne} est signalé"
-            f"{' près de ' + arret if arret else ''}.\n\n"
-            f"Quand tu vois le bus, envoie : *Bus {ligne} à [où tu es]* 🚌"
-        ),
-        "wo": (
-            f"🔔 Dundal na ! Dinaa la yëgël bu Bus {ligne} di signaler"
-            f"{' ci ' + arret if arret else ''}.\n\n"
-            f"Bu gis nga bus bi, bind : *Bus {ligne} ci [fii nga nekk]* 🚌"
-        ),
-        "en": (
-            f"🔔 Noted! I'll alert you when Bus {ligne} is reported"
-            f"{' near ' + arret if arret else ''}.\n\n"
-            f"When you see the bus, send: *Bus {ligne} at [your location]* 🚌"
+        return (
+            "Je suis spécialisé dans les bus Dem Dikk de Dakar. 🚌\n"
+            "Tu peux :\n"
+            "• Signaler un bus : *Bus 15 à Liberté 5*\n"
+            "• Demander sa position : *Bus 15 est où ?*\n"
+            "• T'abonner : *Préviens-moi pour le Bus 15*"
         )
-    }
-    return confirmations.get(language, confirmations["fr"])
-
-
-# ─── HEALTH CHECK ─────────────────────────────────────────────
-
-@app.get("/")
-def root():
-    return {
-        "status": "Sëtu OK 🚌",
-        "business": BUSINESS_NAME,
-        "version": "1.0 MVP",
-        "description": "Agent transport Dakar — WhatsApp"
-    }

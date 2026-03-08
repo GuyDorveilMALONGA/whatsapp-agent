@@ -1,44 +1,58 @@
-from groq import Groq
-import os
+"""
+services/language.py
+Détection de langue SANS LLM.
+langdetect + liste de mots-clés wolof/pulaar pour les cas ratés.
+"""
+from langdetect import detect, LangDetectException
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Mots fréquents en wolof — langdetect les rate souvent
+WOLOF_KEYWORDS = {
+    "xam", "dem", "jëf", "waaw", "dafa", "maa", "ngi", "rekk",
+    "bëgg", "jërejëf", "yëgël", "naka", "lan", "ndax", "wax",
+    "dëkk", "buur", "xale", "jaay", "yow", "man", "sunu", "sama",
+    "bi", "yi", "ba", "ci", "fi", "si", "ak", "bu", "mu",
+    "nga", "naa", "dina", "danu", "dinañu", "ñu", "ko",
+    "toubab", "mbokk", "xarit", "jamm", "téranga"
+}
 
-LANGUAGES = {
-    "wo": "Wolof",
-    "ff": "Pulaar",
-    "fr": "Français",
-    "en": "Anglais",
-    "other": "Autre"
+# Mots fréquents en pulaar
+PULAAR_KEYWORDS = {
+    "ko", "mi", "on", "oo", "en", "nde", "dow", "wuro",
+    "hol", "to", "tan", "fof", "dum", "kam", "mo", "be",
+    "jooni", "noon", "waaw", "alaa", "haa", "jokku",
+    "yimaabe", "maayo", "nguurndam"
 }
 
 
-async def detect_language(text: str) -> str:
-    """Détecte la langue — optimisé Afrique de l'Ouest"""
+def detect_language(text: str) -> str:
+    """
+    Retourne : 'fr', 'en', 'wolof', 'pulaar', 'unknown'
+    """
+    if not text or len(text.strip()) < 2:
+        return "unknown"
+
+    text_lower = text.lower()
+    words = set(text_lower.split())
+
+    # Wolof : si 2+ mots-clés présents → wolof
+    wolof_hits = words & WOLOF_KEYWORDS
+    if len(wolof_hits) >= 2:
+        return "wolof"
+
+    # Pulaar : si 2+ mots-clés présents → pulaar
+    pulaar_hits = words & PULAAR_KEYWORDS
+    if len(pulaar_hits) >= 2:
+        return "pulaar"
+
+    # Fallback langdetect
     try:
-        response = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[
-                {
-                    "role": "system",
-                    "content": """Tu es un détecteur de langue expert pour l'Afrique de l'Ouest.
-Réponds UNIQUEMENT avec l'un de ces codes : wo, ff, fr, en, other
-- wo = Wolof
-- ff = Pulaar/Fula
-- fr = Français
-- en = Anglais
-- other = Autre
-Ne réponds qu'avec le code, rien d'autre."""
-                },
-                {
-                    "role": "user",
-                    "content": f"Langue de ce texte : '{text}'"
-                }
-            ],
-            max_tokens=5,
-            temperature=0
-        )
-        lang = response.choices[0].message.content.strip().lower()
-        return lang if lang in LANGUAGES else "fr"
-    except Exception as e:
-        print(f"Erreur détection langue: {e}")
-        return "fr"
+        code = detect(text)
+        mapping = {
+            "fr": "fr",
+            "en": "en",
+            "ff": "pulaar",   # Fula/Fulah
+            "wo": "wolof",
+        }
+        return mapping.get(code, "unknown")
+    except LangDetectException:
+        return "unknown"

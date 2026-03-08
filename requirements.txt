@@ -1,7 +1,11 @@
-fastapi
-uvicorn
-groq
-httpx
-python-dotenv
-supabase
-google-genai
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-dotenv==1.0.1
+httpx==0.27.2
+supabase==2.7.4
+groq==0.9.0
+google-generativeai==0.7.2
+langdetect==1.0.9
+apscheduler==3.10.4
+# V2
+vecs==0.4.3
