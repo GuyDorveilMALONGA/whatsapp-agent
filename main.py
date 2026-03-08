@@ -1,8 +1,16 @@
 """
-main.py
+main.py — V3
 Chef d'orchestre Sëtu — ZÉRO logique métier ici.
-Reçoit → délègue → répond.
-V2 : queue_manager (no race conditions) + whisper + user_memory
+Reçoit → filtre → délègue → répond.
+
+Cas tordus gérés :
+- Session perdue au redémarrage Railway → Supabase + fallback mémoire
+- "Je suis à liberté 5" pendant un flow → intercepté avant le router
+- "laisse tomber" pendant un flow → abandon propre + reset session
+- Spam / message vide / trop long → filtré avant le pipeline
+- Injection prompt → neutralisée par normalizer
+- Question d'identité ("tu es ChatGPT ?") → réponse Sëtu directe
+- Supabase timeout sur session → fallback mémoire silencieux
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -24,6 +32,10 @@ import skills.escalade as skill_escalade
 import skills.itineraire as skill_itineraire
 from heartbeat.runner import start_heartbeat
 from memory import user_memory
+from core.session_manager import (
+    is_waiting_for_arret, is_waiting_for_origin,
+    is_in_flow, is_abandon, reset_context
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -33,20 +45,24 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Sëtu — Agent Transport Dakar")
 
+# Limites de sécurité
+_MAX_MESSAGE_LENGTH = 500   # caractères
+_MIN_MESSAGE_LENGTH = 1
+
 
 # ── Startup ───────────────────────────────────────────────
 
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Sëtu démarré")
+    logger.info("🚌 Sëtu V3 démarré")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Sëtu"}
+    return {"status": "ok", "service": "Sëtu", "version": "3.0"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -81,7 +97,7 @@ async def receive_message(request: Request):
     phone = msg["phone"]
     text  = msg.get("text")
 
-    # Audio → transcription Whisper (V2)
+    # Audio → transcription Whisper
     if msg["message_type"] == "audio":
         audio_id = msg.get("audio_id")
         if audio_id:
@@ -97,6 +113,57 @@ async def receive_message(request: Request):
     return {"status": "ok"}
 
 
+# ── Pré-filtres ───────────────────────────────────────────
+
+def _check_message(text: str) -> str | None:
+    """
+    Vérifie le message avant tout traitement.
+    Retourne un message d'erreur à envoyer, ou None si ok.
+
+    Cas filtrés :
+    - Trop court (vide, espace, caractère isolé)
+    - Trop long (probable copier-coller, spam)
+    - Gibberish pur (aucune lettre ou chiffre)
+    """
+    stripped = text.strip()
+
+    # Vide ou trop court
+    if len(stripped) < _MIN_MESSAGE_LENGTH:
+        return None  # On ignore silencieusement
+
+    # Trop long → probable spam ou copier-coller
+    if len(stripped) > _MAX_MESSAGE_LENGTH:
+        return (
+            "⚠️ Message trop long. Envoie-moi une courte phrase :\n"
+            "• *Bus 15 à Liberté 5*\n"
+            "• *Bus 15 est où ?*"
+        )
+
+    # Gibberish : moins de 30% de caractères alphanumériques dans les messages > 10 chars
+    if len(stripped) > 10:
+        alphanum = sum(1 for c in stripped if c.isalnum())
+        ratio = alphanum / len(stripped)
+        if ratio < 0.3:
+            return None  # Ignore silencieusement (emoji spam, etc.)
+
+    return None  # Message valide
+
+
+def _get_identity_response(langue: str) -> str:
+    """Réponse quand l'usager demande qui est Sëtu."""
+    if langue == "wolof":
+        return (
+            "Maa ngi tudd *Sëtu* 🚌\n"
+            "Maa ngi jëfandikoo ak bus Dem Dikk ci Dakar.\n"
+            "Duma ChatGPT, duma robot — maa ngi def ak communauté bi."
+        )
+    return (
+        "Je suis *Sëtu* 🚌, l'assistant des bus Dem Dikk à Dakar.\n"
+        "Je ne suis pas ChatGPT — je suis spécialisé dans le réseau de bus de ta ville.\n"
+        "Tu peux signaler un bus, demander sa position ou calculer un itinéraire."
+    )
+
+
 # ── Pipeline principal ────────────────────────────────────
 
 async def _process_message(phone: str, text: str):
@@ -110,18 +177,42 @@ async def _process_message(phone: str, text: str):
 
 async def _process_message_safe(phone: str, text: str):
     try:
-        # 1. LANGUE
+        # ── 0. PRÉ-FILTRES ────────────────────────────────
+        error_msg = _check_message(text)
+        if error_msg:
+            await send_message(phone, error_msg)
+            return
+
+        # ── 1. LANGUE ─────────────────────────────────────
         langue = detect_language(text)
 
-        # 2. CONTEXTE DB
+        # ── 2. CONTEXTE DB ────────────────────────────────
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
         history      = queries.get_recent_messages(conv_id)
 
-        # 3. FLOW MULTI-TOUR — si Sëtu attend l'arrêt de l'usager
-        from core.session_manager import is_waiting_for_arret
+        # ── 3. ABANDON DE FLOW ────────────────────────────
+        # Vérifié en premier : "laisse tomber", "annule", "stop"
+        # → reset propre de la session, pas de routage
+        if is_in_flow(phone) and is_abandon(text):
+            reset_context(phone)
+            queries.save_message(conv_id, "user", text, langue, "abandon")
+            response = (
+                "OK, on laisse tomber. 👍 Tu peux m'envoyer autre chose quand tu veux."
+                if langue != "wolof" else
+                "Waaw, sëde ko. 👍 Wax ma dara buy soxor."
+            )
+            await send_message(phone, response)
+            queries.save_message(conv_id, "assistant", response, langue, "abandon")
+            return
+
+        # ── 4. FLOW MULTI-TOUR ────────────────────────────
+        # Intercepté AVANT le router — jamais vu par le scoring regex
         from skills.question import handle_arret_response
+        from skills.itineraire import handle_origin_response
+
+        # Cas A : Sëtu attend l'arrêt de l'usager (flow question)
         if is_waiting_for_arret(phone):
             response = await handle_arret_response(phone, text, langue)
             queries.save_message(conv_id, "user",      text,     langue, "question")
@@ -129,13 +220,29 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "question")
             return
 
-        # 4. ROUTING — async avec fallback LLM si ambiguïté
+        # Cas B : Sëtu attend l'arrêt de départ (flow itinéraire)
+        if is_waiting_for_origin(phone):
+            response = await handle_origin_response(phone, text, langue)
+            queries.save_message(conv_id, "user",      text,     langue, "itineraire")
+            await send_message(phone, response)
+            queries.save_message(conv_id, "assistant", response, langue, "itineraire")
+            return
+
+        # ── 5. ROUTING ────────────────────────────────────
         route_result = await route_async(text, history)
 
-        # 5. SAUVEGARDE message entrant
+        # Réponse identité directe (source="identity")
+        if route_result.source == "identity":
+            response = _get_identity_response(langue)
+            queries.save_message(conv_id, "user",      text,     langue, "out_of_scope")
+            await send_message(phone, response)
+            queries.save_message(conv_id, "assistant", response, langue, "out_of_scope")
+            return
+
+        # ── 6. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # 6. DISPATCH vers le skill
+        # ── 7. DISPATCH ───────────────────────────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -145,18 +252,18 @@ async def _process_message_safe(phone: str, text: str):
             history=history,
         )
 
-        # 7. ENVOI réponse
+        # ── 8. ENVOI ──────────────────────────────────────
         await send_message(phone, response)
 
-        # 8. PROACTIVITÉ — après signalement, propose l'abonnement si pas encore abonné
+        # ── 9. PROACTIVITÉ ────────────────────────────────
         extracted = extract(text)
         if route_result.intent == "signalement" and extracted.ligne:
             await _proposer_abonnement_si_nouveau(phone, extracted.ligne, langue)
 
-        # 9. SAUVEGARDE réponse
+        # ── 10. SAUVEGARDE réponse ────────────────────────
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # 10. MISE À JOUR mémoire usager (fire-and-forget)
+        # ── 11. MÉMOIRE USAGER ────────────────────────────
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact,
@@ -171,9 +278,10 @@ async def _process_message_safe(phone: str, text: str):
         await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
+# ── Dispatch ──────────────────────────────────────────────
+
 async def _dispatch(text: str, intent: str, contact: dict,
                     langue: str, conv_id: str, history: list) -> str:
-    """Dispatch vers le bon skill selon l'intention."""
 
     if intent == "signalement":
         return await skill_signalement.handle(text, contact, langue)
@@ -210,14 +318,12 @@ async def _dispatch(text: str, intent: str, contact: dict,
         )
 
 
+# ── Proactivité ───────────────────────────────────────────
+
 async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
-    """
-    Après un signalement, propose l'abonnement si l'usager n'est pas encore abonné.
-    Envoyé en message séparé, après la réponse principale.
-    """
     try:
-        abonnes      = queries.get_abonnes(ligne)
-        deja_abonne  = any(a["phone"] == phone for a in abonnes)
+        abonnes     = queries.get_abonnes(ligne)
+        deja_abonne = any(a["phone"] == phone for a in abonnes)
         if not deja_abonne:
             if langue == "wolof":
                 suggestion = (

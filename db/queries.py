@@ -7,6 +7,8 @@ from datetime import datetime, timedelta, timezone
 from db.client import get_client
 from config.settings import SIGNALEMENT_TTL_MINUTES
 
+CONTEXT_TTL_SECONDS = 120  # 2 min — TTL sessions multi-tour
+
 
 # ── Contacts ──────────────────────────────────────────────
 
@@ -79,15 +81,13 @@ def get_recent_messages(conversation_id: str, limit: int = 10) -> list[dict]:
 
 
 # ── Signalements ──────────────────────────────────────────
-# Colonnes utilisées : ligne (NOT NULL), position (NOT NULL),
-#                      expires_at, phone, lat, lng, valide
 
 def save_signalement(ligne: str, arret: str, phone: str) -> dict:
     db = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=SIGNALEMENT_TTL_MINUTES)
     res = db.table("signalements").insert({
         "ligne": ligne,
-        "position": arret,      # colonne NOT NULL dans Supabase
+        "position": arret,
         "phone": phone,
         "expires_at": expires_at.isoformat(),
         "valide": True
@@ -96,7 +96,6 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
 
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
-    """Retourne les signalements non expirés pour une ligne."""
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
@@ -116,7 +115,6 @@ def purge_signalements_expires():
 
 
 def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
-    """Retourne les numéros de lignes sans signalement récent."""
     db = get_client()
     since = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
     lignes_res = db.table("lignes").select("numero").eq("actif", True).execute()
@@ -131,8 +129,6 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
 
 
 # ── Abonnements ───────────────────────────────────────────
-# Colonnes utilisées : ligne (NOT NULL), arret, heure_alerte,
-#                      actif, phone
 
 def get_abonnes(ligne: str) -> list[dict]:
     db = get_client()
@@ -166,7 +162,6 @@ def create_abonnement(phone: str, ligne: str, arret: str,
 
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
-    """Abonnés dont l'heure habituelle approche dans X minutes."""
     db = get_client()
     now = datetime.now(timezone.utc)
     heure_cible = (now + timedelta(minutes=avant_minutes)).strftime("%H:%M")
@@ -179,11 +174,9 @@ def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
 
 
 # ── Tickets (escalade) ────────────────────────────────────
-# Colonnes utilisées : motif, priorite, status
 
 def create_ticket(phone: str, motif: str) -> dict:
     db = get_client()
-    # Récupère la conversation active pour lier le ticket
     contact_res = db.table("contacts").select("id").eq("phone", phone).execute()
     contact_id = contact_res.data[0]["id"] if contact_res.data else None
     conversation_id = None
@@ -218,3 +211,53 @@ def ligne_existe(numero: str) -> bool:
     db = get_client()
     res = db.table("lignes").select("id").eq("numero", numero).execute()
     return bool(res.data)
+
+
+# ── Sessions (état multi-tour persisté dans Supabase) ─────
+
+def get_session(phone: str) -> dict | None:
+    """Retourne la session active non expirée. None si absente/expirée."""
+    db = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    res = (db.table("sessions")
+             .select("*")
+             .eq("phone", phone)
+             .gt("expires_at", now)
+             .limit(1)
+             .execute())
+    return res.data[0] if res.data else None
+
+
+def set_session(phone: str, etat: str,
+                ligne: str | None = None,
+                signalement: dict | None = None,
+                destination: str | None = None) -> dict:
+    """Crée ou remplace la session (UPSERT). TTL = 2 min."""
+    db = get_client()
+    expires_at = (datetime.now(timezone.utc)
+                  + timedelta(seconds=CONTEXT_TTL_SECONDS)).isoformat()
+    data = {
+        "phone":       phone,
+        "etat":        etat,
+        "ligne":       ligne,
+        "signalement": signalement,
+        "destination": destination,
+        "expires_at":  expires_at,
+    }
+    res = (db.table("sessions")
+             .upsert(data, on_conflict="phone")
+             .execute())
+    return res.data[0]
+
+
+def delete_session(phone: str):
+    """Supprime la session après résolution du flow."""
+    db = get_client()
+    db.table("sessions").delete().eq("phone", phone).execute()
+
+
+def purge_sessions_expires():
+    """Supprime les sessions expirées — appelé par le heartbeat."""
+    db = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    db.table("sessions").delete().lt("expires_at", now).execute()

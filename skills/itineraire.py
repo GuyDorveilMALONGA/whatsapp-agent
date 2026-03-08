@@ -1,15 +1,16 @@
 """
-skills/itineraire.py — Skill itinéraire Sëtu
+skills/itineraire.py — V2
 Extrait origin/dest depuis le message, calcule et formate l'itinéraire.
 Source réseau : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes)
+V2 : flow multi-tour — si origine manquante, stocke dest en session Supabase
 """
 import re
 import logging
 from agent.graph import get_graph
+from core.session_manager import set_attente_origin, get_context, reset_context
 
 logger = logging.getLogger(__name__)
 
-# ~2 min par arrêt moyenne (trafic Dakar inclus)
 _MINS_PAR_ARRET = 2
 
 
@@ -21,28 +22,18 @@ def _duree(nb_stops: int) -> str:
     return f"~{h}h{r:02d}" if r else f"~{h}h"
 
 
-# ── Extraction origin/dest depuis le message ──────────────
+# ── Extraction origin/dest ────────────────────────────────
 
-# Patterns pour détecter "de X à Y", "depuis X vers Y", "X → Y"
 _PATTERNS = [
-    # "comment aller de X à Y", "je veux aller de X à Y"
     r'(?:de|depuis)\s+(.+?)\s+(?:à|au|vers|jusqu[aà]|pour)\s+(.+?)(?:\s*[?!.]|$)',
-    # "je suis à X je vais à Y"
     r'(?:je\s+(?:suis|me\s+trouve)\s+(?:à|au))\s+(.+?)\s+(?:et\s+)?(?:je\s+vais|je\s+veux\s+aller|je\s+veux\s+me\s+rendre)\s+(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
-    # "X → Y" ou "X -> Y"
     r'(.+?)\s*(?:→|->|➔)\s*(.+?)(?:\s*[?!.]|$)',
-    # "quel bus pour X depuis Y" / "quel bus pour aller à X"
     r'(?:quel\s+bus\s+(?:pour|pour\s+aller\s+[aà])|comment\s+aller\s+[aà])\s+(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
-    # Wolof : "dem ci X, mangi X"
     r'(?:dem\s+(?:ci|fa))\s+(.+?)(?:\s+ci\s+(.+?))?(?:\s*[?!.]|$)',
 ]
 
 
 def _extract_od(message: str) -> tuple[str | None, str | None]:
-    """
-    Extrait (origin, destination) depuis le message.
-    Retourne (None, dest) si seule la destination est trouvée.
-    """
     text = message.strip()
     for pattern in _PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -90,7 +81,7 @@ def _not_found_fr(r: dict) -> str:
 
 
 def _stop_not_found_fr(r: dict) -> str:
-    which = "départ" if r["which"] == "origin" else "destination"
+    which = "départ" if r.get("which") == "origin" else "destination"
     return (
         f"❓ Je ne connais pas *{r['query']}* comme arrêt de {which}.\n"
         "Essaie : _Terminus Leclerc · Palais 2 · Yoff Village · Sandaga · UCAD_"
@@ -137,7 +128,7 @@ def _not_found_wo(r: dict) -> str:
     )
 
 
-# ── Table de dispatch ─────────────────────────────────────
+# ── Table dispatch ────────────────────────────────────────
 
 _FMT = {
     "fr": {
@@ -160,35 +151,63 @@ _FMT = {
 # ── Point d'entrée principal ──────────────────────────────
 
 async def handle(message: str, contact: dict, langue: str) -> str:
-    """
-    Appelé depuis main.py quand intent == "itineraire".
-    Extrait origin/dest, calcule, formate.
-    """
     lang  = langue if langue in _FMT else "fr"
     graph = get_graph()
 
     origin_query, dest_query = _extract_od(message)
 
-    # Pas de destination détectée
     if not dest_query:
         return _no_od_fr() if lang == "fr" else (
             "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_"
         )
 
-    # Pas d'origine — on la demande (flow multi-tour possible en V2)
     if not origin_query:
         dest_display = dest_query.title()
+        # Persiste la destination en session Supabase — résiste aux redémarrages
+        set_attente_origin(contact["phone"], dest_query)
         return _ask_origin_fr(dest_display) if lang == "fr" else (
             f"Fa nga dem *{dest_display}* — fi nga dëkk ?"
         )
 
     result = graph.find_route(origin_query, dest_query)
-
-    fmt_table = _FMT.get(lang, _FMT["fr"])
-    fmt_fn    = fmt_table.get(result["status"])
+    fmt_fn = _FMT.get(lang, _FMT["fr"]).get(result["status"])
 
     if fmt_fn:
         return fmt_fn(result)
 
     logger.error(f"[Itinéraire] Status inconnu: {result['status']}")
     return _not_found_fr(result) if lang == "fr" else _not_found_wo(result)
+
+
+# ── Flow multi-tour : réponse origine ────────────────────
+
+async def handle_origin_response(phone: str, text: str, langue: str) -> str:
+    """
+    Appelé depuis main.py quand session est en état 'attente_origin'.
+    L'usager vient de donner son arrêt de départ.
+    """
+    from agent.extractor import extract
+
+    ctx = get_context(phone)
+    destination = ctx.destination
+
+    # Reset immédiat
+    reset_context(phone)
+
+    if not destination:
+        return _no_od_fr() if langue != "wo" else (
+            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_"
+        )
+
+    result = extract(text)
+    origin_query = result.arret_normalise or result.arret or text.strip()
+
+    lang  = langue if langue in _FMT else "fr"
+    graph = get_graph()
+    route_result = graph.find_route(origin_query, destination)
+
+    fmt_fn = _FMT.get(lang, _FMT["fr"]).get(route_result["status"])
+    if fmt_fn:
+        return fmt_fn(route_result)
+
+    return _not_found_fr(route_result) if lang == "fr" else _not_found_wo(route_result)
