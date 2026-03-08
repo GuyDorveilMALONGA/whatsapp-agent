@@ -25,15 +25,25 @@ def _duree(nb_stops: int) -> str:
 # ── Extraction origin/dest ────────────────────────────────
 
 _PATTERNS = [
+    # "de X à Y" / "depuis X vers Y"
     r'(?:de|depuis)\s+(.+?)\s+(?:à|au|vers|jusqu[aà]|pour)\s+(.+?)(?:\s*[?!.]|$)',
-    r'(?:je\s+(?:suis|me\s+trouve)\s+(?:à|au))\s+(.+?)\s+(?:et\s+)?(?:je\s+vais|je\s+veux\s+aller|je\s+veux\s+me\s+rendre)\s+(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
+    # "je suis à X je veux à Y" / "je suis à X je veux aller à Y"
+    r'je\s+suis\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?je\s+veux\s+(?:aller\s+)?(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
+    # "je me trouve à X et je vais à Y"
+    r'je\s+me\s+trouve\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?(?:je\s+vais|je\s+veux\s+aller)\s+(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
+    # "X → Y"
     r'(.+?)\s*(?:→|->|➔)\s*(.+?)(?:\s*[?!.]|$)',
+    # "quel bus pour X depuis Y" / "comment aller à X"
     r'(?:quel\s+bus\s+(?:pour|pour\s+aller\s+[aà])|comment\s+aller\s+[aà])\s+(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
+    # "je prends quelle ligne pour X" / "quelle ligne pour aller à X"
+    r'(?:quelle\s+ligne|quel\s+bus)\s+(?:pour\s+(?:aller\s+)?(?:à|au)\s+)(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
+    # Wolof
     r'(?:dem\s+(?:ci|fa))\s+(.+?)(?:\s+ci\s+(.+?))?(?:\s*[?!.]|$)',
 ]
 
 
 def _extract_od(message: str) -> tuple[str | None, str | None]:
+    """Extrait (origin, destination) depuis le message."""
     text = message.strip()
     for pattern in _PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -59,6 +69,7 @@ def _direct_fr(r: dict) -> str:
     if other:
         alts = " · ".join(f"Ligne {x['number']}" for x in other[:2])
         lines.append(f"_Aussi : {alts}_")
+    lines.append("\n— *Xëtu*")
     return "\n".join(lines)
 
 
@@ -69,35 +80,41 @@ def _transfer_fr(r: dict) -> str:
         f"↳ Descends à *{best['transfer']}* (correspondance)",
         f"🚌 *Ligne {best['number2']}* jusqu'à *{r['dest_display']}*",
         f"Durée : {_duree(best['nb_stops'])} · {best['nb_stops']} arrêts au total",
+        "\n— *Xëtu*",
     ])
 
 
 def _not_found_fr(r: dict) -> str:
     return (
         f"❌ Aucun trajet trouvé entre *{r['origin_display']}* "
-        f"et *{r['dest_display']}* avec une correspondance max.\n"
-        "Essaie Yango pour ce trajet. 🚗"
+        f"et *{r['dest_display']}* avec une correspondance max.\n\n"
+        "Essaie Yango pour ce trajet. 🚗\n\n"
+        "— *Xëtu*"
     )
 
 
 def _stop_not_found_fr(r: dict) -> str:
     which = "départ" if r.get("which") == "origin" else "destination"
     return (
-        f"❓ Je ne connais pas *{r['query']}* comme arrêt de {which}.\n"
-        "Essaie : _Terminus Leclerc · Palais 2 · Yoff Village · Sandaga · UCAD_"
+        f"❓ Je ne connais pas *{r['query']}* comme arrêt de {which}.\n\n"
+        "Essaie : _Terminus Leclerc · Palais 2 · Yoff Village · Sandaga · UCAD_\n\n"
+        "— *Xëtu*"
     )
 
 
 def _no_od_fr() -> str:
     return (
-        "Pour un itinéraire, dis-moi d'où et où tu vas. Exemple :\n"
-        "_Yoff → Sandaga_\n"
-        "_Comment aller de Parcelles à UCAD ?_"
+        "Pour un itinéraire, dis-moi d'où et où tu vas.\n\n"
+        "Exemple : _Yoff → Sandaga_ ou _Comment aller à UCAD ?_\n\n"
+        "— *Xëtu*"
     )
 
 
 def _ask_origin_fr(dest: str) -> str:
-    return f"Tu veux aller à *{dest}* — tu es à quel arrêt en ce moment ?"
+    return (
+        f"Tu veux aller à *{dest}*.\n\n"
+        f"Tu es à quel arrêt en ce moment ?"
+    )
 
 
 # ── Formatage Wolof ───────────────────────────────────────
@@ -108,6 +125,7 @@ def _direct_wo(r: dict) -> str:
         f"🚌 *Ligne {best['number']}* la jëf.",
         f"Dëkk ci *{r['origin_display']}*, dem *{r['dest_display']}*.",
         f"Jamm : {_duree(best['nb_stops'])} · {best['nb_stops']} areet.",
+        "\n— *Xëtu*",
     ])
 
 
@@ -118,13 +136,15 @@ def _transfer_wo(r: dict) -> str:
         f"↳ Surfu ci *{best['transfer']}*.",
         f"🚌 Jël *Ligne {best['number2']}*, dem *{r['dest_display']}*.",
         f"Jamm : {_duree(best['nb_stops'])}.",
+        "\n— *Xëtu*",
     ])
 
 
 def _not_found_wo(r: dict) -> str:
     return (
-        f"❌ Amul yoon bi ci *{r['origin_display']}* ñëw *{r['dest_display']}*.\n"
-        "Jël taxi Yango. 🚗"
+        f"❌ Amul yoon bi ci *{r['origin_display']}* ñëw *{r['dest_display']}*.\n\n"
+        "Jël taxi Yango. 🚗\n\n"
+        "— *Xëtu*"
     )
 
 
@@ -136,14 +156,14 @@ _FMT = {
         "transfer":       _transfer_fr,
         "not_found":      _not_found_fr,
         "stop_not_found": _stop_not_found_fr,
-        "same_stop":      lambda r: f"Tu es déjà à *{r['stop']}* 😄",
+        "same_stop":      lambda r: f"Tu es déjà à *{r['stop']}* 😄\n\n— *Xëtu*",
     },
     "wo": {
         "direct":         _direct_wo,
         "transfer":       _transfer_wo,
         "not_found":      _not_found_wo,
         "stop_not_found": _stop_not_found_fr,
-        "same_stop":      lambda r: f"Dëkk nga fi ci *{r['stop']}* 😄",
+        "same_stop":      lambda r: f"Dëkk nga fi ci *{r['stop']}* 😄\n\n— *Xëtu*",
     },
 }
 
@@ -158,12 +178,11 @@ async def handle(message: str, contact: dict, langue: str) -> str:
 
     if not dest_query:
         return _no_od_fr() if lang == "fr" else (
-            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_"
+            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_\n\n— *Xëtu*"
         )
 
     if not origin_query:
         dest_display = dest_query.title()
-        # Persiste la destination en session Supabase — résiste aux redémarrages
         set_attente_origin(contact["phone"], dest_query)
         return _ask_origin_fr(dest_display) if lang == "fr" else (
             f"Fa nga dem *{dest_display}* — fi nga dëkk ?"
@@ -191,12 +210,11 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
     ctx = get_context(phone)
     destination = ctx.destination
 
-    # Reset immédiat
     reset_context(phone)
 
     if not destination:
         return _no_od_fr() if langue != "wo" else (
-            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_"
+            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_\n\n— *Xëtu*"
         )
 
     result = extract(text)
@@ -205,6 +223,20 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
     lang  = langue if langue in _FMT else "fr"
     graph = get_graph()
     route_result = graph.find_route(origin_query, destination)
+
+    # Arrêt de départ non trouvé → message clair
+    if route_result["status"] == "stop_not_found" and route_result.get("which") == "origin":
+        if lang == "fr":
+            return (
+                f"❓ Je ne connais pas *{origin_query}* comme arrêt Dem Dikk.\n\n"
+                f"Essaie : _Liberté 6 · Sandaga · Yoff Village · UCAD · Colobane_\n\n"
+                f"— *Xëtu*"
+            )
+        return (
+            f"❓ Duma xam *{origin_query}* ci arrêts Dem Dikk yi.\n\n"
+            f"Jëfandikoo : _Liberté 6 · Sandaga · Yoff Village_\n\n"
+            f"— *Xëtu*"
+        )
 
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(route_result["status"])
     if fmt_fn:

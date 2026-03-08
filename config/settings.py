@@ -60,7 +60,8 @@ Avec moi tu peux :
 • Itinéraire : *Comment aller à Sandaga ?*
 • T'abonner : *Préviens-moi pour le Bus 15*
 
-— *Xëtu*"""
+— *Xëtu*
+"""
 
 # ── Soul de Xëtu ─────────────────────────────────────────
 SETU_SOUL = """Tu es Xëtu, assistant transport communautaire de Dakar pour les bus Dem Dikk.
