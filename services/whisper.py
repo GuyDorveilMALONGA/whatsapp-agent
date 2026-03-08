@@ -4,10 +4,10 @@ import tempfile
 
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+
 async def transcribe_audio(audio_bytes: bytes, language: str = None) -> str:
-    """Transcrit un message vocal WhatsApp en texte via Groq Whisper"""
+    """Transcrit un message vocal WhatsApp via Groq Whisper"""
     try:
-        # Sauvegarde temporaire du fichier audio
         with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as f:
             f.write(audio_bytes)
             temp_path = f.name
@@ -24,5 +24,5 @@ async def transcribe_audio(audio_bytes: bytes, language: str = None) -> str:
         return transcription
 
     except Exception as e:
-        print(f"Erreur transcription: {e}")
+        print(f"Erreur transcription Whisper: {e}")
         return None

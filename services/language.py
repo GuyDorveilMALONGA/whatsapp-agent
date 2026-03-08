@@ -11,8 +11,9 @@ LANGUAGES = {
     "other": "Autre"
 }
 
+
 async def detect_language(text: str) -> str:
-    """Détecte la langue d'un message — retourne le code langue"""
+    """Détecte la langue — optimisé Afrique de l'Ouest"""
     try:
         response = client.chat.completions.create(
             model="llama-3.3-70b-versatile",
@@ -25,12 +26,12 @@ Réponds UNIQUEMENT avec l'un de ces codes : wo, ff, fr, en, other
 - ff = Pulaar/Fula
 - fr = Français
 - en = Anglais
-- other = Autre langue
+- other = Autre
 Ne réponds qu'avec le code, rien d'autre."""
                 },
                 {
                     "role": "user",
-                    "content": f"Quelle est la langue de ce texte : '{text}'"
+                    "content": f"Langue de ce texte : '{text}'"
                 }
             ],
             max_tokens=5,
