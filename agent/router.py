@@ -26,6 +26,10 @@ _QUESTION_PATTERNS = [
     r"\bbus\b.*\?",
     r"\w+\s+(fi\s+)?ngelaw\b",      # wolof : "bus bi fi ngelaw ?"
     r"\bnak(a|u)\b.*bus",           # wolof : "naka bus bi ?"
+    # ↓ Nouveaux patterns : "où est le 15", "le 15 est où", "15 est où"
+    r"\b(où|ou)\s+(est|sont)\b.*\b(\d{1,3}[A-Z]?)\b",
+    r"\b(\d{1,3}[A-Z]?)\b.*(où|ou|est\s+où|est\s+ou)\b",
+    r"\b(où|ou)\b.*\b(\d{1,3}[A-Z]?)\b",
 ]
 
 # Abonnement : "préviens-moi", "alerte", "surveille", etc.
@@ -72,8 +76,7 @@ def route(text: str) -> RouteResult:
     """
     # Signalement en priorité : contient un verbe de position + numéro
     if _match(text, _SIGNALEMENT_PATTERNS):
-        # Double vérification : doit contenir un chiffre ou "BRT" (numéro de ligne)
-        if re.search(r"\b(\d{1,3}[A-Z]?|BRT|TER)\b", text, re.IGNORECASE):
+        if re.search(r"\b(\d{1,3}[A-Z]?)\b", text, re.IGNORECASE):
             return RouteResult(intent="signalement", raw_text=text)
 
     # Abonnement

@@ -101,11 +101,6 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
         elif len(candidates) > 1:
             return None, sorted(candidates)  # ambigu → poser la question
 
-    # Lignes spéciales sans chiffres
-    for special in ["BRT", "TER"]:
-        if special in text.upper() and special in VALID_LINES:
-            return special, []
-
     return None, []
 
 
