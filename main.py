@@ -13,7 +13,7 @@ from services.whatsapp import parse_incoming_message, send_message
 from services.language import detect_language
 from services import whisper
 from db import queries
-from agent.router import route
+from agent.router import route_async
 from core.context_builder import build_context
 from agent.extractor import extract
 import core.queue_manager as queue_manager
@@ -118,8 +118,8 @@ async def _process_message_safe(phone: str, text: str):
         conv_id = conversation["id"]
         history = queries.get_recent_messages(conv_id)
 
-        # 3. ROUTING
-        route_result = route(text)
+        # 3. ROUTING — async avec fallback LLM si ambiguïté
+        route_result = await route_async(text, history)
 
         # 4. SAUVEGARDE message entrant
         queries.save_message(conv_id, "user", text, langue, route_result.intent)

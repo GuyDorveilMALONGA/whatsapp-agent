@@ -1,13 +1,21 @@
 """
 agent/llm_brain.py
-Le LLM fait UNE seule chose : transformer un contexte préparé
-en une phrase naturelle dans la bonne langue.
-Il ne détecte pas, ne classe pas, ne cherche pas. Il rédige.
+Deux responsabilités strictement séparées :
+
+1. classify_intent() — LLM classifier (niveau 3 du router)
+   Input  : message normalisé + historique
+   Output : intent string uniquement (JSON structuré)
+   Modèle : Groq Llama 3.3 70B (rapide, < 400ms, temperature=0)
+
+2. generate_response() — NLG (réponse finale)
+   Input  : contexte complet préparé par context_builder
+   Output : réponse naturelle dans la bonne langue
+   Modèle : Groq (fr/en/pul) ou Gemini (wo)
 
 RÈGLE ABSOLUE : Wolof → Gemini UNIQUEMENT. Jamais Groq pour le wolof.
 """
+import json
 import logging
-import httpx
 import google.generativeai as genai
 from groq import AsyncGroq
 
@@ -23,6 +31,80 @@ logger = logging.getLogger(__name__)
 _groq_client = AsyncGroq(api_key=GROQ_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
+# ── Intents valides ───────────────────────────────────────
+_VALID_INTENTS = {
+    "signalement", "question", "abonnement",
+    "escalade", "liste_arrets", "out_of_scope"
+}
+
+# ── Prompt classify ───────────────────────────────────────
+_CLASSIFY_SYSTEM = """Tu es un classificateur d'intentions pour Sëtu, assistant transport à Dakar.
+Réseau Dem Dikk — lignes : 1A, 2A, 6C, 7O, 8A, 9L, 10L, 11K, 12G, 13L, 14C, 15R, 16A, 16B, 18L, 20L, 23P, 45M, 121H, 208G, 401, 319.
+
+Intentions possibles :
+- signalement : l'usager signale la position d'un bus ("Bus 15 à Liberté 5", "le 15 est devant HLM")
+- question : l'usager demande où est un bus ou quand il arrive ("où est le 15 ?", "le bus est passé ?")
+- abonnement : l'usager veut être alerté pour une ligne ("préviens-moi pour le 15", "waar ma bus bi")
+- liste_arrets : l'usager veut les arrêts d'une ligne ("arrêts du 15", "par où passe le 15 ?")
+- escalade : l'usager veut un humain ou signale un problème
+- out_of_scope : tout autre message (salutations, hors transport)
+
+Retourne UNIQUEMENT un JSON valide, rien d'autre, pas de markdown :
+{"intent": "...", "confidence": 0.95}"""
+
+
+# ── 1. CLASSIFY ───────────────────────────────────────────
+
+async def classify_intent(
+    text: str,
+    history: list[dict] | None = None
+) -> str | None:
+    """
+    Niveau 3 du router — classification LLM uniquement.
+    Retourne l'intent string ou None si échec.
+    Toujours Groq (rapide, déterministe, temperature=0).
+    """
+    messages = [{"role": "system", "content": _CLASSIFY_SYSTEM}]
+
+    # Contexte conversationnel — aide pour "et le 16 ?" ou messages wolof ambigus
+    if history:
+        recent = history[-3:]
+        ctx = "\n".join([f"{m['role']}: {m['content']}" for m in recent])
+        messages.append({
+            "role": "user",
+            "content": f"Historique:\n{ctx}\n\nMessage à classifier: {text}"
+        })
+    else:
+        messages.append({"role": "user", "content": text})
+
+    try:
+        response = await _groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            max_tokens=50,
+            temperature=0.0,  # déterministe — pas de créativité ici
+            response_format={"type": "json_object"}
+        )
+        content = response.choices[0].message.content.strip()
+        data = json.loads(content)
+        intent = data.get("intent", "").lower()
+
+        if intent in _VALID_INTENTS:
+            logger.info(
+                f"[LLM Classify] '{text[:40]}' → {intent} "
+                f"(confidence={data.get('confidence', '?')})"
+            )
+            return intent
+
+        logger.warning(f"[LLM Classify] Intent invalide reçu: {intent}")
+        return None
+
+    except Exception as e:
+        logger.error(f"[LLM Classify] Erreur: {e}")
+        return None
+
+
+# ── 2. GENERATE ───────────────────────────────────────────
 
 async def generate_response(
     context: str,
@@ -36,7 +118,6 @@ async def generate_response(
     history : liste de {role, content} pour la mémoire de conversation
     """
     provider = LLM_ROUTING.get(langue, "groq")
-
     prompt = _build_prompt(context, langue, history or [])
 
     if provider == "gemini":
