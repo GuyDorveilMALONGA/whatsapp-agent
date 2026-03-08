@@ -118,7 +118,17 @@ async def _process_message_safe(phone: str, text: str):
         conv_id = conversation["id"]
         history = queries.get_recent_messages(conv_id)
 
-        # 3. ROUTING — async avec fallback LLM si ambiguïté
+        # 3. FLOW MULTI-TOUR — si Sëtu attend l’arrêt de l’usager
+        from core.session_manager import is_waiting_for_arret
+        from skills.question import handle_arret_response
+        if is_waiting_for_arret(phone):
+            response = await handle_arret_response(phone, text, langue)
+            queries.save_message(conv_id, "user", text, langue, "question")
+            await send_message(phone, response)
+            queries.save_message(conv_id, "assistant", response, langue, "question")
+            return
+
+        # 4. ROUTING — async avec fallback LLM si ambiguïté
         route_result = await route_async(text, history)
 
         # 4. SAUVEGARDE message entrant
