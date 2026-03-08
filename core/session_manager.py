@@ -1,17 +1,13 @@
 """
-core/session_manager.py — V3 (Supabase + fallback mémoire)
+core/session_manager.py — V3.1
+État conversationnel persisté dans Supabase + fallback mémoire.
 
-Deux responsabilités :
-1. Lock par téléphone — no race conditions (asyncio, en mémoire)
-2. État conversationnel — persisté dans Supabase avec fallback mémoire
-   si Supabase est lent ou timeout (faille 2 réglée)
-
-États :
-- None             : conversation normale
-- "attente_arret"  : attend l'arrêt de l'usager (flow question)
-- "attente_origin" : attend l'arrêt de départ (flow itinéraire)
+FIX #4 : TTL session 10 minutes (was 2 minutes)
+→ Un usager qui reçoit un appel entre deux messages
+  ne perd plus son contexte de flow.
 """
 import asyncio
+import re
 import logging
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass, field
@@ -21,7 +17,7 @@ from db import queries
 logger = logging.getLogger(__name__)
 
 SESSION_TTL_SECONDS  = 1800   # 30 min → cleanup locks
-CONTEXT_TTL_SECONDS  = 120    # 2 min → TTL session
+CONTEXT_TTL_SECONDS  = 600    # FIX #4 : 10 min (was 120s = 2min)
 
 
 # ── Modèle ────────────────────────────────────────────────
@@ -41,11 +37,9 @@ class SessionContext:
 
 
 # ── Stockage ──────────────────────────────────────────────
-# Locks : toujours en mémoire (protègent les requêtes concurrentes)
-# Contextes : Supabase en priorité, mémoire en fallback
 
 _locks:    dict[str, asyncio.Lock]   = {}
-_fallback: dict[str, SessionContext] = {}  # cache mémoire si Supabase KO
+_fallback: dict[str, SessionContext] = {}
 _last_seen: dict[str, datetime]      = {}
 
 
@@ -58,14 +52,9 @@ def get_session_lock(phone: str) -> asyncio.Lock:
     return _locks[phone]
 
 
-# ── Lecture (Supabase → fallback mémoire) ─────────────────
+# ── Lecture ───────────────────────────────────────────────
 
 def get_context(phone: str) -> SessionContext:
-    """
-    Lit depuis Supabase en priorité.
-    Si Supabase échoue → fallback sur le cache mémoire local.
-    Jamais de False silencieux (faille 2 réglée).
-    """
     try:
         row = queries.get_session(phone)
         if row:
@@ -75,16 +64,12 @@ def get_context(phone: str) -> SessionContext:
                 signalement=row.get("signalement"),
                 destination=row.get("destination"),
             )
-            # Sync le fallback mémoire
             _fallback[phone] = ctx
             return ctx
-        # Pas de session Supabase → nettoie le fallback aussi
         _fallback.pop(phone, None)
         return SessionContext()
-
     except Exception as e:
         logger.error(f"[Session] Supabase KO, fallback mémoire pour {phone[-4:]}: {e}")
-        # Fallback mémoire
         ctx = _fallback.get(phone, SessionContext())
         if ctx.etat and ctx.is_expired():
             _fallback.pop(phone, None)
@@ -95,7 +80,6 @@ def get_context(phone: str) -> SessionContext:
 # ── Setters ───────────────────────────────────────────────
 
 def set_attente_arret(phone: str, ligne: str, signalement: dict):
-    """Passe en état 'attente_arret' — écrit Supabase + fallback."""
     ctx = SessionContext(etat="attente_arret", ligne=ligne, signalement=signalement)
     _fallback[phone] = ctx
     try:
@@ -107,7 +91,6 @@ def set_attente_arret(phone: str, ligne: str, signalement: dict):
 
 
 def set_attente_origin(phone: str, destination: str):
-    """Passe en état 'attente_origin' — écrit Supabase + fallback."""
     ctx = SessionContext(etat="attente_origin", destination=destination)
     _fallback[phone] = ctx
     try:
@@ -118,7 +101,6 @@ def set_attente_origin(phone: str, destination: str):
 
 
 def reset_context(phone: str):
-    """Reset session — supprime Supabase + fallback."""
     _fallback.pop(phone, None)
     try:
         queries.delete_session(phone)
@@ -138,25 +120,19 @@ def is_waiting_for_origin(phone: str) -> bool:
 
 
 def is_in_flow(phone: str) -> bool:
-    """True si l'usager est dans n'importe quel flow multi-tour."""
     return get_context(phone).etat is not None
 
 
-# ── Abandon de flow ───────────────────────────────────────
+# ── Abandon ───────────────────────────────────────────────
 
 _ABANDON_PATTERNS = [
     r"\b(laisse\s+tomber|annule|stop|arrête|oublie|non merci|pas grave|ça va)\b",
     r"\b(cancel|nevermind|forget\s+it|nvm)\b",
-    r"\b(dafa\s+nii|sëde\s+ko|nii\s+rekk)\b",   # wolof
+    r"\b(dafa\s+nii|sëde\s+ko|nii\s+rekk)\b",
 ]
 
-import re
 
 def is_abandon(text: str) -> bool:
-    """
-    Détecte si l'usager veut abandonner le flow en cours.
-    Ex: "laisse tomber", "annule", "stop", "non merci"
-    """
     t = text.lower().strip()
     for pattern in _ABANDON_PATTERNS:
         if re.search(pattern, t):
@@ -164,7 +140,7 @@ def is_abandon(text: str) -> bool:
     return False
 
 
-# ── Cleanup locks inactifs ────────────────────────────────
+# ── Cleanup ───────────────────────────────────────────────
 
 def cleanup_inactive_sessions():
     now = datetime.now(timezone.utc)
@@ -177,7 +153,6 @@ def cleanup_inactive_sessions():
         _locks.pop(phone, None)
         _fallback.pop(phone, None)
         _last_seen.pop(phone, None)
-
     if to_delete:
         logger.info(f"[Session] {len(to_delete)} lock(s) nettoyé(s)")
 

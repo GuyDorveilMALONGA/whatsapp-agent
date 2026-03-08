@@ -7,8 +7,6 @@ from datetime import datetime, timedelta, timezone
 from db.client import get_client
 from config.settings import SIGNALEMENT_TTL_MINUTES
 
-CONTEXT_TTL_SECONDS = 120  # 2 min — TTL sessions multi-tour
-
 
 # ── Contacts ──────────────────────────────────────────────
 
@@ -17,10 +15,12 @@ def get_or_create_contact(phone: str, langue: str = "fr") -> dict:
     res = db.table("contacts").select("*").eq("phone", phone).execute()
     if res.data:
         contact = res.data[0]
+        # Met à jour la langue si elle a changé
         if contact.get("langue") != langue:
             db.table("contacts").update({"langue": langue}).eq("phone", phone).execute()
             contact["langue"] = langue
         return contact
+    # Crée le contact
     new = db.table("contacts").insert({
         "phone": phone,
         "langue": langue,
@@ -86,24 +86,23 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
     db = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=SIGNALEMENT_TTL_MINUTES)
     res = db.table("signalements").insert({
-        "ligne": ligne,
-        "position": arret,
+        "ligne_id": ligne,
+        "arret_nom": arret,
         "phone": phone,
-        "expires_at": expires_at.isoformat(),
-        "valide": True
+        "expires_at": expires_at.isoformat()
     }).execute()
     return res.data[0]
 
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
+    """Retourne les signalements non expirés pour une ligne."""
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
              .select("*")
-             .eq("ligne", ligne)
+             .eq("ligne_id", ligne)
              .gt("expires_at", now)
-             .eq("valide", True)
-             .order("timestamp", desc=True)
+             .order("created_at", desc=True)
              .execute())
     return res.data or []
 
@@ -115,16 +114,18 @@ def purge_signalements_expires():
 
 
 def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
+    """Retourne les numéros de lignes sans signalement récent."""
     db = get_client()
     since = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
+    # Lignes actives
     lignes_res = db.table("lignes").select("numero").eq("actif", True).execute()
     toutes = {l["numero"] for l in (lignes_res.data or [])}
+    # Lignes avec signalement récent
     sig_res = (db.table("signalements")
-                 .select("ligne")
-                 .gt("timestamp", since)
-                 .eq("valide", True)
+                 .select("ligne_id")
+                 .gt("created_at", since)
                  .execute())
-    actives = {s["ligne"] for s in (sig_res.data or [])}
+    actives = {s["ligne_id"] for s in (sig_res.data or [])}
     return list(toutes - actives)
 
 
@@ -133,8 +134,8 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
 def get_abonnes(ligne: str) -> list[dict]:
     db = get_client()
     res = (db.table("abonnements")
-             .select("phone, arret, heure_alerte")
-             .eq("ligne", ligne)
+             .select("phone, arret_nom, heure_souhaitee")
+             .eq("ligne_id", ligne)
              .eq("actif", True)
              .execute())
     return res.data or []
@@ -143,32 +144,34 @@ def get_abonnes(ligne: str) -> list[dict]:
 def create_abonnement(phone: str, ligne: str, arret: str,
                       heure_souhaitee: str | None = None) -> dict:
     db = get_client()
+    # Vérifie si existe déjà
     existing = (db.table("abonnements")
                   .select("id")
                   .eq("phone", phone)
-                  .eq("ligne", ligne)
+                  .eq("ligne_id", ligne)
                   .eq("actif", True)
                   .execute())
     if existing.data:
         return existing.data[0]
     res = db.table("abonnements").insert({
         "phone": phone,
-        "ligne": ligne,
-        "arret": arret or "",
-        "heure_alerte": heure_souhaitee,
+        "ligne_id": ligne,
+        "arret_nom": arret or "",
+        "heure_souhaitee": heure_souhaitee,
         "actif": True
     }).execute()
     return res.data[0]
 
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
+    """Abonnés dont l'heure habituelle approche dans X minutes."""
     db = get_client()
     now = datetime.now(timezone.utc)
     heure_cible = (now + timedelta(minutes=avant_minutes)).strftime("%H:%M")
     res = (db.table("abonnements")
              .select("*")
              .eq("actif", True)
-             .eq("heure_alerte", heure_cible)
+             .eq("heure_souhaitee", heure_cible)
              .execute())
     return res.data or []
 
@@ -177,24 +180,11 @@ def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
 
 def create_ticket(phone: str, motif: str) -> dict:
     db = get_client()
-    contact_res = db.table("contacts").select("id").eq("phone", phone).execute()
-    contact_id = contact_res.data[0]["id"] if contact_res.data else None
-    conversation_id = None
-    if contact_id:
-        conv_res = (db.table("conversations")
-                      .select("id")
-                      .eq("contact_id", contact_id)
-                      .eq("statut", "active")
-                      .order("created_at", desc=True)
-                      .limit(1)
-                      .execute())
-        if conv_res.data:
-            conversation_id = conv_res.data[0]["id"]
     res = db.table("tickets").insert({
+        "phone": phone,
         "motif": motif,
         "priorite": "normale",
-        "status": "open",
-        "conversation_id": conversation_id
+        "statut": "ouvert"
     }).execute()
     return res.data[0]
 
@@ -215,6 +205,9 @@ def ligne_existe(numero: str) -> bool:
 
 # ── Sessions (état multi-tour persisté dans Supabase) ─────
 
+SESSION_CONTEXT_TTL_SECONDS = 600  # FIX #4 : 10 min (was 2 min)
+
+
 def get_session(phone: str) -> dict | None:
     """Retourne la session active non expirée. None si absente/expirée."""
     db = get_client()
@@ -232,10 +225,10 @@ def set_session(phone: str, etat: str,
                 ligne: str | None = None,
                 signalement: dict | None = None,
                 destination: str | None = None) -> dict:
-    """Crée ou remplace la session (UPSERT). TTL = 2 min."""
+    """Crée ou remplace la session (UPSERT). TTL = 10 min."""
     db = get_client()
     expires_at = (datetime.now(timezone.utc)
-                  + timedelta(seconds=CONTEXT_TTL_SECONDS)).isoformat()
+                  + timedelta(seconds=SESSION_CONTEXT_TTL_SECONDS)).isoformat()
     data = {
         "phone":       phone,
         "etat":        etat,
@@ -251,13 +244,11 @@ def set_session(phone: str, etat: str,
 
 
 def delete_session(phone: str):
-    """Supprime la session après résolution du flow."""
     db = get_client()
     db.table("sessions").delete().eq("phone", phone).execute()
 
 
 def purge_sessions_expires():
-    """Supprime les sessions expirées — appelé par le heartbeat."""
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     db.table("sessions").delete().lt("expires_at", now).execute()

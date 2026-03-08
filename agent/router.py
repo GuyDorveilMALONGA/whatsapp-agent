@@ -1,11 +1,8 @@
 """
-agent/router.py — V3
+agent/router.py — V3.1
 Intent Gateway — 4 niveaux de classification.
 
-Niveau 0 : Normalisation
-Niveau 1 : Cache d'intention
-Niveau 2 : Fast classifier (regex + scoring + pénalités contextuelles)
-Niveau 3 : LLM classifier fallback (si score < 0.85)
+FIX #3 : Cache key contextuelle (message + état session)
 """
 import re
 import logging
@@ -62,9 +59,9 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(quelle\s+ligne|prends?\s+quelle\s+ligne)\b", 0.7),
         (r"\b(itinéraire|trajet|chemin)\b", 0.8),
         (r"\b(je\s+vais|je\s+veux\s+(aller|me\s+rendre))\b", 0.5),
-        (r"\bje\s+veux\s+(à|au)\b", 0.5),           # "je veux à Castor"
+        (r"\bje\s+veux\s+(à|au)\b", 0.5),
         (r"\bpour\s+aller\b", 0.6),
-        (r"\bje\s+suis\s+à\b.{2,40}\bje\s+veux\b", 0.9),  # "je suis à X je veux Y"
+        (r"\bje\s+suis\s+à\b.{2,40}\bje\s+veux\b", 0.9),
         (r"\b(depuis|de)\b.{2,30}\b(jusqu|vers|à|pour)\b", 0.7),
         (r"\b(→|->|➔)\b", 0.6),
         (r"\b(dem\s+ci|dem\s+fa|def\s+naa\s+dem)\b", 0.8),
@@ -76,45 +73,33 @@ _SCORE_THRESHOLD = 0.85
 
 def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
     t = text.lower()
-
-    # "je suis à X" sans "bus" → pénalise signalement, booste itinéraire
     je_suis = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
     has_bus  = re.search(r"\bbus\b", t)
     if je_suis and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.2
         scores["itineraire"]  = min(scores.get("itineraire", 0) + 0.4, 1.0)
-
-    # Quartier numéroté sans "bus" → pénalise signalement
     quartier = re.search(r"\b(liberté|hlm|sacré[- ]cœur|grand[- ]yoff|parcelles)\s+\d+\b", t)
     if quartier and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.15
-
-    # Question d'identité
     if re.search(r"\b(tu\s+es|t[' ]es|chatgpt|gpt|ia|robot|bot|qui\s+es[- ]tu)\b", t):
         scores["out_of_scope"] = 1.0
-
     return scores
 
 
 def _fast_classify(text: str) -> tuple[str, float]:
     t = text.lower()
     scores: dict[str, float] = {}
-
     for intent, rules in _SCORING_RULES.items():
         score = 0.0
         for pattern, weight in rules:
             if re.search(pattern, t):
                 score += weight
         scores[intent] = min(score, 1.0)
-
     scores = _apply_penalties(t, scores)
-
     best_intent = max(scores, key=scores.get)
     best_score  = scores[best_intent]
-
     if best_score < 0.3:
         return "out_of_scope", 1.0
-
     logger.debug(f"[Router] Scores: {scores} → {best_intent} ({best_score:.2f})")
     return best_intent, best_score
 
@@ -139,7 +124,11 @@ class RouteResult:
     source: str
 
 
-def route(text: str) -> RouteResult:
+def route(text: str, session_state: str | None = None) -> RouteResult:
+    """
+    FIX #3 : session_state passé au cache pour éviter les collisions.
+    Ex: "liberté 5" en flow attente_arret ≠ "liberté 5" message libre.
+    """
     normalized = normalize(text)
     cache_key  = normalize_for_cache(text)
 
@@ -152,7 +141,8 @@ def route(text: str) -> RouteResult:
             source="identity"
         )
 
-    cached = intent_cache.get(cache_key)
+    # Cache avec état session
+    cached = intent_cache.get(cache_key, session_state)
     if cached:
         return RouteResult(
             intent=cached,
@@ -165,7 +155,7 @@ def route(text: str) -> RouteResult:
     intent, score = _fast_classify(normalized)
 
     if score >= _SCORE_THRESHOLD:
-        intent_cache.set(cache_key, intent)
+        intent_cache.set(cache_key, intent, session_state)
         return RouteResult(
             intent=intent,
             raw_text=text,
@@ -183,8 +173,9 @@ def route(text: str) -> RouteResult:
     )
 
 
-async def route_async(text: str, history: list | None = None) -> RouteResult:
-    result = route(text)
+async def route_async(text: str, history: list | None = None,
+                      session_state: str | None = None) -> RouteResult:
+    result = route(text, session_state)
 
     if result.source in ("cache", "regex", "identity"):
         return result
@@ -194,7 +185,7 @@ async def route_async(text: str, history: list | None = None) -> RouteResult:
         from agent.llm_brain import classify_intent
         llm_intent = await classify_intent(text=result.normalized_text, history=history)
         if llm_intent:
-            intent_cache.set(normalize_for_cache(text), llm_intent)
+            intent_cache.set(normalize_for_cache(text), llm_intent, session_state)
             return RouteResult(
                 intent=llm_intent,
                 raw_text=text,

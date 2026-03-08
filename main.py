@@ -1,7 +1,9 @@
 """
-main.py — V3
+main.py — V3.1
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
-Reçoit → filtre → délègue → répond.
+
+FIX #2 : Routing avant DB
+→ normalize → route → ensuite seulement DB (~30ms gagnés)
 """
 import re
 import logging
@@ -14,6 +16,7 @@ from services.language import detect_language
 from services import whisper
 from db import queries
 from agent.router import route_async
+from agent.normalizer import normalize
 from core.context_builder import build_context
 from agent.extractor import extract
 import core.queue_manager as queue_manager
@@ -45,14 +48,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V3 démarré")
+    logger.info("🚌 Xëtu V3.1 démarré")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "3.0"}
+    return {"status": "ok", "service": "Xëtu", "version": "3.1"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -87,7 +90,6 @@ async def receive_message(request: Request):
     phone = msg["phone"]
     text  = msg.get("text")
 
-    # Audio → transcription Whisper
     if msg["message_type"] == "audio":
         audio_id = msg.get("audio_id")
         if audio_id:
@@ -107,22 +109,18 @@ async def receive_message(request: Request):
 
 def _check_message(text: str) -> str | None:
     stripped = text.strip()
-
     if len(stripped) < _MIN_MESSAGE_LENGTH:
         return None
-
     if len(stripped) > _MAX_MESSAGE_LENGTH:
         return (
             "⚠️ Message trop long. Envoie-moi une courte phrase :\n"
             "• *Bus 15 à Liberté 5*\n"
             "• *Bus 15 est où ?*"
         )
-
     if len(stripped) > 10:
         alphanum = sum(1 for c in stripped if c.isalnum())
         if alphanum / len(stripped) < 0.3:
             return None
-
     return None
 
 
@@ -145,26 +143,22 @@ async def _process_message_safe(phone: str, text: str):
             await send_message(phone, error_msg)
             return
 
-        # ── 1. LANGUE ─────────────────────────────────────
+        # ── 1. NORMALISATION ──────────────────────────────
+        normalized = normalize(text)
+
+        # ── 2. LANGUE ─────────────────────────────────────
         langue = detect_language(text)
 
-        # ── 2. CONTEXTE DB ────────────────────────────────
-        contact      = queries.get_or_create_contact(phone, langue)
-        conversation = queries.get_or_create_conversation(contact["id"])
-        conv_id      = conversation["id"]
-        history      = queries.get_recent_messages(conv_id)
-
-        # ── 3. PREMIER MESSAGE → accueil ──────────────────
-        # Si aucun historique → c'est le tout premier message de cet usager
-        if not history:
-            await send_message(phone, WELCOME_MESSAGE)
-
-        # ── 4. SESSION — lecture unique ───────────────────
+        # ── 3. SESSION — lecture (légère, Supabase) ───────
         session = get_context(phone)
 
-        # ── 5. ABANDON DE FLOW ────────────────────────────
+        # ── 4. ABANDON DE FLOW ────────────────────────────
         if session.etat and is_abandon(text):
             reset_context(phone)
+            # DB seulement maintenant
+            contact      = queries.get_or_create_contact(phone, langue)
+            conversation = queries.get_or_create_conversation(contact["id"])
+            conv_id      = conversation["id"]
             queries.save_message(conv_id, "user", text, langue, "abandon")
             response = (
                 "OK, on laisse tomber. 👍 Dis-moi si tu as besoin d'autre chose."
@@ -175,11 +169,15 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # ── 6. FLOW MULTI-TOUR ────────────────────────────
+        # ── 5. FLOW MULTI-TOUR ────────────────────────────
         from skills.question import handle_arret_response
         from skills.itineraire import handle_origin_response
 
         if session.etat == "attente_arret":
+            # DB maintenant (flow actif)
+            contact      = queries.get_or_create_contact(phone, langue)
+            conversation = queries.get_or_create_conversation(contact["id"])
+            conv_id      = conversation["id"]
             response = await handle_arret_response(phone, text, langue)
             queries.save_message(conv_id, "user",      text,     langue, "question")
             await send_message(phone, response)
@@ -187,19 +185,33 @@ async def _process_message_safe(phone: str, text: str):
             return
 
         if session.etat == "attente_origin":
+            contact      = queries.get_or_create_contact(phone, langue)
+            conversation = queries.get_or_create_conversation(contact["id"])
+            conv_id      = conversation["id"]
             response = await handle_origin_response(phone, text, langue)
             queries.save_message(conv_id, "user",      text,     langue, "itineraire")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "itineraire")
             return
 
-        # ── 7. ROUTING ────────────────────────────────────
-        route_result = await route_async(text, history)
+        # ── 6. ROUTING (AVANT DB) ─────────────────────────
+        # FIX #2 : on route AVANT de toucher Supabase
+        route_result = await route_async(normalized, history=None)
 
-        # ── 8. SAUVEGARDE message entrant ─────────────────
+        # ── 7. DB — seulement maintenant ──────────────────
+        contact      = queries.get_or_create_contact(phone, langue)
+        conversation = queries.get_or_create_conversation(contact["id"])
+        conv_id      = conversation["id"]
+        history      = queries.get_recent_messages(conv_id)
+
+        # ── 8. PREMIER MESSAGE → accueil ──────────────────
+        if not history:
+            await send_message(phone, WELCOME_MESSAGE)
+
+        # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 9. DISPATCH ───────────────────────────────────
+        # ── 10. DISPATCH ──────────────────────────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -209,18 +221,18 @@ async def _process_message_safe(phone: str, text: str):
             history=history,
         )
 
-        # ── 10. ENVOI ─────────────────────────────────────
+        # ── 11. ENVOI ─────────────────────────────────────
         await send_message(phone, response)
 
-        # ── 11. PROACTIVITÉ ───────────────────────────────
+        # ── 12. PROACTIVITÉ ───────────────────────────────
         extracted = extract(text)
         if route_result.intent == "signalement" and extracted.ligne:
             await _proposer_abonnement_si_nouveau(phone, extracted.ligne, langue)
 
-        # ── 12. SAUVEGARDE réponse ────────────────────────
+        # ── 13. SAUVEGARDE réponse ────────────────────────
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # ── 13. MÉMOIRE USAGER ────────────────────────────
+        # ── 14. MÉMOIRE USAGER ────────────────────────────
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact,
@@ -242,23 +254,17 @@ async def _dispatch(text: str, intent: str, contact: dict,
 
     if intent == "signalement":
         return await skill_signalement.handle(text, contact, langue)
-
     elif intent == "question":
         return await skill_question.handle(text, contact, langue, history)
-
     elif intent == "liste_arrets":
         return await skill_question.handle_liste_arrets(text, contact, langue)
-
     elif intent == "abonnement":
         return await skill_abonnement.handle(text, contact, langue)
-
     elif intent == "escalade":
         return await skill_escalade.handle(text, contact, langue, conv_id)
-
     elif intent == "itineraire":
         return await skill_itineraire.handle(text, contact, langue)
-
-    else:  # out_of_scope — LLM gère naturellement
+    else:
         from agent.llm_brain import generate_response
         ctx = build_context(
             message=text,
