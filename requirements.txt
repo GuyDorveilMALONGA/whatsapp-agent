@@ -4,4 +4,4 @@ groq
 httpx
 python-dotenv
 supabase
-google-generativeai
+google-genai
