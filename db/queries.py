@@ -15,12 +15,10 @@ def get_or_create_contact(phone: str, langue: str = "fr") -> dict:
     res = db.table("contacts").select("*").eq("phone", phone).execute()
     if res.data:
         contact = res.data[0]
-        # Met à jour la langue si elle a changé
         if contact.get("langue") != langue:
             db.table("contacts").update({"langue": langue}).eq("phone", phone).execute()
             contact["langue"] = langue
         return contact
-    # Crée le contact
     new = db.table("contacts").insert({
         "phone": phone,
         "langue": langue,
@@ -86,9 +84,9 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
     db = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=SIGNALEMENT_TTL_MINUTES)
     res = db.table("signalements").insert({
-        "ligne_id": ligne,
-        "arret_nom": arret,
-        "phone": phone,
+        "ligne":      ligne,
+        "position":   arret,
+        "phone":      phone,
         "expires_at": expires_at.isoformat()
     }).execute()
     return res.data[0]
@@ -100,7 +98,7 @@ def get_signalements_actifs(ligne: str) -> list[dict]:
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
              .select("*")
-             .eq("ligne_id", ligne)
+             .eq("ligne", ligne)
              .gt("expires_at", now)
              .order("created_at", desc=True)
              .execute())
@@ -117,15 +115,13 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     """Retourne les numéros de lignes sans signalement récent."""
     db = get_client()
     since = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
-    # Lignes actives
     lignes_res = db.table("lignes").select("numero").eq("actif", True).execute()
     toutes = {l["numero"] for l in (lignes_res.data or [])}
-    # Lignes avec signalement récent
     sig_res = (db.table("signalements")
-                 .select("ligne_id")
+                 .select("ligne")
                  .gt("created_at", since)
                  .execute())
-    actives = {s["ligne_id"] for s in (sig_res.data or [])}
+    actives = {s["ligne"] for s in (sig_res.data or [])}
     return list(toutes - actives)
 
 
@@ -134,31 +130,30 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
 def get_abonnes(ligne: str) -> list[dict]:
     db = get_client()
     res = (db.table("abonnements")
-             .select("phone, arret_nom, heure_souhaitee")
-             .eq("ligne_id", ligne)
+             .select("phone, arret, heure_alerte")
+             .eq("ligne", ligne)
              .eq("actif", True)
              .execute())
     return res.data or []
 
 
 def create_abonnement(phone: str, ligne: str, arret: str,
-                      heure_souhaitee: str | None = None) -> dict:
+                      heure_alerte: str | None = None) -> dict:
     db = get_client()
-    # Vérifie si existe déjà
     existing = (db.table("abonnements")
                   .select("id")
                   .eq("phone", phone)
-                  .eq("ligne_id", ligne)
+                  .eq("ligne", ligne)
                   .eq("actif", True)
                   .execute())
     if existing.data:
         return existing.data[0]
     res = db.table("abonnements").insert({
-        "phone": phone,
-        "ligne_id": ligne,
-        "arret_nom": arret or "",
-        "heure_souhaitee": heure_souhaitee,
-        "actif": True
+        "phone":       phone,
+        "ligne":       ligne,
+        "arret":       arret or "",
+        "heure_alerte": heure_alerte,
+        "actif":       True
     }).execute()
     return res.data[0]
 
@@ -171,7 +166,7 @@ def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
     res = (db.table("abonnements")
              .select("*")
              .eq("actif", True)
-             .eq("heure_souhaitee", heure_cible)
+             .eq("heure_alerte", heure_cible)
              .execute())
     return res.data or []
 
@@ -181,10 +176,10 @@ def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
 def create_ticket(phone: str, motif: str) -> dict:
     db = get_client()
     res = db.table("tickets").insert({
-        "phone": phone,
-        "motif": motif,
+        "phone":    phone,
+        "motif":    motif,
         "priorite": "normale",
-        "statut": "ouvert"
+        "statut":   "ouvert"
     }).execute()
     return res.data[0]
 
@@ -203,13 +198,12 @@ def ligne_existe(numero: str) -> bool:
     return bool(res.data)
 
 
-# ── Sessions (état multi-tour persisté dans Supabase) ─────
+# ── Sessions ──────────────────────────────────────────────
 
-SESSION_CONTEXT_TTL_SECONDS = 600  # FIX #4 : 10 min (was 2 min)
+SESSION_CONTEXT_TTL_SECONDS = 600  # 10 min
 
 
 def get_session(phone: str) -> dict | None:
-    """Retourne la session active non expirée. None si absente/expirée."""
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("sessions")
@@ -225,7 +219,6 @@ def set_session(phone: str, etat: str,
                 ligne: str | None = None,
                 signalement: dict | None = None,
                 destination: str | None = None) -> dict:
-    """Crée ou remplace la session (UPSERT). TTL = 10 min."""
     db = get_client()
     expires_at = (datetime.now(timezone.utc)
                   + timedelta(seconds=SESSION_CONTEXT_TTL_SECONDS)).isoformat()
@@ -253,12 +246,6 @@ def purge_sessions_expires():
     now = datetime.now(timezone.utc).isoformat()
     db.table("sessions").delete().lt("expires_at", now).execute()
 
-"""
-AJOUTS À COLLER À LA FIN DE db/queries.py
-==========================================
-Ces fonctions sont appelées par api/buses.py et api/leaderboard.py.
-Colle ce code à la fin de ton db/queries.py existant.
-"""
 
 # ── API Buses ─────────────────────────────────────────────
 
@@ -284,20 +271,14 @@ def get_network_memory() -> list[dict]:
 # ── API Leaderboard ───────────────────────────────────────
 
 def get_leaderboard(limit: int = 10) -> list[dict]:
-    """
-    Top signaleurs : joint contacts + count signalements.
-    Retourne les contacts triés par nb_signalements DESC.
-    """
+    """Top signaleurs triés par nb_signalements DESC."""
     db = get_client()
-    # Compte les signalements par phone (historique complet)
-    # On passe par messages pour avoir l'historique long terme
     res = (db.table("messages")
              .select("conversations(contacts(phone, fiabilite_score))")
              .eq("intent", "signalement")
              .eq("role", "user")
              .execute())
 
-    # Agréger manuellement
     compteur: dict[str, dict] = {}
     for row in (res.data or []):
         try:
@@ -323,18 +304,15 @@ def get_stats_communaute() -> dict:
     db = get_client()
     from datetime import date
     today_start = datetime.combine(
-        date.today(),
-        datetime.min.time()
+        date.today(), datetime.min.time()
     ).replace(tzinfo=timezone.utc).isoformat()
 
-    # Signalements aujourd'hui
     res_today = (db.table("signalements")
                    .select("id", count="exact")
                    .gte("created_at", today_start)
                    .execute())
     aujourd_hui = res_today.count or 0
 
-    # All time via messages
     res_all = (db.table("messages")
                  .select("id", count="exact")
                  .eq("intent", "signalement")
@@ -342,14 +320,13 @@ def get_stats_communaute() -> dict:
                  .execute())
     all_time = res_all.count or 0
 
-    # Nb contributeurs uniques
     res_contacts = (db.table("contacts")
                       .select("id", count="exact")
                       .execute())
     nb_contributeurs = res_contacts.count or 0
 
     return {
-        "aujourd_hui":     aujourd_hui,
-        "all_time":        all_time,
+        "aujourd_hui":      aujourd_hui,
+        "all_time":         all_time,
         "nb_contributeurs": nb_contributeurs,
     }
