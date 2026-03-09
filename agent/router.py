@@ -1,12 +1,17 @@
 """
-agent/router.py — V3.1
+agent/router.py — V4.0
 Intent Gateway — 4 niveaux de classification.
 
-FIX #3 : Cache key contextuelle (message + état session)
+CORRECTIONS V4 :
+- RouteResult enrichi avec lang + entities
+- Forçage LLM pour intents nécessitant des entités (signalement, itineraire, abonnement)
+- classify_intent retourne un dict → extraction propre de intent_str
+- Cache ne stocke que la string intent (pas le dict)
+- Fallback propre si LLM crash
 """
 import re
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from agent.normalizer import normalize, normalize_for_cache
 from agent import intent_cache
@@ -70,6 +75,9 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 
 _SCORE_THRESHOLD = 0.85
 
+# Intents qui nécessitent des entités → forçage LLM même si regex est confiant
+_NEEDS_ENTITIES = {"signalement", "itineraire", "abonnement"}
+
 
 def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
     t = text.lower()
@@ -122,11 +130,15 @@ class RouteResult:
     normalized_text: str
     confiance: float
     source: str
+    lang: str | None = None                          # ← NOUVEAU : langue détectée par LLM
+    entities: dict = field(default_factory=dict)     # ← NOUVEAU : entités extraites par LLM
 
 
 def route(text: str, session_state: str | None = None) -> RouteResult:
     """
-    FIX #3 : session_state passé au cache pour éviter les collisions.
+    Niveau synchrone : identity check → cache → regex scoring.
+    Ne retourne JAMAIS d'entités (pas de LLM ici).
+    session_state passé au cache pour éviter les collisions.
     Ex: "liberté 5" en flow attente_arret ≠ "liberté 5" message libre.
     """
     normalized = normalize(text)
@@ -141,7 +153,6 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
             source="identity"
         )
 
-    # Cache avec état session
     cached = intent_cache.get(cache_key, session_state)
     if cached:
         return RouteResult(
@@ -154,7 +165,8 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
 
     intent, score = _fast_classify(normalized)
 
-    if score >= _SCORE_THRESHOLD:
+    # On met en cache uniquement les intents simples (pas besoin d'entités)
+    if score >= _SCORE_THRESHOLD and intent not in _NEEDS_ENTITIES:
         intent_cache.set(cache_key, intent, session_state)
         return RouteResult(
             intent=intent,
@@ -173,27 +185,68 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
     )
 
 
-async def route_async(text: str, history: list | None = None,
-                      session_state: str | None = None) -> RouteResult:
+async def route_async(
+    text: str,
+    history: list | None = None,
+    session_state: str | None = None
+) -> RouteResult:
+    """
+    Niveau asynchrone : ajoute le LLM si nécessaire.
+
+    Règle de forçage LLM :
+    - Intent identity → retour immédiat (pas de LLM)
+    - Intent depuis cache → retour immédiat (pas de LLM, entités non dispo)
+    - Intent simple (escalade, liste_arrets, out_of_scope) confirmé par regex → retour immédiat
+    - Intent nécessitant des entités (signalement, itineraire, abonnement) → LLM OBLIGATOIRE
+    - Score regex faible → LLM pour confirmer l'intent
+    """
     result = route(text, session_state)
 
-    if result.source in ("cache", "regex", "identity"):
+    # Retour immédiat si pas besoin de LLM
+    if result.source == "identity":
         return result
 
-    logger.info(f"[Router] Score faible ({result.confiance:.2f}) → LLM classify")
+    if result.source == "cache":
+        return result
+
+    if result.source == "regex" and result.intent not in _NEEDS_ENTITIES:
+        return result
+
+    # Dans tous les autres cas → LLM
+    needs_entities = result.intent in _NEEDS_ENTITIES
+    logger.info(
+        f"[Router] Escalade LLM "
+        f"(source={result.source} | intent={result.intent} | needs_entities={needs_entities})"
+    )
+
     try:
         from agent.llm_brain import classify_intent
-        llm_intent = await classify_intent(text=result.normalized_text, history=history)
-        if llm_intent:
-            intent_cache.set(normalize_for_cache(text), llm_intent, session_state)
+        llm_data = await classify_intent(text=result.normalized_text, history=history)
+
+        if llm_data and isinstance(llm_data, dict):
+            intent_str = llm_data.get("intent", "out_of_scope")
+
+            # Valider que l'intent retourné est connu
+            from agent.llm_brain import _VALID_INTENTS
+            if intent_str not in _VALID_INTENTS:
+                logger.warning(f"[Router] Intent LLM inconnu: {intent_str} → fallback regex")
+                return result
+
+            # Mettre en cache la string intent uniquement (pas le dict)
+            intent_cache.set(normalize_for_cache(text), intent_str, session_state)
+
             return RouteResult(
-                intent=llm_intent,
+                intent=intent_str,
                 raw_text=text,
                 normalized_text=result.normalized_text,
-                confiance=0.95,
-                source="llm"
+                confiance=llm_data.get("confidence", 0.95),
+                source="llm",
+                lang=llm_data.get("lang", "fr"),
+                entities=llm_data.get("entities") or {}
             )
+
     except Exception as e:
         logger.error(f"[Router] LLM classify failed: {e}")
 
+    # Fallback propre sur le résultat regex sans entités
     return result

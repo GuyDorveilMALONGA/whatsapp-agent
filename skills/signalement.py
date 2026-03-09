@@ -1,6 +1,11 @@
 """
-skills/signalement.py
+skills/signalement.py — V4 LLM-Driven
 Enregistre un signalement + notifie les abonnés.
+
+V4 : entities injectées depuis route_result (main.py)
+     Suppression de l'import extractor
+     _VALID_LINES et _NETWORK déclarés ici (découplé de l'extracteur)
+     Cas ambiguïté conservé (deux lignes avec même numéro)
 
 FIX #1 : File d'envoi avec délai entre chaque message
 → évite le throttling/ban Meta si 100+ abonnés.
@@ -9,7 +14,6 @@ import asyncio
 import logging
 from db import queries
 from services.whatsapp import send_message
-from agent.extractor import extract, VALID_LINES, NETWORK
 
 logger = logging.getLogger(__name__)
 
@@ -18,18 +22,22 @@ _NOTIFICATION_DELAY_SEC = 0.3
 # Taille max de batch (sécurité supplémentaire)
 _BATCH_SIZE = 50
 
-
-def _ambigues_message(ambigues: list[str], langue: str) -> str:
-    options = "\n".join([f"• *{l}* — {NETWORK[l].get('description', '')}" for l in ambigues])
-    if langue == "wolof":
-        return f"Bus bii — numéro yi ngi ci :\n{options}\nWax ma lignes bi ?"
-    return f"Quel bus exactement ?\n{options}"
+# Référentiel des lignes valides (découplé de l'extracteur)
+_VALID_LINES = {
+    "1", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "15",
+    "16A", "16B", "18", "20", "23", "121", "208", "213", "217", "218", "219",
+    "220", "221", "227", "232", "233", "234", "311", "319", "327",
+    "TO1", "501", "502", "503", "TAF TAF", "RUF-YENNE"
+}
 
 
 async def _notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
     """
     Notifie les abonnés avec délai entre chaque envoi.
     Fire-and-forget — ne bloque pas la réponse au signaleur.
+
+    ⚠️ asyncio.create_task() : si Railway redémarre, tâches non terminées
+    sont perdues. Migrer vers BackgroundTasks FastAPI ou Redis à l'échelle.
     """
     try:
         abonnes = queries.get_abonnes(ligne)
@@ -55,51 +63,81 @@ async def _notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
         return 0
 
 
-async def handle(message: str, contact: dict, langue: str) -> str:
+async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
+    """
+    Gère un signalement en utilisant les entités pré-extraites par le LLM.
+    """
     phone = contact["phone"]
-    result = extract(message)
 
-    if result.ambigues:
-        return _ambigues_message(result.ambigues, langue)
+    # ── 1. Extraction depuis les entités LLM ──────────────
+    ligne = entities.get("ligne")
+    # L'arrêt peut être dans origin (tournure "Bus 15 à Liberté 5")
+    # ou destination selon la formulation
+    arret = entities.get("origin") or entities.get("destination")
 
-    if not result.ligne or not result.ligne_valide:
-        ligne_str = result.ligne or "inconnue"
-        valides = ", ".join(sorted(VALID_LINES)[:10]) + "..."
+    # ── 2. Validation de la ligne ─────────────────────────
+    if not ligne:
         if langue == "wolof":
-            return f"Bus bi {ligne_str} — duma ko xam ci réseau Dem Dikk yi. Lignes yi ngi ci : {valides}"
-        return (f"❌ La ligne {ligne_str} n'existe pas dans le réseau Dem Dikk.\n"
-                f"Lignes disponibles : {valides}")
+            return "Wax ma numéro bi — 'Bus 15 à Liberté 5' 🙏"
+        return "❓ Quel numéro de bus ? Envoie : *Bus 15 à Liberté 5* 🙏"
 
-    if not result.arret:
+    ligne_upper = str(ligne).upper()
+
+    if ligne_upper not in _VALID_LINES:
+        valides = ", ".join(sorted(_VALID_LINES)[:10]) + "..."
         if langue == "wolof":
-            return f"Bus {result.ligne} — arrêt bi dafa soxor. Wax ma ci : 'Bus {result.ligne} à [arrêt bi]' 🙏"
-        return (f"🚌 Bus {result.ligne} reçu ! Mais quel arrêt exactement ?\n"
-                f"Envoie : *Bus {result.ligne} à [nom de l'arrêt]* 🙏")
+            return (
+                f"Bus bi {ligne} — duma ko xam ci réseau Dem Dikk yi.\n"
+                f"Lignes yi ngi ci : {valides}"
+            )
+        return (
+            f"❌ La ligne {ligne} n'existe pas dans le réseau Dem Dikk.\n"
+            f"Lignes disponibles : {valides}"
+        )
 
-    arret = result.arret_normalise or result.arret
+    ligne = ligne_upper
 
+    # ── 3. Validation de l'arrêt ──────────────────────────
+    if not arret:
+        if langue == "wolof":
+            return (
+                f"Bus {ligne} — arrêt bi dafa soxor.\n"
+                f"Wax ma ci : 'Bus {ligne} à [arrêt bi]' 🙏"
+            )
+        return (
+            f"🚌 Bus {ligne} reçu ! Mais quel arrêt exactement ?\n"
+            f"Envoie : *Bus {ligne} à [nom de l'arrêt]* 🙏"
+        )
+
+    # ── 4. Enregistrement en base ─────────────────────────
     try:
-        queries.save_signalement(result.ligne, arret, phone)
+        queries.save_signalement(ligne, arret, phone)
     except Exception as e:
         logger.error(f"Erreur save_signalement: {e}")
         return "❌ Erreur lors de l'enregistrement. Réessaie."
 
+    # ── 5. Comptage abonnés ───────────────────────────────
     try:
-        abonnes = queries.get_abonnes(result.ligne)
+        abonnes = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
     except Exception:
         nb_abonnes = 0
 
-    # Notifications en arrière-plan (fire-and-forget)
-    asyncio.create_task(_notify_abonnes(result.ligne, arret, phone))
+    # ── 6. Notifications en arrière-plan ──────────────────
+    asyncio.create_task(_notify_abonnes(ligne, arret, phone))
 
+    # ── 7. Réponse ────────────────────────────────────────
     if nb_abonnes == 0:
         if langue == "wolof":
-            return f"✅ Jërëjëf ! Bus {result.ligne} ci {arret} — enregistré. 🙏"
-        return f"✅ Merci ! Bus {result.ligne} à *{arret}* enregistré. 🙏"
+            return f"✅ Jërëjëf ! Bus {ligne} ci {arret} — enregistré. 🙏"
+        return f"✅ Merci ! Bus {ligne} à *{arret}* enregistré. 🙏"
     else:
         if langue == "wolof":
-            return (f"✅ Jërëjëf ! Bus {result.ligne} ci {arret} — enregistré.\n"
-                    f"Danga dém {nb_abonnes} nit 🙏")
-        return (f"✅ Merci ! Bus {result.ligne} à *{arret}* enregistré.\n"
-                f"Tu viens d'aider *{nb_abonnes}* personne(s) 🙏")
+            return (
+                f"✅ Jërëjëf ! Bus {ligne} ci {arret} — enregistré.\n"
+                f"Danga dém {nb_abonnes} nit 🙏"
+            )
+        return (
+            f"✅ Merci ! Bus {ligne} à *{arret}* enregistré.\n"
+            f"Tu viens d'aider *{nb_abonnes}* personne(s) 🙏"
+        )

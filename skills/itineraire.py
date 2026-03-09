@@ -1,6 +1,12 @@
 """
-skills/itineraire.py — V3 Walk-Aware Routing
-Calcule et formate les itinéraires avec le nouveau moteur Walk-Aware.
+skills/itineraire.py — V4 Walk-Aware Routing (LLM-Driven)
+Calcule et formate les itinéraires avec le moteur Walk-Aware.
+
+V4 : entities injectées depuis route_result (main.py)
+     Suppression de _extract_od(), _NO_TRANSFER_PATTERNS, _PATTERNS
+     handle_origin_response accepte entities pour récupérer no_transfer_preference
+     extractor.extract() conservé UNIQUEMENT dans handle_origin_response
+     (flow multi-tour : l'usager répond juste "Liberté 5" sans contexte LLM)
 
 Statuts gérés :
   direct              → bus direct origin → dest
@@ -11,56 +17,11 @@ Statuts gérés :
   stop_not_found      → arrêt inconnu
   same_stop           → départ = arrivée
 """
-import re
 import logging
 from agent.graph import get_graph
 from core.session_manager import set_attente_origin, get_context, reset_context
 
 logger = logging.getLogger(__name__)
-
-
-# ── Détection mode no_transfer ────────────────────────────
-
-_NO_TRANSFER_PATTERNS = [
-    r"\b(sans\s+correspondance|sans\s+changer|direct\s+seulement|bus\s+direct)\b",
-    r"\b(je\s+(ne\s+)?peux\s+pas\s+marcher|je\s+ne\s+veux\s+pas\s+marcher)\b",
-    r"\b(direct\s+uniquement|uniquement\s+direct)\b",
-]
-
-def _is_no_transfer(text: str) -> bool:
-    t = text.lower()
-    return any(re.search(p, t) for p in _NO_TRANSFER_PATTERNS)
-
-
-# ── Extraction origin/dest ────────────────────────────────
-
-_PATTERNS = [
-    r'(?:de|depuis)\s+(.+?)\s+(?:à|au|vers|jusqu[aà]|pour)\s+(.+?)(?:\s*[?!.]|$)',
-    r'je\s+suis\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?je\s+veux\s+(?:aller\s+)?(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
-    r'je\s+me\s+trouve\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?(?:je\s+vais|je\s+veux\s+aller)\s+(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
-    r'(.+?)\s*(?:→|->|➔)\s*(.+?)(?:\s*[?!.]|$)',
-    r'(?:quel\s+bus\s+(?:pour|pour\s+aller\s+[aà])|comment\s+aller\s+[aà])\s+(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
-    r'(?:quelle\s+ligne|quel\s+bus)\s+(?:pour\s+(?:aller\s+)?(?:à|au)\s+)(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
-    r'(?:dem\s+(?:ci|fa))\s+(.+?)(?:\s+ci\s+(.+?))?(?:\s*[?!.]|$)',
-]
-
-def _extract_od(message: str) -> tuple[str | None, str | None]:
-    # Retire les mots-clés no_transfer avant d'extraire OD
-    text = re.sub(
-        r'\b(sans\s+correspondance|sans\s+changer|direct\s+seulement|'
-        r'bus\s+direct|direct\s+uniquement|uniquement\s+direct|'
-        r'je\s+ne\s+peux\s+pas\s+marcher|je\s+ne\s+veux\s+pas\s+marcher)\b',
-        '', message.strip(), flags=re.IGNORECASE
-    ).strip()
-    for pattern in _PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            groups = [g.strip() for g in m.groups() if g and g.strip()]
-            if len(groups) >= 2:
-                return groups[0], groups[1]
-            if len(groups) == 1:
-                return None, groups[0]
-    return None, None
 
 
 # ── Formatage FR ──────────────────────────────────────────
@@ -229,12 +190,16 @@ _FMT = {
 
 # ── Point d'entrée principal ──────────────────────────────
 
-async def handle(message: str, contact: dict, langue: str) -> str:
+async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
+    """
+    Utilise directement les entités extraites par le LLM dans route_async.
+    Plus de regex d'extraction ici.
+    """
     lang        = langue if langue in _FMT else "fr"
     graph       = get_graph()
-    no_transfer = _is_no_transfer(message)
-
-    origin_query, dest_query = _extract_od(message)
+    no_transfer = entities.get("no_transfer_preference", False)
+    origin_query = entities.get("origin")
+    dest_query   = entities.get("destination")
 
     if not dest_query:
         return _no_od_fr() if lang == "fr" else (
@@ -260,10 +225,14 @@ async def handle(message: str, contact: dict, langue: str) -> str:
 
 # ── Flow multi-tour : réponse origine ────────────────────
 
-async def handle_origin_response(phone: str, text: str, langue: str) -> str:
+async def handle_origin_response(phone: str, text: str, langue: str, entities: dict) -> str:
     """
     Appelé depuis main.py quand session est en état 'attente_origin'.
-    L'usager vient de donner son arrêt de départ.
+    L'usager vient de donner son arrêt de départ (ex: "Liberté 5").
+
+    On conserve extractor ici car le routeur a classifié ce message court
+    comme signalement ou out_of_scope → entities probablement vide.
+    Fallback sur text.strip() si tout échoue.
     """
     from agent.extractor import extract
 
@@ -277,11 +246,15 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
             "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_\n\n— *Xëtu*"
         )
 
-    result_ext   = extract(text)
-    origin_query = result_ext.arret_normalise or result_ext.arret or text.strip()
+    # Priorité : entités LLM → extractor → texte brut
+    origin_query = (
+        entities.get("origin")
+        or entities.get("destination")
+        or _extract_origin_fallback(text)
+    )
+    no_transfer  = entities.get("no_transfer_preference", False)
     lang         = langue if langue in _FMT else "fr"
     graph        = get_graph()
-    no_transfer  = _is_no_transfer(text)
     route_result = graph.find_route(origin_query, destination, no_transfer=no_transfer)
 
     if route_result["status"] == "stop_not_found" and route_result.get("which") == "origin":
@@ -302,3 +275,16 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
         return fmt_fn(route_result)
 
     return _not_found_fr(route_result) if lang == "fr" else _not_found_wo(route_result)
+
+
+def _extract_origin_fallback(text: str) -> str:
+    """
+    Fallback léger pour handle_origin_response uniquement.
+    Utilise extractor si dispo, sinon retourne le texte brut nettoyé.
+    """
+    try:
+        from agent.extractor import extract
+        result = extract(text)
+        return result.arret_normalise or result.arret or text.strip()
+    except Exception:
+        return text.strip()

@@ -1,14 +1,29 @@
 """
-core/context_builder.py
-L'innovation principale de Sëtu.
+core/context_builder.py — V4 (LLM-Native)
+L'innovation principale de Xëtu.
 Le LLM ne reçoit jamais un message nu — il reçoit une situation complète.
-C'est ce qui élimine les hallucinations.
-V2 : injection mémoire réseau + profil usager enrichi
 """
+import json
+import re
+import logging
 from datetime import datetime, timezone
-from db import queries
-from agent.extractor import get_arrets_ligne, VALID_LINES
 from memory import user_memory, network_memory
+
+logger = logging.getLogger(__name__)
+
+# ── Chargement de la Source de Vérité ─────────────────────
+_NETWORK: dict = {}
+_VALID_LINES: set = set()
+
+try:
+    with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
+        _LINES_DATA = json.load(f)
+        for line in _LINES_DATA:
+            num = str(line.get("number", "")).upper()
+            _NETWORK[num] = line
+            _VALID_LINES.add(num)
+except Exception as e:
+    logger.error(f"Erreur critique chargement JSON dans context_builder: {e}")
 
 
 def build_context(
@@ -19,35 +34,44 @@ def build_context(
     arret: str | None = None,
     signalements: list | None = None,
     history: list | None = None,
+    entities: dict | None = None,
 ) -> str:
     """
     Construit le bloc de contexte injecté dans le prompt LLM.
     """
     blocks = []
+    entities = entities or {}
+
+    # Consolidation : entities LLM prioritaires sur paramètres directs
+    ligne = ligne or entities.get("ligne")
+    arret = arret or entities.get("origin") or entities.get("destination")
 
     # ── [INTENTION] ───────────────────────────────────────
     blocks.append(f"[INTENTION DÉTECTÉE] {intent}")
     blocks.append(f"[MESSAGE USAGER] {message}")
 
     # ── [CONTEXTE CONVERSATION] ───────────────────────────
-    # Si pas de ligne dans le message actuel → cherche dans l'historique
     if not ligne and history:
-        ligne = _extract_ligne_from_history(history)
-        if ligne:
+        ligne_historique = _extract_ligne_from_history(history)
+        if ligne_historique:
+            ligne = ligne_historique
             blocks.append(f"[CONTEXTE] Ligne {ligne} mentionnée précédemment dans la conversation.")
 
     # ── [RÉSEAU] ──────────────────────────────────────────
     if ligne:
-        if ligne in VALID_LINES:
-            arrets_info = get_arrets_ligne(ligne)
+        ligne = str(ligne).upper()
+        if ligne in _VALID_LINES:
+            arrets_info = _NETWORK.get(ligne, {})
+            stops = arrets_info.get("stops", [])
+            description = arrets_info.get("description", "")
             blocks.append(
-                f"[LIGNE] Bus {ligne} — {arrets_info.get('description', '')} "
-                f"({len(arrets_info.get('aller', []))} arrêts)"
+                f"[LIGNE] Bus {ligne} — {description} ({len(stops)} arrêts au total)"
             )
         else:
+            valides = ", ".join(sorted(_VALID_LINES)[:15]) + "..."
             blocks.append(
                 f"[LIGNE] La ligne '{ligne}' N'EXISTE PAS dans le réseau Dem Dikk. "
-                f"Lignes disponibles : {', '.join(sorted(VALID_LINES))}"
+                f"Lignes disponibles : {valides}"
             )
 
     # ── [SIGNALEMENTS ACTIFS] ─────────────────────────────
@@ -57,10 +81,9 @@ def build_context(
             sig_lines = []
             for s in signalements[:3]:
                 try:
-                    # colonne correcte : timestamp (pas created_at)
                     created = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
                     minutes_ago = int((now - created).total_seconds() / 60)
-                    sig_lines.append(f"  → {s['position']} il y a {minutes_ago} min")  # position, pas arret_nom
+                    sig_lines.append(f"  → {s['position']} il y a {minutes_ago} min")
                 except Exception:
                     sig_lines.append(f"  → {s.get('position', '?')}")
             blocks.append(f"[SIGNALEMENTS ACTIFS bus {ligne}]\n" + "\n".join(sig_lines))
@@ -76,13 +99,12 @@ def build_context(
     fiabilite = contact.get("fiabilite_score", 0.5)
     profil_summary = user_memory.get_profil_summary(contact)
     blocks.append(
-        f"[USAGER] Langue: {langue} | "
-        f"Fiabilité: {fiabilite:.0%}"
+        f"[USAGER] Langue: {langue} | Fiabilité: {fiabilite:.0%}"
         + (f" | {profil_summary}" if profil_summary else "")
     )
 
-    # ── [MÉMOIRE RÉSEAU] V2 ───────────────────────────────
-    if ligne and ligne in VALID_LINES:
+    # ── [MÉMOIRE RÉSEAU] ──────────────────────────────────
+    if ligne and ligne in _VALID_LINES:
         try:
             eta = network_memory.get_eta_prediction(ligne)
             mem_ctx = network_memory.format_for_context(eta)
@@ -96,14 +118,18 @@ def build_context(
 
 def _extract_ligne_from_history(history: list) -> str | None:
     """
-    Cherche la dernière ligne mentionnée dans l'historique de conversation.
-    Permet à Sëtu de comprendre 'et le 16 ?' après avoir parlé du 15.
+    Cherche la dernière ligne mentionnée dans l'historique.
+    Regex simple — indépendant de l'ancien extracteur.
+    Permet à Xëtu de comprendre 'et le 16 ?' après avoir parlé du 15.
     """
-    from agent.extractor import _find_ligne, _normalize_text
     for msg in reversed(history):
         content = msg.get("content", "")
-        normalized = _normalize_text(content)
-        ligne, _ = _find_ligne(normalized.upper())
-        if ligne:
-            return ligne
+        match = re.search(
+            r'\b(?:bus|ligne)?\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
+            content, re.IGNORECASE
+        )
+        if match:
+            ligne = match.group(1).upper()
+            if ligne in _VALID_LINES:
+                return ligne
     return None

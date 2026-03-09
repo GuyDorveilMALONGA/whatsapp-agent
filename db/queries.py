@@ -1,11 +1,20 @@
 """
-db/queries.py
+db/queries.py — V4.1
 Règle absolue : SEUL fichier qui touche Supabase.
-Tous les autres modules passent par ici.
+
+V4.1 :
+  + Horaires théoriques Moovit (save_schedules_batch, get_next_theoretical_bus)
+  + Leaderboard limité à 30 jours (évite OOM sur gros volume)
+  + logging ajouté
+  ⚠️  get_leaderboard reste temporaire — migrer vers RPC Supabase
+      (GROUP BY côté DB) avant 50k signalements
 """
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
+import logging
 from db.client import get_client
 from config.settings import SIGNALEMENT_TTL_MINUTES
+
+logger = logging.getLogger(__name__)
 
 
 # ── Contacts ──────────────────────────────────────────────
@@ -20,10 +29,10 @@ def get_or_create_contact(phone: str, langue: str = "fr") -> dict:
             contact["langue"] = langue
         return contact
     new = db.table("contacts").insert({
-        "phone": phone,
-        "langue": langue,
+        "phone":           phone,
+        "langue":          langue,
         "fiabilite_score": 0.5,
-        "profil_json": {}
+        "profil_json":     {}
     }).execute()
     return new.data[0]
 
@@ -43,7 +52,7 @@ def get_or_create_conversation(contact_id: str) -> dict:
         return res.data[0]
     new = db.table("conversations").insert({
         "contact_id": contact_id,
-        "statut": "active"
+        "statut":     "active"
     }).execute()
     return new.data[0]
 
@@ -60,10 +69,10 @@ def save_message(conversation_id: str, role: str, content: str,
     db = get_client()
     db.table("messages").insert({
         "conversation_id": conversation_id,
-        "role": role,
-        "content": content,
-        "langue": langue,
-        "intent": intent
+        "role":            role,
+        "content":         content,
+        "langue":          langue,
+        "intent":          intent
     }).execute()
 
 
@@ -93,12 +102,24 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
 
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
-    """Retourne les signalements non expirés pour une ligne."""
+    """Retourne les signalements non expirés pour une ligne donnée."""
     db = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
              .select("*")
              .eq("ligne", ligne)
+             .gt("expires_at", now)
+             .order("created_at", desc=True)
+             .execute())
+    return res.data or []
+
+
+def get_all_signalements_actifs() -> list[dict]:
+    """Retourne tous les signalements non expirés (toutes lignes — pour /api/buses)."""
+    db = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+    res = (db.table("signalements")
+             .select("*")
              .gt("expires_at", now)
              .order("created_at", desc=True)
              .execute())
@@ -114,14 +135,11 @@ def purge_signalements_expires():
 def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     """Retourne les numéros de lignes sans signalement récent."""
     db = get_client()
-    since = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
-    lignes_res = db.table("lignes").select("numero").eq("actif", True).execute()
-    toutes = {l["numero"] for l in (lignes_res.data or [])}
-    sig_res = (db.table("signalements")
-                 .select("ligne")
-                 .gt("created_at", since)
-                 .execute())
-    actives = {s["ligne"] for s in (sig_res.data or [])}
+    since  = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
+    lignes = db.table("lignes").select("numero").eq("actif", True).execute()
+    toutes = {l["numero"] for l in (lignes.data or [])}
+    sigs   = db.table("signalements").select("ligne").gt("created_at", since).execute()
+    actives = {s["ligne"] for s in (sigs.data or [])}
     return list(toutes - actives)
 
 
@@ -161,8 +179,7 @@ def create_abonnement(phone: str, ligne: str, arret: str,
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
     """Abonnés dont l'heure habituelle approche dans X minutes."""
     db = get_client()
-    now = datetime.now(timezone.utc)
-    heure_cible = (now + timedelta(minutes=avant_minutes)).strftime("%H:%M")
+    heure_cible = (datetime.now(timezone.utc) + timedelta(minutes=avant_minutes)).strftime("%H:%M")
     res = (db.table("abonnements")
              .select("*")
              .eq("actif", True)
@@ -184,7 +201,7 @@ def create_ticket(phone: str, motif: str) -> dict:
     return res.data[0]
 
 
-# ── Lignes (données réseau) ───────────────────────────────
+# ── Lignes ────────────────────────────────────────────────
 
 def get_all_lignes() -> list[dict]:
     db = get_client()
@@ -230,9 +247,7 @@ def set_session(phone: str, etat: str,
         "destination": destination,
         "expires_at":  expires_at,
     }
-    res = (db.table("sessions")
-             .upsert(data, on_conflict="phone")
-             .execute())
+    res = db.table("sessions").upsert(data, on_conflict="phone").execute()
     return res.data[0]
 
 
@@ -247,36 +262,92 @@ def purge_sessions_expires():
     db.table("sessions").delete().lt("expires_at", now).execute()
 
 
-# ── API Buses ─────────────────────────────────────────────
-
-def get_all_signalements_actifs() -> list[dict]:
-    """Retourne tous les signalements non expirés (toutes lignes)."""
-    db = get_client()
-    now = datetime.now(timezone.utc).isoformat()
-    res = (db.table("signalements")
-             .select("*")
-             .gt("expires_at", now)
-             .order("created_at", desc=True)
-             .execute())
-    return res.data or []
-
+# ── Network memory ────────────────────────────────────────
 
 def get_network_memory() -> list[dict]:
-    """Retourne les données de ponctualité par ligne."""
+    """Retourne les données de ponctualité par ligne (pour Dead Reckoning)."""
     db = get_client()
     res = db.table("network_memory").select("*").execute()
     return res.data or []
 
 
+# ── Horaires théoriques Moovit (Phase 3) ──────────────────
+
+def save_schedules_batch(schedules: list[dict]):
+    """
+    Insère ou met à jour les horaires scrappés en masse.
+    Structure attendue par entrée :
+      { ligne, arret, heure_passage, jour_semaine }
+    """
+    db = get_client()
+    try:
+        db.table("schedules").upsert(schedules).execute()
+        logger.info(f"✅ {len(schedules)} horaires insérés/mis à jour.")
+    except Exception as e:
+        logger.error(f"❌ save_schedules_batch: {e}")
+
+
+def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dict]:
+    """
+    Récupère les prochains passages théoriques pour une ligne/arrêt
+    à partir de l'heure actuelle (UTC).
+    Retourne jusqu'à `limit` résultats.
+    """
+    db = get_client()
+    now_time = datetime.now(timezone.utc).strftime("%H:%M")
+    res = (db.table("schedules")
+             .select("heure_passage, arret, ligne")
+             .eq("ligne", ligne)
+             .ilike("arret", f"%{arret}%")
+             .gte("heure_passage", now_time)
+             .order("heure_passage", desc=False)
+             .limit(limit)
+             .execute())
+    return res.data or []
+
+
+def get_first_departure(ligne: str) -> str | None:
+    """
+    Retourne l'heure du premier départ de la journée pour une ligne.
+    Utilisé par Dead Reckoning pour détecter "bus pas encore en service".
+    """
+    db = get_client()
+    res = (db.table("schedules")
+             .select("heure_passage")
+             .eq("ligne", ligne)
+             .order("heure_passage", desc=False)
+             .limit(1)
+             .execute())
+    if res.data:
+        return res.data[0]["heure_passage"]
+    return None
+
+
 # ── API Leaderboard ───────────────────────────────────────
 
 def get_leaderboard(limit: int = 10) -> list[dict]:
-    """Top signaleurs triés par nb_signalements DESC."""
+    """
+    Top signaleurs du mois — triés par nb_signalements DESC.
+
+    ⚠️ DETTE TECHNIQUE : cette fonction charge les messages en mémoire Python.
+    À migrer vers une RPC Supabase (GROUP BY côté DB) avant 50k signalements :
+      CREATE OR REPLACE FUNCTION get_top_users()
+      RETURNS TABLE(phone text, nb bigint) AS $$
+        SELECT c.phone, COUNT(*) as nb
+        FROM messages m
+        JOIN conversations cv ON m.conversation_id = cv.id
+        JOIN contacts c ON cv.contact_id = c.id
+        WHERE m.intent = 'signalement' AND m.role = 'user'
+        GROUP BY c.phone ORDER BY nb DESC LIMIT 10;
+      $$ LANGUAGE sql;
+    """
     db = get_client()
+    un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     res = (db.table("messages")
              .select("conversations(contacts(phone, fiabilite_score))")
              .eq("intent", "signalement")
              .eq("role", "user")
+             .gte("created_at", un_mois)
              .execute())
 
     compteur: dict[str, dict] = {}
@@ -286,23 +357,23 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
             phone   = contact["phone"]
             score   = contact.get("fiabilite_score", 0.5)
             if phone not in compteur:
-                compteur[phone] = {"phone": phone,
-                                   "fiabilite_score": score,
-                                   "nb_signalements": 0}
+                compteur[phone] = {
+                    "phone":           phone,
+                    "fiabilite_score": score,
+                    "nb_signalements": 0,
+                }
             compteur[phone]["nb_signalements"] += 1
         except (KeyError, TypeError):
             continue
 
-    sorted_data = sorted(compteur.values(),
-                         key=lambda x: x["nb_signalements"],
-                         reverse=True)
-    return sorted_data[:limit]
+    return sorted(compteur.values(),
+                  key=lambda x: x["nb_signalements"],
+                  reverse=True)[:limit]
 
 
 def get_stats_communaute() -> dict:
-    """Stats globales : total aujourd'hui, all time, nb contributeurs."""
+    """Stats globales : signalements aujourd'hui, all time, nb contributeurs."""
     db = get_client()
-    from datetime import date
     today_start = datetime.combine(
         date.today(), datetime.min.time()
     ).replace(tzinfo=timezone.utc).isoformat()
@@ -311,22 +382,19 @@ def get_stats_communaute() -> dict:
                    .select("id", count="exact")
                    .gte("created_at", today_start)
                    .execute())
-    aujourd_hui = res_today.count or 0
 
     res_all = (db.table("messages")
                  .select("id", count="exact")
                  .eq("intent", "signalement")
                  .eq("role", "user")
                  .execute())
-    all_time = res_all.count or 0
 
     res_contacts = (db.table("contacts")
                       .select("id", count="exact")
                       .execute())
-    nb_contributeurs = res_contacts.count or 0
 
     return {
-        "aujourd_hui":      aujourd_hui,
-        "all_time":         all_time,
-        "nb_contributeurs": nb_contributeurs,
+        "aujourd_hui":      res_today.count or 0,
+        "all_time":         res_all.count or 0,
+        "nb_contributeurs": res_contacts.count or 0,
     }
