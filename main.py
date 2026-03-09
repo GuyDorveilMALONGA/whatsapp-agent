@@ -1,12 +1,18 @@
 """
-main.py — V5.2 (LLM-Native)
+main.py — V5.3 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
+FIX V5.3 :
+  - history chargé à l'étape 2.5 (avant route_async).
+    Avant : history=None passé au LLM → "Et le 232 ?" sans contexte
+    → LLM ne sait pas que l'usager parlait d'un itinéraire Liberté 5 → Yoff
+    → entities={} → ligne=None → crash ou réponse vide.
+    Après : LLM reçoit l'historique → comprend "Et le 232 ?" comme question
+    sur une alternative d'itinéraire → ligne="232" correctement extrait.
+
 FIX V5.2 :
-  - session déplacée à l'étape 2 (avant route_async) → fix UnboundLocalError
-  - abandon géré depuis intent LLM ET is_abandon() — plus seulement si session.etat
-    Ex: "oublie pour la ligne 8" → LLM retourne intent=abandon → reset + réponse douce
-    Ex: "je ne veux aller nulle part" → même traitement
+  - session déplacée à l'étape 2 → fix UnboundLocalError
+  - abandon géré depuis intent LLM ET is_abandon()
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -33,7 +39,6 @@ from core.session_manager import (
     get_context, is_abandon, reset_context
 )
 
-# ── Routers API ───────────────────────────────────────────
 from api.buses import router as buses_router
 from api.leaderboard import router as leaderboard_router
 
@@ -45,10 +50,9 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar")
 
-# ── CORS — permet au dashboard public d'appeler l'API ─────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # À restreindre à ton domaine en prod
+    allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -60,22 +64,16 @@ _MAX_MESSAGE_LENGTH = 500
 _MIN_MESSAGE_LENGTH = 1
 
 
-# ── Startup ───────────────────────────────────────────────
-
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.2 démarré — Architecture LLM-Native")
+    logger.info("🚌 Xëtu V5.3 démarré — Architecture LLM-Native")
 
-
-# ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.2"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.3"}
 
-
-# ── Webhook Meta — vérification ───────────────────────────
 
 @app.get("/webhook")
 async def verify_webhook(request: Request):
@@ -83,15 +81,11 @@ async def verify_webhook(request: Request):
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
-
     if mode == "subscribe" and token == VERIFY_TOKEN:
         logger.info("✅ Webhook Meta vérifié")
         return PlainTextResponse(challenge)
-
     raise HTTPException(status_code=403, detail="Token invalide")
 
-
-# ── Webhook Meta — messages entrants ─────────────────────
 
 @app.post("/webhook")
 async def receive_message(request: Request):
@@ -122,8 +116,6 @@ async def receive_message(request: Request):
     return {"status": "ok"}
 
 
-# ── Pré-filtres ───────────────────────────────────────────
-
 def _check_message(text: str) -> str | None:
     stripped = text.strip()
     if len(stripped) < _MIN_MESSAGE_LENGTH:
@@ -140,8 +132,6 @@ def _check_message(text: str) -> str | None:
             return None
     return None
 
-
-# ── Pipeline principal ────────────────────────────────────
 
 async def _process_message(phone: str, text: str):
     try:
@@ -164,20 +154,27 @@ async def _process_message_safe(phone: str, text: str):
         normalized = normalize(text)
 
         # ── 2. SESSION — lecture anticipée ────────────────
-        # Lue ici pour être disponible dès l'étape 3 (route_async)
         session = get_context(phone)
 
-        # ── 3. ROUTING & EXTRACTION (Priorité Absolue) ────
-        # LLM retourne intent + lang + entities en une seule passe
-        route_result = await route_async(normalized, history=None, session_context=session)
+        # ── 2.5 HISTORY — chargé AVANT route_async ────────
+        # Critique : le LLM reçoit le contexte conversationnel
+        # pour comprendre "Et le 232 ?" ou "et lui ?" correctement.
+        # On charge via contact temporaire — sera réutilisé à l'étape 7.
+        _contact_pre  = queries.get_or_create_contact(phone, "fr")
+        _conv_pre     = queries.get_or_create_conversation(_contact_pre["id"])
+        history       = queries.get_recent_messages(_conv_pre["id"])
+
+        # ── 3. ROUTING & EXTRACTION ───────────────────────
+        route_result = await route_async(
+            normalized,
+            history=history,
+            session_context=session
+        )
 
         # ── 4. LANGUE ─────────────────────────────────────
         langue = route_result.lang or detect_language(text)
 
         # ── 5. ABANDON ────────────────────────────────────
-        # Double détection :
-        #   a) LLM classifie "abandon" (ex: "oublie pour la ligne 8")
-        #   b) session active + is_abandon() regex (filet de sécurité)
         is_abandon_llm   = (route_result.intent == "abandon")
         is_abandon_regex = (session.etat and is_abandon(text))
         if is_abandon_llm or is_abandon_regex:
@@ -195,12 +192,7 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # ── 5.5 HISTORY pour les flows multi-tour ─────────
-        _contact_tmp = queries.get_or_create_contact(phone, langue)
-        _conv_tmp    = queries.get_or_create_conversation(_contact_tmp["id"])
-        history      = queries.get_recent_messages(_conv_tmp["id"])
-
-        # ── 6. FLOW MULTI-TOUR (entities injectées) ───────
+        # ── 6. FLOW MULTI-TOUR ────────────────────────────
         if session.etat == "attente_arret":
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
@@ -225,11 +217,13 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "itineraire")
             return
 
-        # ── 7. DB — seulement maintenant ──────────────────
+        # ── 7. DB — contact/conv définitifs ───────────────
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
-        history      = queries.get_recent_messages(conv_id)
+        # Recharge history avec la langue correcte si elle a changé
+        if contact["id"] != _contact_pre["id"]:
+            history = queries.get_recent_messages(conv_id)
 
         # ── 8. PREMIER MESSAGE → accueil ──────────────────
         if not history:
@@ -238,7 +232,7 @@ async def _process_message_safe(phone: str, text: str):
         # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 10. DISPATCH (entities injectées) ─────────────
+        # ── 10. DISPATCH ──────────────────────────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -275,8 +269,6 @@ async def _process_message_safe(phone: str, text: str):
         await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
-# ── Dispatch ──────────────────────────────────────────────
-
 async def _dispatch(text: str, intent: str, contact: dict,
                     langue: str, conv_id: str, history: list,
                     entities: dict) -> str:
@@ -303,8 +295,6 @@ async def _dispatch(text: str, intent: str, contact: dict,
         )
         return await generate_response(ctx, langue, history)
 
-
-# ── Proactivité ───────────────────────────────────────────
 
 async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
     try:
