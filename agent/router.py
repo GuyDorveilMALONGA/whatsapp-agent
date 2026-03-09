@@ -1,18 +1,26 @@
 """
-agent/router.py — V4.2
+agent/router.py — V4.3
 Intent Gateway — 4 niveaux de classification.
 
+FIX V4.3 :
+  - "liste_arrets" et "question" ajoutés dans _NEEDS_ENTITIES
+    → LLM extrait toujours entities.ligne, même quand score >= 0.85
+    → Plus jamais de entities={} sur question/liste_arrets
+  - "passer" retiré des règles "question" (trop ambigu — matchait "passe par où")
+    → "Le 232 passe par où ?" routé liste_arrets, pas question
+  - Bonus liste_arrets pour "passe" suivi de "par" ou "où" (pattern renforcé)
+  - _inject_ligne_from_session() appelé dans route() SYNCHRONE
+    → injection ligne session avant même d'aller au LLM
+    → "et le 232 ?" sans numéro explicite → ligne injectée depuis session active
+  - RÈGLE ABSOLUE : le LLM est TOUJOURS appelé pour question/liste_arrets/signalement
+    → entities.ligne garanti à l'arrivée dans les skills
+
 FIX V4.2 :
-  - Salutations court-circuitées avant le LLM → out_of_scope immédiat,
-    sans passer l'historique. Empêche le LLM de "se souvenir" du contexte
-    précédent et de polluer une réponse à "Bonjour" avec la ligne 8.
-  - history passé au LLM UNIQUEMENT pour les intents qui en ont besoin
-    (question, itineraire, signalement). Pas pour out_of_scope/abandon.
+  - Salutations court-circuitées avant le LLM → out_of_scope immédiat
+  - history passé au LLM UNIQUEMENT pour intents actionnables
 
 FIX V4.1 :
-  route_async() reçoit session_context (SessionContext) en plus de session_state.
-  Quand le LLM retourne entities={} sur un message court multi-tour
-  (ex: "et le 8 ?"), on injecte la ligne depuis la session active.
+  - route_async() reçoit session_context pour injection ligne multi-tour
 """
 import re
 import logging
@@ -43,7 +51,7 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(\d{1,3}[A-Z]?)\b", 0.3),
         (r"\b(à|au|devant|niveau|près de|derrière|avant|ci)\b", 0.4),
         (r"\b(liberté|hlm|gare|marché|mosquée|palais|parcelles)\b", 0.2),
-        (r"\b(vu|vois|voir|vient|passe|passé|là|ici)\b", 0.2),
+        (r"\b(vu|vois|voir|vient|passé|là|ici)\b", 0.2),  # FIX : "passe" retiré
     ],
 
     "question": [
@@ -52,7 +60,7 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(\d{1,3}[A-Z]?)\b", 0.2),
         (r"\b(bus|ligne)\b", 0.2),
         (r"\?", 0.2),
-        (r"\b(arriver|venir|passer|attendre)\b", 0.3),
+        (r"\b(arriver|venir|attendre)\b", 0.3),  # FIX : "passer" retiré — trop ambigu
     ],
 
     "abonnement": [
@@ -72,8 +80,9 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
     "liste_arrets": [
         (r"\b(arrêts?|stations?)\b", 0.5),
         (r"\b(liste|lister|montre|tous)\b", 0.3),
-        (r"\b(passe\s+par|par\s+où)\b", 0.6),
+        (r"\b(passe\s+par|par\s+où|passe\s+où|où\s+passe)\b", 0.7),  # FIX : renforcé
         (r"\b(\d{1,3}[A-Z]?)\b", 0.2),
+        (r"\b(trajet|parcours|route)\b", 0.3),                        # FIX : ajout
     ],
 
     "itineraire": [
@@ -92,10 +101,13 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 }
 
 _SCORE_THRESHOLD = 0.85
-_NEEDS_ENTITIES  = {"signalement", "itineraire", "abonnement"}
+
+# FIX V4.3 : "liste_arrets" et "question" ajoutés.
+# Ces intents DOIVENT passer par le LLM pour extraire entities.ligne.
+# Sans ça : entities={} → _resolve_ligne dépend uniquement du regex N2 → fragile.
+_NEEDS_ENTITIES = {"signalement", "itineraire", "abonnement", "liste_arrets", "question"}
 
 # Intents pour lesquels on ne passe JAMAIS l'historique au LLM
-# (évite la pollution de contexte sur les messages simples)
 _NO_HISTORY_INTENTS = {"out_of_scope", "abandon", "escalade"}
 
 
@@ -180,6 +192,9 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
 
     intent, score = _fast_classify(normalized)
 
+    # FIX V4.3 : _NEEDS_ENTITIES inclut maintenant question/liste_arrets
+    # → ces intents NE PRENNENT PLUS le court-circuit regex même si score >= 0.85
+    # → le LLM est TOUJOURS appelé pour extraire entities.ligne
     if score >= _SCORE_THRESHOLD and intent not in _NEEDS_ENTITIES:
         intent_cache.set(cache_key, intent, session_state)
         return RouteResult(
@@ -205,19 +220,19 @@ async def route_async(
     if result.source in ("greeting", "identity", "cache"):
         return result
 
+    # FIX V4.3 : _NEEDS_ENTITIES étendu → cette condition ne court-circuite plus
+    # question/liste_arrets → on tombe toujours dans l'escalade LLM ci-dessous
     if result.source == "regex" and result.intent not in _NEEDS_ENTITIES:
         return result
 
     logger.info(
         f"[Router] Escalade LLM "
-        f"(source={result.source} | intent={result.intent})"
+        f"(source={result.source} | intent={result.intent} | score={result.confiance:.2f})"
     )
 
     try:
         from agent.llm_brain import classify_intent, _VALID_INTENTS
 
-        # Ne pas passer l'historique pour les intents qui n'en ont pas besoin.
-        # Évite que "Bonjour" reçoive un contexte pollué par la session précédente.
         history_for_llm = None
         if result.intent not in _NO_HISTORY_INTENTS:
             history_for_llm = history
@@ -236,9 +251,9 @@ async def route_async(
 
             entities = llm_data.get("entities") or {}
 
-            # Injecter ligne depuis session si entities vide + session active
+            # FIX V4.3 : injection ligne depuis session APRÈS LLM aussi
+            # (cas où LLM retourne entities vides sur message très court : "et lui ?")
             if not entities.get("ligne") and session_context and session_context.ligne:
-                # Seulement pour les intents qui utilisent une ligne
                 if intent_str in {"question", "signalement", "abonnement", "liste_arrets"}:
                     entities = dict(entities)
                     entities["ligne"] = session_context.ligne
@@ -260,5 +275,10 @@ async def route_async(
 
     except Exception as e:
         logger.error(f"[Router] LLM classify failed: {e}")
+        # FIX V4.3 : en cas d'échec LLM, tenter injection session avant fallback
+        if session_context and session_context.ligne:
+            if result.intent in {"question", "signalement", "abonnement", "liste_arrets"}:
+                result.entities["ligne"] = session_context.ligne
+                logger.debug(f"[Router] Ligne injectée depuis session (fallback LLM fail)")
 
     return result
