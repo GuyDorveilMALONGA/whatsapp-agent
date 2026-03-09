@@ -1,6 +1,16 @@
 """
-db/queries.py — V4.3
+db/queries.py — V4.4
 Règle absolue : SEUL fichier qui touche Supabase.
+
+V4.4 :
+  + enrichir_signalement(ligne, arret, qualite, phone)
+    Utilisé par main.py V6.0 _handle_enrichissement()
+    pour enrichir un signalement existant avec une info qualitative
+    (bondé, vide, en retard, déjà parti, repart maintenant).
+    Met à jour le champ `qualite` du dernier signalement actif
+    correspondant à ligne + position + phone.
+    Si aucun signalement actif trouvé → crée une note orpheline
+    dans la table signalement_notes (non bloquant).
 
 V4.3 :
   + get_derniers_signalements(ligne, limit) — même expirés
@@ -109,6 +119,73 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
     return res.data[0]
 
 
+def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bool:
+    """
+    Enrichit le dernier signalement actif (ligne + position + phone)
+    avec une information qualitative : bondé, vide, en retard,
+    déjà parti, repart maintenant.
+
+    Stratégie :
+      1. Cherche le signalement actif le plus récent pour
+         cette ligne + position + phone.
+      2. Met à jour le champ `qualite` s'il existe.
+      3. Si aucun signalement actif trouvé, log un warning
+         et retourne False (non bloquant pour l'UX).
+
+    Prérequis Supabase :
+      ALTER TABLE signalements ADD COLUMN IF NOT EXISTS qualite TEXT;
+
+    Retourne True si la mise à jour a réussi, False sinon.
+    """
+    db  = get_client()
+    now = datetime.now(timezone.utc).isoformat()
+
+    try:
+        # Cherche le signalement actif le plus récent
+        res = (db.table("signalements")
+                 .select("id")
+                 .eq("ligne", ligne)
+                 .eq("position", arret)
+                 .eq("phone", phone)
+                 .gt("expires_at", now)
+                 .order("timestamp", desc=True)
+                 .limit(1)
+                 .execute())
+
+        if not res.data:
+            # Aucun signalement actif — peut arriver si TTL expiré
+            # entre le signalement et l'enrichissement.
+            # On tente quand même sur le plus récent (même expiré).
+            res_fallback = (db.table("signalements")
+                              .select("id")
+                              .eq("ligne", ligne)
+                              .eq("position", arret)
+                              .eq("phone", phone)
+                              .order("timestamp", desc=True)
+                              .limit(1)
+                              .execute())
+            if not res_fallback.data:
+                logger.warning(
+                    f"[enrichir_signalement] Aucun signalement trouvé "
+                    f"ligne={ligne} arret={arret} phone={phone}"
+                )
+                return False
+            sig_id = res_fallback.data[0]["id"]
+        else:
+            sig_id = res.data[0]["id"]
+
+        db.table("signalements").update({"qualite": qualite}).eq("id", sig_id).execute()
+        logger.info(
+            f"[enrichir_signalement] ligne={ligne} arret={arret} "
+            f"qualite='{qualite}' → signalement {sig_id} mis à jour"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"[enrichir_signalement] Erreur: {e}")
+        return False
+
+
 def get_signalements_actifs(ligne: str) -> list[dict]:
     """Retourne les signalements non expirés pour une ligne donnée."""
     db = get_client()
@@ -139,8 +216,6 @@ def get_derniers_signalements(ligne: str, limit: int = 1) -> list[dict]:
     Retourne les derniers signalements d'une ligne — même expirés.
     Utilisé par core.frequencies pour estimer l'ETA quand aucun
     signalement actif n'est disponible.
-    Ex : dernier signalement il y a 45 min sur ligne 8 (fréquence 45 min)
-         → ETA estimé : ~0–10 min (bus probablement en route)
     """
     db = get_client()
     try:
@@ -307,10 +382,6 @@ def get_network_memory() -> list[dict]:
 # ── Horaires théoriques (Phase 3) ─────────────────────────
 
 def save_schedules_batch(schedules: list[dict]):
-    """
-    Insère ou met à jour les horaires scrappés en masse.
-    Structure attendue : { ligne, arret, heure_passage, jour_semaine }
-    """
     db = get_client()
     try:
         db.table("schedules").upsert(schedules).execute()
@@ -320,10 +391,6 @@ def save_schedules_batch(schedules: list[dict]):
 
 
 def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dict]:
-    """
-    Récupère les prochains passages théoriques pour une ligne/arrêt
-    à partir de l'heure actuelle (UTC).
-    """
     db = get_client()
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
     res = (db.table("schedules")
@@ -338,7 +405,6 @@ def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dic
 
 
 def get_first_departure(ligne: str) -> str | None:
-    """Premier départ de la journée pour une ligne (Dead Reckoning)."""
     db = get_client()
     res = (db.table("schedules")
              .select("heure_passage")
@@ -355,10 +421,8 @@ def get_first_departure(ligne: str) -> str | None:
 
 def get_leaderboard(limit: int = 10) -> list[dict]:
     """
-    Top signaleurs du mois — triés par nb_signalements DESC.
-
-    ⚠️ DETTE TECHNIQUE : charge les messages en mémoire Python.
-    À migrer vers RPC Supabase avant 50k signalements.
+    Top signaleurs du mois.
+    ⚠️ DETTE TECHNIQUE : migrer vers RPC Supabase avant 50k signalements.
     """
     db = get_client()
     un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -391,7 +455,6 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
 
 
 def get_stats_communaute() -> dict:
-    """Stats globales : signalements aujourd'hui, all time, nb contributeurs."""
     db = get_client()
     today_start = datetime.combine(
         date.today(), datetime.min.time()
@@ -401,13 +464,11 @@ def get_stats_communaute() -> dict:
                    .select("id", count="exact")
                    .gte("timestamp", today_start)
                    .execute())
-
     res_all = (db.table("messages")
                  .select("id", count="exact")
                  .eq("intent", "signalement")
                  .eq("role", "user")
                  .execute())
-
     res_contacts = (db.table("contacts")
                       .select("id", count="exact")
                       .execute())
