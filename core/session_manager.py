@@ -1,7 +1,13 @@
 """
-core/session_manager.py — V4
+core/session_manager.py — V4.1
 État conversationnel 100% persisté dans Supabase.
 Zéro état local (Stateless) pour permettre le scale multi-instances.
+
+FIX V4.1 :
+  + set_session() ajouté — setter générique utilisé par
+    skills/itineraire.py V4.2 (_save_itineraire_session et handle_alternatives)
+    pour sauvegarder origin/dest/exclude_lines après chaque itinéraire réussi.
+    Avant : ImportError au démarrage → crash prod immédiat.
 
 POURQUOI V4 :
   V3.1 avait un _fallback mémoire locale → sur 2 instances Railway,
@@ -65,6 +71,33 @@ def get_context(phone: str) -> SessionContext:
 
 
 # ── Setters ───────────────────────────────────────────────
+
+def set_session(phone: str,
+                etat: str | None = None,
+                ligne: str | None = None,
+                destination: str | None = None,
+                signalement: dict | None = None):
+    """
+    FIX V4.1 — Setter générique.
+    Utilisé par skills/itineraire.py pour sauvegarder l'état
+    après un itinéraire réussi (origin, dest, exclude_lines).
+    Délègue à queries.set_session — seul fichier qui touche Supabase.
+    """
+    try:
+        queries.set_session(
+            phone=phone,
+            etat=etat,
+            ligne=ligne,
+            destination=destination,
+            signalement=signalement,
+        )
+        logger.debug(
+            f"[Session] {phone[-4:]} → set_session "
+            f"(etat={etat}, ligne={ligne}, dest={destination})"
+        )
+    except Exception as e:
+        logger.error(f"[Session] set_session Supabase KO: {e}")
+
 
 def set_attente_arret(phone: str, ligne: str, signalement: dict):
     try:
