@@ -1,103 +1,73 @@
-/**
- * js/app.js
- * Point d'entrée — orchestre Api, MapManager, UI.
- * Aucune logique de rendu ici, seulement la coordination.
- *
- * Dépend de (dans l'ordre de chargement) :
- *   utils.js → api.js → map.js → ui.js → app.js
- */
+"""
+api/leaderboard.py
+GET /api/leaderboard — Top signaleurs gamifiés.
 
-// ── STATE ─────────────────────────────────────────────────
-const State = {
-  buses:      [],
-  leaderboard: [],
-  selectedId: null,
-};
+Utilise fiabilite_score et le nombre de signalements
+depuis la table contacts + signalements.
+"""
 
-// ── INIT ─────────────────────────────────────────────────
+import logging
+from fastapi import APIRouter
+from db import queries
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Carte
-  MapManager.init('map', onBusSelect);
+logger = logging.getLogger(__name__)
+router = APIRouter()
 
-  // Tabs sidebar
-  UI.initTabs();
 
-  // Boutons WhatsApp
-  _bindWhatsAppButtons();
+def _badge(nb_signalements: int) -> dict:
+    """Retourne le badge selon le nombre de signalements."""
+    if nb_signalements >= 100:
+        return {"emoji": "🏆", "label": "Légende",  "niveau": 4}
+    elif nb_signalements >= 51:
+        return {"emoji": "🥇", "label": "Expert",   "niveau": 3}
+    elif nb_signalements >= 11:
+        return {"emoji": "🥈", "label": "Régulier", "niveau": 2}
+    else:
+        return {"emoji": "🥉", "label": "Nouveau",  "niveau": 1}
 
-  // Premier chargement
-  loadAndRender().then(() => {
-    UI.startTimer(Config.REFRESH_SEC, onTimerComplete);
-  });
-});
 
-// ── CHARGEMENT ────────────────────────────────────────────
+def _masquer_phone(phone: str) -> str:
+    """Masque le numéro : +221 77 **** 1234"""
+    if len(phone) >= 4:
+        return f"**** {phone[-4:]}"
+    return "****"
 
-/**
- * Charge les données et met à jour toute l'interface.
- */
-async function loadAndRender() {
-  const data = await Api.fetchAll();
 
-  State.buses       = data.buses       || [];
-  State.leaderboard = data.leaderboard || [];
+@router.get("/api/leaderboard")
+async def get_leaderboard():
+    """
+    Retourne le top 10 des signaleurs + stats globales communauté.
+    """
+    try:
+        data = queries.get_leaderboard()
+    except Exception as e:
+        logger.error(f"[/api/leaderboard] Erreur: {e}")
+        return {"leaderboard": [], "stats": {}, "error": "db_error"}
 
-  // Carte
-  MapManager.updateMarkers(State.buses, State.selectedId);
+    leaderboard = []
+    for i, entry in enumerate(data[:10]):
+        nb   = entry.get("nb_signalements", 0)
+        score = entry.get("fiabilite_score", 0.5)
+        badge = _badge(nb)
+        leaderboard.append({
+            "rang":            i + 1,
+            "pseudo":          _masquer_phone(entry.get("phone", "")),
+            "nb_signalements": nb,
+            "fiabilite_score": round(score * 100),  # 0–100
+            "badge":           badge,
+        })
 
-  // Sidebar
-  UI.renderBusList(State.buses, State.selectedId, onBusSelect);
-  UI.renderLeaderboard(State.leaderboard);
+    # Stats globales
+    try:
+        stats = queries.get_stats_communaute()
+    except Exception:
+        stats = {}
 
-  // Stats bar
-  UI.updateStats(State.buses.length, data.stats || {});
-}
-
-// ── CALLBACKS ─────────────────────────────────────────────
-
-/**
- * Appelé quand l'usager clique sur un bus (carte ou sidebar).
- * @param {number} busId
- */
-function onBusSelect(busId) {
-  State.selectedId = busId;
-
-  const bus = State.buses.find(b => b.id === busId);
-  if (!bus) return;
-
-  // Highlight sidebar
-  UI.selectBusCard(busId);
-
-  // Fly to + popup
-  MapManager.flyToBus(bus);
-
-  // Redessiner les markers pour refléter la sélection
-  MapManager.updateMarkers(State.buses, State.selectedId);
-}
-
-/**
- * Appelé quand le timer atteint 0 — rafraîchit les données.
- */
-async function onTimerComplete() {
-  await loadAndRender();
-  UI.startTimer(Config.REFRESH_SEC, onTimerComplete);
-}
-
-// ── WHATSAPP ──────────────────────────────────────────────
-
-function _bindWhatsAppButtons() {
-  const defaultMsg = 'Bonjour Xëtu ! Je veux signaler un bus 🚌';
-
-  ['btn-signal-main', 'btn-signal-mobile'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) {
-      btn.addEventListener('click', () => {
-        window.open(
-          Utils.buildWhatsAppUrl(Config.WA_NUMBER, defaultMsg),
-          '_blank'
-        );
-      });
+    return {
+        "leaderboard": leaderboard,
+        "stats": {
+            "total_signalements_aujourd_hui": stats.get("aujourd_hui", 0),
+            "total_signalements_all_time":    stats.get("all_time", 0),
+            "nb_contributeurs":               stats.get("nb_contributeurs", 0),
+        }
     }
-  });
-}
