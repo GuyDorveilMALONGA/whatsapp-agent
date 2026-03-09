@@ -1,11 +1,15 @@
 """
-main.py — V5.0
+main.py — V5.1
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-V5.0 :
-  + entities propagées dans _dispatch → tous les skills reçoivent les entités LLM
-  + CORS + /api/buses + /api/leaderboard
-  FIX CRITIQUE : TypeError handle() missing 'entities' → résolu
+V5.1 :
+  + route_async remonté en étape 2 (avant session et DB)
+  + langue depuis route_result.lang avec fallback detect_language
+  + entities propagées dans _dispatch
+  + extract() supprimé des étapes 12 et 14
+  + handle_origin_response + handle_arret_response reçoivent entities
+  FIX : "je veux me rendre à X" classifié itineraire (pas question)
+  FIX : TypeError handle() missing 'entities' définitivement résolu
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -20,7 +24,6 @@ from db import queries
 from agent.router import route_async
 from agent.normalizer import normalize
 from core.context_builder import build_context
-from agent.extractor import extract
 import core.queue_manager as queue_manager
 import skills.signalement as skill_signalement
 import skills.question as skill_question
@@ -62,14 +65,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.0 démarré")
+    logger.info("🚌 Xëtu V5.1 démarré")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.0"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.1"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -158,13 +161,23 @@ async def _process_message_safe(phone: str, text: str):
         # ── 1. NORMALISATION ──────────────────────────────
         normalized = normalize(text)
 
-        # ── 2. LANGUE ─────────────────────────────────────
-        langue = detect_language(text)
+        # ── 2. ROUTING & EXTRACTION ───────────────────────
+        # Remonté en étape 2 : LLM extrait intent + langue + entities
+        # en une seule passe AVANT toute autre logique.
+        # FIX : "je veux me rendre à X" → itineraire (pas question)
+        route_result = await route_async(normalized, history=None)
+        entities = route_result.entities if hasattr(route_result, "entities") else {}
+        entities = entities or {}
 
-        # ── 3. SESSION ────────────────────────────────────
+        # ── 3. LANGUE ─────────────────────────────────────
+        # Priorité LLM → fallback règles
+        langue = route_result.lang or detect_language(text)
+
+        # ── 4. SESSION — lecture unique ───────────────────
+        # Règle absolue : get_context appelé UNE SEULE FOIS.
         session = get_context(phone)
 
-        # ── 4. ABANDON DE FLOW ────────────────────────────
+        # ── 5. ABANDON DE FLOW ────────────────────────────
         if session.etat and is_abandon(text):
             reset_context(phone)
             contact      = queries.get_or_create_contact(phone, langue)
@@ -180,7 +193,9 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # ── 5. FLOW MULTI-TOUR ────────────────────────────
+        # ── 6. FLOW MULTI-TOUR ────────────────────────────
+        # entities passées pour récupérer no_transfer_preference
+        # et l'arrêt si le LLM l'a extrait du message court.
         from skills.question import handle_arret_response
         from skills.itineraire import handle_origin_response
 
@@ -188,7 +203,7 @@ async def _process_message_safe(phone: str, text: str):
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
-            response = await handle_arret_response(phone, text, langue)
+            response = await handle_arret_response(phone, text, langue, entities)
             queries.save_message(conv_id, "user",      text,     langue, "question")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "question")
@@ -198,16 +213,13 @@ async def _process_message_safe(phone: str, text: str):
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
-            response = await handle_origin_response(phone, text, langue)
+            response = await handle_origin_response(phone, text, langue, entities)
             queries.save_message(conv_id, "user",      text,     langue, "itineraire")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "itineraire")
             return
 
-        # ── 6. ROUTING (AVANT DB) ─────────────────────────
-        route_result = await route_async(normalized, history=None)
-
-        # ── 7. DB ─────────────────────────────────────────
+        # ── 7. DB — seulement maintenant ──────────────────
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
@@ -220,10 +232,7 @@ async def _process_message_safe(phone: str, text: str):
         # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 10. DISPATCH — entities propagées ─────────────
-        entities = route_result.entities if hasattr(route_result, "entities") else {}
-        entities = entities or {}
-
+        # ── 10. DISPATCH ──────────────────────────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -238,9 +247,10 @@ async def _process_message_safe(phone: str, text: str):
         await send_message(phone, response)
 
         # ── 12. PROACTIVITÉ ───────────────────────────────
-        extracted = extract(text)
-        if route_result.intent == "signalement" and extracted.ligne:
-            await _proposer_abonnement_si_nouveau(phone, extracted.ligne, langue)
+        # Lecture depuis entities LLM — plus d'appel extract()
+        ligne_extraite = entities.get("ligne")
+        if route_result.intent == "signalement" and ligne_extraite:
+            await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue)
 
         # ── 13. SAUVEGARDE réponse ────────────────────────
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
@@ -251,8 +261,11 @@ async def _process_message_safe(phone: str, text: str):
             contact=contact,
             langue=langue,
             intent=route_result.intent,
-            ligne=extracted.ligne,
-            arret=extracted.arret,
+            ligne=ligne_extraite,
+            arret=(
+                entities.get("origin")
+                or entities.get("destination")
+            ),
         )
 
     except Exception as e:
@@ -265,29 +278,18 @@ async def _process_message_safe(phone: str, text: str):
 async def _dispatch(text: str, intent: str, contact: dict,
                     langue: str, conv_id: str, history: list,
                     entities: dict) -> str:
-    """
-    Dispatch vers les skills.
-    entities = dict extrait par le LLM (ligne, origin, destination, arret...)
-    Chaque skill reçoit entities pour ne pas re-parser le texte brut.
-    """
     if intent == "signalement":
         return await skill_signalement.handle(text, contact, langue, entities)
-
     elif intent == "question":
         return await skill_question.handle(text, contact, langue, history, entities)
-
     elif intent == "liste_arrets":
         return await skill_question.handle_liste_arrets(text, contact, langue, entities)
-
     elif intent == "abonnement":
         return await skill_abonnement.handle(text, contact, langue, entities)
-
     elif intent == "escalade":
         return await skill_escalade.handle(text, contact, langue, conv_id)
-
     elif intent == "itineraire":
         return await skill_itineraire.handle(text, contact, langue, entities)
-
     else:
         from agent.llm_brain import generate_response
         ctx = build_context(
