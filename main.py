@@ -1,15 +1,7 @@
 """
-main.py — V5.1
+main.py — V5.0 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
-
-V5.1 :
-  + route_async remonté en étape 2 (avant session et DB)
-  + langue depuis route_result.lang avec fallback detect_language
-  + entities propagées dans _dispatch
-  + extract() supprimé des étapes 12 et 14
-  + handle_origin_response + handle_arret_response reçoivent entities
-  FIX : "je veux me rendre à X" classifié itineraire (pas question)
-  FIX : TypeError handle() missing 'entities' définitivement résolu
+Refonte : Routing asynchrone prioritaire + Slot Filling centralisé.
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -35,6 +27,8 @@ from memory import user_memory
 from core.session_manager import (
     get_context, is_abandon, reset_context
 )
+
+# ── Routers API ───────────────────────────────────────────
 from api.buses import router as buses_router
 from api.leaderboard import router as leaderboard_router
 
@@ -46,9 +40,10 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar")
 
+# ── CORS — permet au dashboard public d'appeler l'API ─────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],   # À restreindre à ton domaine en prod
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -65,14 +60,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.1 démarré")
+    logger.info("🚌 Xëtu V5.0 démarré — Architecture LLM-Native")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.1"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.0"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -83,9 +78,11 @@ async def verify_webhook(request: Request):
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
+
     if mode == "subscribe" and token == VERIFY_TOKEN:
         logger.info("✅ Webhook Meta vérifié")
         return PlainTextResponse(challenge)
+
     raise HTTPException(status_code=403, detail="Token invalide")
 
 
@@ -143,6 +140,8 @@ def _check_message(text: str) -> str | None:
 
 async def _process_message(phone: str, text: str):
     try:
+        # Note: Asyncio lock limitant pour le multi-instance.
+        # À migrer vers Redis Redlock pour le vrai scale.
         async with queue_manager.process(phone):
             await _process_message_safe(phone, text)
     except Exception as e:
@@ -161,20 +160,15 @@ async def _process_message_safe(phone: str, text: str):
         # ── 1. NORMALISATION ──────────────────────────────
         normalized = normalize(text)
 
-        # ── 2. ROUTING & EXTRACTION ───────────────────────
-        # Remonté en étape 2 : LLM extrait intent + langue + entities
-        # en une seule passe AVANT toute autre logique.
-        # FIX : "je veux me rendre à X" → itineraire (pas question)
+        # ── 2. ROUTING & EXTRACTION (Priorité Absolue) ────
+        # LLM retourne intent + lang + entities en une seule passe
         route_result = await route_async(normalized, history=None)
-        entities = route_result.entities if hasattr(route_result, "entities") else {}
-        entities = entities or {}
 
         # ── 3. LANGUE ─────────────────────────────────────
-        # Priorité LLM → fallback règles
+        # Langue vient du LLM, fallback règles si absente
         langue = route_result.lang or detect_language(text)
 
-        # ── 4. SESSION — lecture unique ───────────────────
-        # Règle absolue : get_context appelé UNE SEULE FOIS.
+        # ── 4. SESSION — lecture ──────────────────────────
         session = get_context(phone)
 
         # ── 5. ABANDON DE FLOW ────────────────────────────
@@ -193,17 +187,14 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # ── 6. FLOW MULTI-TOUR ────────────────────────────
-        # entities passées pour récupérer no_transfer_preference
-        # et l'arrêt si le LLM l'a extrait du message court.
-        from skills.question import handle_arret_response
-        from skills.itineraire import handle_origin_response
-
+        # ── 6. FLOW MULTI-TOUR (entities injectées) ───────
         if session.etat == "attente_arret":
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
-            response = await handle_arret_response(phone, text, langue, entities)
+            response = await skill_question.handle_arret_response(
+                phone, text, langue, route_result.entities
+            )
             queries.save_message(conv_id, "user",      text,     langue, "question")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "question")
@@ -213,7 +204,9 @@ async def _process_message_safe(phone: str, text: str):
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
-            response = await handle_origin_response(phone, text, langue, entities)
+            response = await skill_itineraire.handle_origin_response(
+                phone, text, langue, route_result.entities
+            )
             queries.save_message(conv_id, "user",      text,     langue, "itineraire")
             await send_message(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "itineraire")
@@ -232,7 +225,7 @@ async def _process_message_safe(phone: str, text: str):
         # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 10. DISPATCH ──────────────────────────────────
+        # ── 10. DISPATCH (entities injectées) ─────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -240,15 +233,14 @@ async def _process_message_safe(phone: str, text: str):
             langue=langue,
             conv_id=conv_id,
             history=history,
-            entities=entities,
+            entities=route_result.entities,
         )
 
         # ── 11. ENVOI ─────────────────────────────────────
         await send_message(phone, response)
 
         # ── 12. PROACTIVITÉ ───────────────────────────────
-        # Lecture depuis entities LLM — plus d'appel extract()
-        ligne_extraite = entities.get("ligne")
+        ligne_extraite = route_result.entities.get("ligne")
         if route_result.intent == "signalement" and ligne_extraite:
             await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue)
 
@@ -262,10 +254,7 @@ async def _process_message_safe(phone: str, text: str):
             langue=langue,
             intent=route_result.intent,
             ligne=ligne_extraite,
-            arret=(
-                entities.get("origin")
-                or entities.get("destination")
-            ),
+            arret=route_result.entities.get("origin") or route_result.entities.get("destination"),
         )
 
     except Exception as e:
@@ -278,12 +267,13 @@ async def _process_message_safe(phone: str, text: str):
 async def _dispatch(text: str, intent: str, contact: dict,
                     langue: str, conv_id: str, history: list,
                     entities: dict) -> str:
+
     if intent == "signalement":
         return await skill_signalement.handle(text, contact, langue, entities)
     elif intent == "question":
         return await skill_question.handle(text, contact, langue, history, entities)
     elif intent == "liste_arrets":
-        return await skill_question.handle_liste_arrets(text, contact, langue, entities)
+        return await skill_question.handle_liste_arrets(text, contact, langue, entities, history)
     elif intent == "abonnement":
         return await skill_abonnement.handle(text, contact, langue, entities)
     elif intent == "escalade":

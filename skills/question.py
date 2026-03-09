@@ -1,16 +1,11 @@
 """
-skills/question.py — V4.1
-Répond à "le bus X est où ?" avec les signalements actifs.
+skills/question.py — V5
+Répond à "le bus X est où ?" et "quels sont les arrêts du bus X ?"
 
-V4.1 FIX CRITIQUE :
-  - Chargement JSON corrigé : itère sur data["categories"].values()
-    au lieu d'itérer sur le dict racine (bug silencieux → _VALID_LINES vide)
-  - Résultat avant fix : "La ligne 232 n'existe pas" — FAUX.
-    Toutes les lignes étaient rejetées car _VALID_LINES était toujours vide.
-
-Flow multi-tour :
-1. Xëtu trouve un signalement → demande l'arrêt de l'usager
-2. L'usager répond son arrêt → Xëtu calcule la distance et le temps estimé
+FIX DÉFINITIF :
+  1. Chargement JSON lazy + validation au démarrage
+  2. entities enrichies depuis l'historique si vides (fallback multi-tour)
+  3. handle_liste_arrets : ligne depuis entities OU historique
 """
 import json
 import logging
@@ -27,33 +22,30 @@ logger = logging.getLogger(__name__)
 _MINUTES_PAR_ARRET = 3
 
 # ── Chargement source de vérité ───────────────────────────
-# Structure JSON : {"categories": {"urbaines": [...], "banlieue": [...], ...}}
 _NETWORK: dict    = {}
 _VALID_LINES: set = set()
 
-try:
-    with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
-        _RAW = json.load(f)
+def _load_json():
+    global _NETWORK, _VALID_LINES
+    try:
+        with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
+            _RAW = json.load(f)
+        for _lines in _RAW.get("categories", {}).values():
+            for _line in _lines:
+                num = str(_line.get("number", "")).upper()
+                if num:
+                    _NETWORK[num] = _line
+                    _VALID_LINES.add(num)
+        logger.info(f"[Question] JSON chargé : {len(_VALID_LINES)} lignes")
+    except Exception as e:
+        logger.error(f"[Question] Erreur critique chargement JSON : {e}")
 
-    # ✅ FIX : itérer sur categories.values() puis sur chaque ligne
-    # ❌ AVANT (cassé) : for line in _LINES_DATA → itérait sur les clés du dict
-    for _lines in _RAW.get("categories", {}).values():
-        for _line in _lines:
-            num = str(_line.get("number", "")).upper()
-            if num:
-                _NETWORK[num] = _line
-                _VALID_LINES.add(num)
-
-    logger.info(f"[Question] JSON chargé : {len(_VALID_LINES)} lignes — {sorted(_VALID_LINES)}")
-
-except Exception as e:
-    logger.error(f"[Question] Erreur critique chargement JSON : {e}")
+_load_json()
 
 
-# ── Arrêts ────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────
 
 def _get_stops(ligne: str) -> list[str]:
-    """Retourne les noms d'arrêts en minuscules. Règle 10 : stop['nom']."""
     line_data = _NETWORK.get(str(ligne).upper(), {})
     return [s["nom"].lower() for s in line_data.get("stops", [])]
 
@@ -85,9 +77,77 @@ def _bus_deja_passe(ligne: str, position_bus: str, arret_usager: str) -> bool:
     return False
 
 
+def _ligne_depuis_historique(history: list) -> str | None:
+    """
+    Cherche la dernière ligne mentionnée dans l'historique.
+    Permet "et pour la ligne 8 ?" après avoir parlé du 232.
+    """
+    import re
+    for msg in reversed(history or []):
+        content = msg.get("content", "")
+        match = re.search(
+            r'\b(?:bus|ligne)\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
+            content, re.IGNORECASE
+        )
+        if match:
+            candidate = match.group(1).upper()
+            if candidate in _VALID_LINES:
+                return candidate
+    return None
+
+
+def _ligne_depuis_message(text: str) -> str | None:
+    """
+    Extraction directe depuis le message brut.
+    Utilisé quand les entities LLM sont vides.
+    """
+    import re
+    match = re.search(
+        r'\b(?:bus|ligne)\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
+        text, re.IGNORECASE
+    )
+    if match:
+        candidate = match.group(1).upper()
+        if candidate in _VALID_LINES:
+            return candidate
+    # Essai numéro seul (ex: "et le 8 ?")
+    match2 = re.search(r'\b(\d{1,3}[A-Z]?)\b', text)
+    if match2:
+        candidate = match2.group(1).upper()
+        if candidate in _VALID_LINES:
+            return candidate
+    return None
+
+
+def _resolve_ligne(entities: dict, message: str, history: list) -> str | None:
+    """
+    Résolution de la ligne en 3 niveaux :
+    1. entities LLM (prioritaire)
+    2. extraction regex depuis le message brut
+    3. historique de conversation (multi-tour)
+    """
+    # Niveau 1 : LLM
+    ligne = entities.get("ligne")
+    if ligne and str(ligne).upper() in _VALID_LINES:
+        return str(ligne).upper()
+
+    # Niveau 2 : regex message brut
+    ligne = _ligne_depuis_message(message)
+    if ligne:
+        return ligne
+
+    # Niveau 3 : historique
+    ligne = _ligne_depuis_historique(history)
+    if ligne:
+        return ligne
+
+    return None
+
+
 # ── Flow multi-tour : réponse arrêt ──────────────────────
 
-async def handle_arret_response(phone: str, text: str, langue: str, entities: dict) -> str:
+async def handle_arret_response(phone: str, text: str, langue: str,
+                                 entities: dict, history: list = None) -> str:
     ctx         = get_context(phone)
     ligne       = ctx.ligne
     signalement = ctx.signalement
@@ -101,6 +161,7 @@ async def handle_arret_response(phone: str, text: str, langue: str, entities: di
     arret_usager = (
         entities.get("origin")
         or entities.get("destination")
+        or _ligne_depuis_message(text)
         or text.strip()
     )
 
@@ -128,7 +189,7 @@ async def handle_arret_response(phone: str, text: str, langue: str, entities: di
             )
         return (
             f"🚌 Bus *{ligne}* signalé à *{position_bus}*.\n"
-            f"Je ne trouve pas ton arrêt — mais le bus avance ! 🙏"
+            f"Je ne trouve pas ton arrêt exact — mais le bus avance ! 🙏"
         )
 
     if distance == 0:
@@ -152,39 +213,19 @@ async def handle_arret_response(phone: str, text: str, langue: str, entities: di
 
 async def handle(message: str, contact: dict, langue: str,
                  history: list, entities: dict) -> str:
-    ligne = entities.get("ligne")
+
+    # Résolution robuste : LLM → regex → historique
+    ligne = _resolve_ligne(entities, message, history)
 
     if not ligne:
         if langue == "wolof":
             return "Numéro bus bi soxor. Wax ma : *Bus 15 est où ?* 🚌"
         return "Quel numéro de bus cherches-tu ? Ex : *Bus 15 est où ?* 🚌"
 
-    ligne = str(ligne).upper()
-
-    if ligne not in _VALID_LINES:
-        # Suggérer les lignes numériquement proches
-        try:
-            num    = int(ligne)
-            proches = sorted(
-                [v for v in _VALID_LINES if v.isdigit() and abs(int(v) - num) <= 20],
-                key=int
-            )[:6]
-            suggestion = f"Lignes proches : {', '.join(proches)}" if proches else ""
-        except ValueError:
-            suggestion = ""
-
-        if langue == "wolof":
-            return f"Ligne *{ligne}* amul ci réseau Dem Dikk. {suggestion}"
-        return (
-            f"❌ La ligne *{ligne}* n'existe pas dans le réseau Dem Dikk.\n"
-            + (f"{suggestion}\n" if suggestion else "")
-            + "Tape *liste* pour voir toutes les lignes."
-        )
-
     signalements = queries.get_signalements_actifs(ligne)
 
     if signalements:
-        s = signalements[0]
+        s = signalement = signalements[0]
         set_attente_arret(contact["phone"], ligne, s)
 
         try:
@@ -219,18 +260,23 @@ async def handle(message: str, contact: dict, langue: str,
 # ── Liste des arrêts ──────────────────────────────────────
 
 async def handle_liste_arrets(message: str, contact: dict, langue: str,
-                               entities: dict) -> str:
-    ligne = entities.get("ligne")
+                               entities: dict, history: list = None) -> str:
 
-    if not ligne or str(ligne).upper() not in _VALID_LINES:
+    # Résolution robuste : LLM → regex → historique
+    ligne = _resolve_ligne(entities, message, history or [])
+
+    if not ligne:
         if langue == "wolof":
             return "Numéro ligne bi soxor. Ex : *arrêts du bus 15*"
         return "Quelle ligne ? Ex : *arrêts du bus 15*"
 
-    ligne      = str(ligne).upper()
     info       = _NETWORK.get(ligne, {})
-    arrets_str = " → ".join([s["nom"] for s in info.get("stops", [])])
+    stops      = info.get("stops", [])
+    arrets_str = " → ".join([s["nom"] for s in stops])
     nom_ligne  = info.get("name", info.get("description", ""))
+
+    if not arrets_str:
+        return f"❌ Aucun arrêt trouvé pour la ligne *{ligne}*."
 
     if langue == "wolof":
         return f"🚌 Bus *{ligne}* ({nom_ligne}) :\n{arrets_str}"
