@@ -1,29 +1,37 @@
 """
-main.py — V5.5 (LLM-Native)
+main.py — V5.6 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
+FIX V5.6 :
+  1. Bug "Je signale" avec session attente_arret :
+     Quand session.etat == "attente_arret" ET intent == "signalement"
+     → l'usager confirme implicitement son arrêt avec "Je signale".
+     On enregistre le signalement avec session.ligne + session.signalement["position"]
+     sans redemander d'informations déjà connues.
+
+  2. Bug "Bus 8 en route pour jet d'eau" — messages hybrides :
+     Détection AVANT le dispatch : si le message contient un signalement
+     (ligne + position) ET une destination, on enregistre le signalement
+     d'abord, puis on continue le flow normal (itinéraire).
+     L'usager reçoit les deux : confirmation signalement + calcul itinéraire.
+
+  3. Bug "Je signale" seul sans session :
+     Si intent == "signalement" mais entities vides ET session active avec
+     ligne + position → utiliser le contexte de session pour enregistrer.
+
 FIX V5.5 :
-  - is_abandon_regex : suppression de la condition `session.etat`
-    Avant : is_abandon_regex = (session.etat and is_abandon(text))
-    → "Non merci" hors flow multi-tour = session.etat None → False
-    → abandon non détecté, LLM relançait la conversation
-    Après : is_abandon_regex = is_abandon(text)
-    → "Non merci", "stop", "laisse tomber" détectés partout,
-    même sans session active
-  - _dispatch / out_of_scope : filet défensif supplémentaire
-    Si is_abandon(text) dans le else → reset + réponse courte
-    sans appel LLM (évite la relance generate_response)
+  is_abandon_regex sans condition session.etat
+  Filet défensif dans _dispatch / out_of_scope
 
 FIX V5.4 :
-  - _dispatch : ajout intent "alternatives_itineraire"
-    → route vers skill_itineraire.handle_alternatives()
+  intent "alternatives_itineraire" → skill_itineraire.handle_alternatives()
 
 FIX V5.3 :
-  - history chargé à l'étape 2.5 (avant route_async).
+  history chargé à l'étape 2.5 (avant route_async).
 
 FIX V5.2 :
-  - session déplacée à l'étape 2 → fix UnboundLocalError
-  - abandon géré depuis intent LLM ET is_abandon()
+  session déplacée à l'étape 2 → fix UnboundLocalError
+  abandon géré depuis intent LLM ET is_abandon()
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -78,12 +86,12 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.5 démarré — Architecture LLM-Native")
+    logger.info("🚌 Xëtu V5.6 démarré — Architecture LLM-Native")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.5"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.6"}
 
 
 @app.get("/webhook")
@@ -144,6 +152,33 @@ def _check_message(text: str) -> str | None:
     return None
 
 
+def _is_confirmation_implicite(text: str) -> bool:
+    """
+    Détecte "Je signale", "c'est bon", "voilà", "c'est là", "oui"
+    comme confirmations implicites dans un flow multi-tour.
+    NE PAS utiliser hors contexte session active.
+    """
+    import re
+    t = text.strip().lower()
+    patterns = [
+        r"^\s*(je\s+signal[e]?|signal[e]?)\s*[!.]*\s*$",
+        r"^\s*(oui|ouais|yes|waaw|waaw\s+waaw)\s*[!.]*\s*$",
+        r"^\s*(c['']est\s+(bon|là|ça|correct|ok)|voilà|voila)\s*[!.]*\s*$",
+        r"^\s*(ok|okay|ça\s+marche|d['']accord)\s*[!.]*\s*$",
+        r"^\s*(exactement|exact|c['']est\s+ça)\s*[!.]*\s*$",
+    ]
+    return any(re.search(p, t) for p in patterns)
+
+
+def _detecter_signalement_dans_message(entities: dict) -> bool:
+    """
+    Retourne True si le message contient les éléments d'un signalement :
+    ligne + position (origin).
+    Utilisé pour détecter les messages hybrides (signalement + itinéraire).
+    """
+    return bool(entities.get("ligne") and entities.get("origin"))
+
+
 async def _process_message(phone: str, text: str):
     try:
         async with queue_manager.process(phone):
@@ -184,9 +219,6 @@ async def _process_message_safe(phone: str, text: str):
 
         # ── 5. ABANDON ────────────────────────────────────
         is_abandon_llm   = (route_result.intent == "abandon")
-        # FIX V5.5 : suppression de `session.etat and`
-        # Avant : (session.etat and is_abandon(text)) → False si pas de session active
-        # "Non merci" hors multi-tour n'était jamais capté par le regex
         is_abandon_regex = is_abandon(text)
 
         if is_abandon_llm or is_abandon_regex:
@@ -205,10 +237,37 @@ async def _process_message_safe(phone: str, text: str):
             return
 
         # ── 6. FLOW MULTI-TOUR ────────────────────────────
+
         if session.etat == "attente_arret":
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
+
+            # FIX V5.6 — Bug "Je signale"
+            # L'usager confirme implicitement son arrêt OU envoie intent=signalement
+            # dans un flow attente_arret → on a déjà ligne + position dans la session.
+            # On enregistre le signalement directement sans redemander d'info.
+            if (
+                _is_confirmation_implicite(text)
+                or route_result.intent == "signalement"
+            ) and session.ligne and session.signalement:
+                position = session.signalement.get("position", "")
+                response = await skill_signalement.handle(
+                    message=text,
+                    contact=contact,
+                    langue=langue,
+                    entities={
+                        "ligne": session.ligne,
+                        "origin": position,
+                    }
+                )
+                reset_context(phone)
+                queries.save_message(conv_id, "user",      text,     langue, "signalement")
+                await send_message(phone, response)
+                queries.save_message(conv_id, "assistant", response, langue, "signalement")
+                return
+
+            # Réponse normale à la question d'arrêt
             response = await skill_question.handle_arret_response(
                 phone, text, langue, route_result.entities, history=history
             )
@@ -243,7 +302,45 @@ async def _process_message_safe(phone: str, text: str):
         # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 10. DISPATCH ──────────────────────────────────
+        # ── 10. MESSAGES HYBRIDES — signalement + autre intent ──
+        # FIX V5.6 — Bug "Bus 8 en route pour jet d'eau"
+        # Le message contient un signalement (ligne + position) ET une destination.
+        # Le router a choisi un seul intent (itinéraire ou signalement).
+        # On enregistre le signalement EN PREMIER, silencieusement,
+        # puis on continue le flow normal avec l'intent choisi.
+        #
+        # Cas détectés :
+        #   "Bus 8 en route pour Jet D'Eau"  → intent=itineraire, MAIS ligne+origin présents
+        #   "J'ai vu le 6 à Colobane, comment aller à Sandaga ?" → idem
+        #   "Bus 8 à Yoff Village"  → intent=signalement normal, pas hybride
+        if (
+            route_result.intent != "signalement"
+            and _detecter_signalement_dans_message(route_result.entities)
+        ):
+            logger.info(
+                f"[V5.6] Message hybride détecté — "
+                f"signalement ligne={route_result.entities['ligne']} "
+                f"pos={route_result.entities['origin']} enregistré silencieusement"
+            )
+            try:
+                queries.save_signalement(
+                    ligne=str(route_result.entities["ligne"]).upper(),
+                    arret=route_result.entities["origin"],
+                    phone=phone,
+                )
+                # Notifier les abonnés en arrière-plan
+                import asyncio
+                asyncio.create_task(
+                    skill_signalement._notify_abonnes(
+                        str(route_result.entities["ligne"]).upper(),
+                        route_result.entities["origin"],
+                        phone,
+                    )
+                )
+            except Exception as e:
+                logger.error(f"[V5.6] Erreur signalement hybride: {e}")
+
+        # ── 11. DISPATCH ──────────────────────────────────
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -254,18 +351,18 @@ async def _process_message_safe(phone: str, text: str):
             entities=route_result.entities,
         )
 
-        # ── 11. ENVOI ─────────────────────────────────────
+        # ── 12. ENVOI ─────────────────────────────────────
         await send_message(phone, response)
 
-        # ── 12. PROACTIVITÉ ───────────────────────────────
+        # ── 13. PROACTIVITÉ ───────────────────────────────
         ligne_extraite = route_result.entities.get("ligne")
         if route_result.intent == "signalement" and ligne_extraite:
             await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue)
 
-        # ── 13. SAUVEGARDE réponse ────────────────────────
+        # ── 14. SAUVEGARDE réponse ────────────────────────
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
-        # ── 14. MÉMOIRE USAGER ────────────────────────────
+        # ── 15. MÉMOIRE USAGER ────────────────────────────
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact,
@@ -297,17 +394,12 @@ async def _dispatch(text: str, intent: str, contact: dict,
     elif intent == "itineraire":
         return await skill_itineraire.handle(text, contact, langue, entities)
     elif intent == "alternatives_itineraire":
-        # V5.4 : alternatives → skill direct, jamais de prose LLM
         return await skill_itineraire.handle_alternatives(
             contact["phone"], langue, history
         )
     else:
-        # FIX V5.5 : filet défensif — si le texte ressemble à un abandon
-        # mais est arrivé ici (classifié out_of_scope par le LLM),
-        # on coupe proprement sans appeler generate_response
         if is_abandon(text):
             reset_context(contact["phone"])
-            logger.info(f"[Dispatch] Abandon détecté en fallback out_of_scope pour {contact['phone'][-4:]}")
             return (
                 "OK, pas de souci. 👍 Reviens quand tu veux."
                 if langue != "wolof" else
