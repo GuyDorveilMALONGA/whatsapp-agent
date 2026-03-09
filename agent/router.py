@@ -1,23 +1,23 @@
 """
-agent/router.py — V4.3
+agent/router.py — V4.4
 Intent Gateway — 4 niveaux de classification.
+
+FIX V4.4 :
+  - Détection NÉGATION/CORRECTION ajoutée en court-circuit prioritaire
+    (après salutations, avant tout scoring)
+    Patterns : "non", "c'est pas", "oublie", "laisse tomber", "pas ma ligne",
+               "je veux pas", "c'est faux", "incorrect", "erreur"
+    → routé out_of_scope immédiatement, zéro LLM
+    → évite que "Non le bus 5 n'est pas ma ligne" → itinéraire/question
 
 FIX V4.3 :
   - "liste_arrets" et "question" ajoutés dans _NEEDS_ENTITIES
-    → LLM extrait toujours entities.ligne, même quand score >= 0.85
-    → Plus jamais de entities={} sur question/liste_arrets
-  - "passer" retiré des règles "question" (trop ambigu — matchait "passe par où")
-    → "Le 232 passe par où ?" routé liste_arrets, pas question
-  - Bonus liste_arrets pour "passe" suivi de "par" ou "où" (pattern renforcé)
-  - _inject_ligne_from_session() appelé dans route() SYNCHRONE
-    → injection ligne session avant même d'aller au LLM
-    → "et le 232 ?" sans numéro explicite → ligne injectée depuis session active
-  - RÈGLE ABSOLUE : le LLM est TOUJOURS appelé pour question/liste_arrets/signalement
-    → entities.ligne garanti à l'arrivée dans les skills
+  - "passer" retiré des règles "question"
+  - Bonus liste_arrets pour "passe par" renforcé
+  - _inject_ligne_from_session() dans route() synchrone
 
 FIX V4.2 :
   - Salutations court-circuitées avant le LLM → out_of_scope immédiat
-  - history passé au LLM UNIQUEMENT pour intents actionnables
 
 FIX V4.1 :
   - route_async() reçoit session_context pour injection ligne multi-tour
@@ -36,12 +36,30 @@ _GREETING_PATTERNS = [
     r"^\s*(bonjour|bonsoir|salut|hello|hi|hey|coucou|salam|assalam|waw|waaw|waoh)\s*[!.?]*\s*$",
     r"^\s*(bonne\s+(matinée|journée|soirée|nuit))\s*[!.?]*\s*$",
     r"^\s*(ça\s+va|ca\s+va|comment\s+(tu\s+vas|vous\s+allez|ça\s+va))\s*[!.?]*\s*$",
-    r"^\s*(merci|thank\s*you|thanks)\s*[!.?]*\s*$",
+    r"^\s*(merci|thank\s*you|thanks|ok|okay|oublie|laisse\s+tomber|d['']accord|parfait|super|cool)\s*[!.?]*\s*$",
 ]
 
 def _is_greeting(text: str) -> bool:
     t = text.strip().lower()
     return any(re.search(p, t) for p in _GREETING_PATTERNS)
+
+
+# ── Négations/Corrections — court-circuit, zéro LLM ──────
+# Si l'usager nie ou corrige → out_of_scope immédiatement
+# Priorité absolue sur tout scoring (bus X présent ou non)
+_CORRECTION_PATTERNS = [
+    r"^\s*non\b",                                    # "Non le bus 5..."
+    r"\b(c[' ]est\s+pas|c[' ]est\s+faux|c[' ]est\s+incorrect)\b",
+    r"\b(pas\s+ma\s+(ligne|bus|arrêt|station))\b",
+    r"\b(pas\s+ce\s+que\s+je\s+veux|pas\s+ça)\b",
+    r"\b(oublie\s+(ça|tout)|laisse\s+tomber|laisse\s+beton)\b",
+    r"\b(je\s+(ne\s+veux\s+pas|veux\s+pas)\s+(ça|aller|de\s+ça))\b",
+    r"^\s*(nan|nope|négatif|incorrect|erreur|faux)\s*[!.?]*\s*$",
+]
+
+def _is_correction(text: str) -> bool:
+    t = text.strip().lower()
+    return any(re.search(p, t) for p in _CORRECTION_PATTERNS)
 
 
 _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
@@ -51,7 +69,7 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(\d{1,3}[A-Z]?)\b", 0.3),
         (r"\b(à|au|devant|niveau|près de|derrière|avant|ci)\b", 0.4),
         (r"\b(liberté|hlm|gare|marché|mosquée|palais|parcelles)\b", 0.2),
-        (r"\b(vu|vois|voir|vient|passé|là|ici)\b", 0.2),  # FIX : "passe" retiré
+        (r"\b(vu|vois|voir|vient|passé|là|ici)\b", 0.2),
     ],
 
     "question": [
@@ -60,7 +78,7 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
         (r"\b(\d{1,3}[A-Z]?)\b", 0.2),
         (r"\b(bus|ligne)\b", 0.2),
         (r"\?", 0.2),
-        (r"\b(arriver|venir|attendre)\b", 0.3),  # FIX : "passer" retiré — trop ambigu
+        (r"\b(arriver|venir|attendre)\b", 0.3),
     ],
 
     "abonnement": [
@@ -80,9 +98,9 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
     "liste_arrets": [
         (r"\b(arrêts?|stations?)\b", 0.5),
         (r"\b(liste|lister|montre|tous)\b", 0.3),
-        (r"\b(passe\s+par|par\s+où|passe\s+où|où\s+passe)\b", 0.7),  # FIX : renforcé
+        (r"\b(passe\s+par|par\s+où|passe\s+où|où\s+passe)\b", 0.7),
         (r"\b(\d{1,3}[A-Z]?)\b", 0.2),
-        (r"\b(trajet|parcours|route)\b", 0.3),                        # FIX : ajout
+        (r"\b(trajet|parcours|route)\b", 0.3),
     ],
 
     "itineraire": [
@@ -102,12 +120,8 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 
 _SCORE_THRESHOLD = 0.85
 
-# FIX V4.3 : "liste_arrets" et "question" ajoutés.
-# Ces intents DOIVENT passer par le LLM pour extraire entities.ligne.
-# Sans ça : entities={} → _resolve_ligne dépend uniquement du regex N2 → fragile.
 _NEEDS_ENTITIES = {"signalement", "itineraire", "abonnement", "liste_arrets", "question"}
 
-# Intents pour lesquels on ne passe JAMAIS l'historique au LLM
 _NO_HISTORY_INTENTS = {"out_of_scope", "abandon", "escalade"}
 
 
@@ -170,17 +184,26 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
     normalized = normalize(text)
     cache_key  = normalize_for_cache(text)
 
-    # Court-circuit salutation — jamais au LLM
+    # 1. Court-circuit salutation
     if _is_greeting(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
             normalized_text=normalized, confiance=1.0, source="greeting"
         )
 
+    # 2. Court-circuit identité
     if _is_identity_question(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
             normalized_text=normalized, confiance=1.0, source="identity"
+        )
+
+    # 3. Court-circuit négation/correction — PRIORITÉ ABSOLUE
+    # "Non le bus 5 n'est pas ma ligne" → out_of_scope, zéro LLM
+    if _is_correction(normalized):
+        return RouteResult(
+            intent="out_of_scope", raw_text=text,
+            normalized_text=normalized, confiance=1.0, source="correction"
         )
 
     cached = intent_cache.get(cache_key, session_state)
@@ -192,9 +215,6 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
 
     intent, score = _fast_classify(normalized)
 
-    # FIX V4.3 : _NEEDS_ENTITIES inclut maintenant question/liste_arrets
-    # → ces intents NE PRENNENT PLUS le court-circuit regex même si score >= 0.85
-    # → le LLM est TOUJOURS appelé pour extraire entities.ligne
     if score >= _SCORE_THRESHOLD and intent not in _NEEDS_ENTITIES:
         intent_cache.set(cache_key, intent, session_state)
         return RouteResult(
@@ -216,12 +236,10 @@ async def route_async(
 ) -> RouteResult:
     result = route(text, session_state)
 
-    # Court-circuit total : salutation, identité, cache → jamais au LLM
-    if result.source in ("greeting", "identity", "cache"):
+    # Court-circuit total : salutation, identité, correction, cache → jamais au LLM
+    if result.source in ("greeting", "identity", "correction", "cache"):
         return result
 
-    # FIX V4.3 : _NEEDS_ENTITIES étendu → cette condition ne court-circuite plus
-    # question/liste_arrets → on tombe toujours dans l'escalade LLM ci-dessous
     if result.source == "regex" and result.intent not in _NEEDS_ENTITIES:
         return result
 
@@ -251,8 +269,6 @@ async def route_async(
 
             entities = llm_data.get("entities") or {}
 
-            # FIX V4.3 : injection ligne depuis session APRÈS LLM aussi
-            # (cas où LLM retourne entities vides sur message très court : "et lui ?")
             if not entities.get("ligne") and session_context and session_context.ligne:
                 if intent_str in {"question", "signalement", "abonnement", "liste_arrets"}:
                     entities = dict(entities)
@@ -275,10 +291,8 @@ async def route_async(
 
     except Exception as e:
         logger.error(f"[Router] LLM classify failed: {e}")
-        # FIX V4.3 : en cas d'échec LLM, tenter injection session avant fallback
         if session_context and session_context.ligne:
             if result.intent in {"question", "signalement", "abonnement", "liste_arrets"}:
                 result.entities["ligne"] = session_context.ligne
-                logger.debug(f"[Router] Ligne injectée depuis session (fallback LLM fail)")
 
     return result

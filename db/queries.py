@@ -1,17 +1,18 @@
 """
-db/queries.py — V4.2
+db/queries.py — V4.3
 Règle absolue : SEUL fichier qui touche Supabase.
 
-V4.1 :
-  + Horaires théoriques Moovit (save_schedules_batch, get_next_theoretical_bus)
-  + Leaderboard limité à 30 jours (évite OOM sur gros volume)
-  + logging ajouté
+V4.3 :
+  + get_derniers_signalements(ligne, limit) — même expirés
+    Utilisé par core.frequencies pour estimer l'ETA
+    (dernier signalement connu même si TTL dépassé)
 
 V4.2 :
   + FIX : created_at → timestamp sur table signalements
-    (colonne created_at n'existe pas dans signalements, c'est timestamp)
-    Fonctions corrigées : get_signalements_actifs, get_all_signalements_actifs,
-    get_lignes_silencieuses, get_stats_communaute
+
+V4.1 :
+  + Horaires théoriques Moovit (save_schedules_batch, get_next_theoretical_bus)
+  + Leaderboard limité à 30 jours
 
   ⚠️  get_leaderboard reste temporaire — migrer vers RPC Supabase
       (GROUP BY côté DB) avant 50k signalements
@@ -116,7 +117,7 @@ def get_signalements_actifs(ligne: str) -> list[dict]:
              .select("*")
              .eq("ligne", ligne)
              .gt("expires_at", now)
-             .order("timestamp", desc=True)   # ✅ FIX V4.2 : timestamp (pas created_at)
+             .order("timestamp", desc=True)
              .execute())
     return res.data or []
 
@@ -128,9 +129,31 @@ def get_all_signalements_actifs() -> list[dict]:
     res = (db.table("signalements")
              .select("*")
              .gt("expires_at", now)
-             .order("timestamp", desc=True)   # ✅ FIX V4.2 : timestamp (pas created_at)
+             .order("timestamp", desc=True)
              .execute())
     return res.data or []
+
+
+def get_derniers_signalements(ligne: str, limit: int = 1) -> list[dict]:
+    """
+    Retourne les derniers signalements d'une ligne — même expirés.
+    Utilisé par core.frequencies pour estimer l'ETA quand aucun
+    signalement actif n'est disponible.
+    Ex : dernier signalement il y a 45 min sur ligne 8 (fréquence 45 min)
+         → ETA estimé : ~0–10 min (bus probablement en route)
+    """
+    db = get_client()
+    try:
+        res = (db.table("signalements")
+                 .select("ligne, position, timestamp, expires_at")
+                 .eq("ligne", ligne)
+                 .order("timestamp", desc=True)
+                 .limit(limit)
+                 .execute())
+        return res.data or []
+    except Exception as e:
+        logger.error(f"[queries.get_derniers_signalements] ligne={ligne} erreur: {e}")
+        return []
 
 
 def purge_signalements_expires():
@@ -147,7 +170,7 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     toutes = {l["numero"] for l in (lignes.data or [])}
     sigs   = (db.table("signalements")
                 .select("ligne")
-                .gt("timestamp", since)       # ✅ FIX V4.2 : timestamp (pas created_at)
+                .gt("timestamp", since)
                 .execute())
     actives = {s["ligne"] for s in (sigs.data or [])}
     return list(toutes - actives)
@@ -281,13 +304,12 @@ def get_network_memory() -> list[dict]:
     return res.data or []
 
 
-# ── Horaires théoriques Moovit (Phase 3) ──────────────────
+# ── Horaires théoriques (Phase 3) ─────────────────────────
 
 def save_schedules_batch(schedules: list[dict]):
     """
     Insère ou met à jour les horaires scrappés en masse.
-    Structure attendue par entrée :
-      { ligne, arret, heure_passage, jour_semaine }
+    Structure attendue : { ligne, arret, heure_passage, jour_semaine }
     """
     db = get_client()
     try:
@@ -301,7 +323,6 @@ def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dic
     """
     Récupère les prochains passages théoriques pour une ligne/arrêt
     à partir de l'heure actuelle (UTC).
-    Retourne jusqu'à `limit` résultats.
     """
     db = get_client()
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
@@ -317,10 +338,7 @@ def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dic
 
 
 def get_first_departure(ligne: str) -> str | None:
-    """
-    Retourne l'heure du premier départ de la journée pour une ligne.
-    Utilisé par Dead Reckoning pour détecter "bus pas encore en service".
-    """
+    """Premier départ de la journée pour une ligne (Dead Reckoning)."""
     db = get_client()
     res = (db.table("schedules")
              .select("heure_passage")
@@ -339,17 +357,8 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
     """
     Top signaleurs du mois — triés par nb_signalements DESC.
 
-    ⚠️ DETTE TECHNIQUE : cette fonction charge les messages en mémoire Python.
-    À migrer vers une RPC Supabase (GROUP BY côté DB) avant 50k signalements :
-      CREATE OR REPLACE FUNCTION get_top_users()
-      RETURNS TABLE(phone text, nb bigint) AS $$
-        SELECT c.phone, COUNT(*) as nb
-        FROM messages m
-        JOIN conversations cv ON m.conversation_id = cv.id
-        JOIN contacts c ON cv.contact_id = c.id
-        WHERE m.intent = 'signalement' AND m.role = 'user'
-        GROUP BY c.phone ORDER BY nb DESC LIMIT 10;
-      $$ LANGUAGE sql;
+    ⚠️ DETTE TECHNIQUE : charge les messages en mémoire Python.
+    À migrer vers RPC Supabase avant 50k signalements.
     """
     db = get_client()
     un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
@@ -357,7 +366,7 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
              .select("conversations(contacts(phone, fiabilite_score))")
              .eq("intent", "signalement")
              .eq("role", "user")
-             .gte("created_at", un_mois)      # ✅ messages a bien created_at
+             .gte("created_at", un_mois)
              .execute())
 
     compteur: dict[str, dict] = {}
@@ -390,7 +399,7 @@ def get_stats_communaute() -> dict:
 
     res_today = (db.table("signalements")
                    .select("id", count="exact")
-                   .gte("timestamp", today_start)  # ✅ FIX V4.2 : timestamp
+                   .gte("timestamp", today_start)
                    .execute())
 
     res_all = (db.table("messages")
