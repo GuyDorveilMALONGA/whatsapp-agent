@@ -1,17 +1,18 @@
 """
-agent/router.py — V4.1
+agent/router.py — V4.2
 Intent Gateway — 4 niveaux de classification.
+
+FIX V4.2 :
+  - Salutations court-circuitées avant le LLM → out_of_scope immédiat,
+    sans passer l'historique. Empêche le LLM de "se souvenir" du contexte
+    précédent et de polluer une réponse à "Bonjour" avec la ligne 8.
+  - history passé au LLM UNIQUEMENT pour les intents qui en ont besoin
+    (question, itineraire, signalement). Pas pour out_of_scope/abandon.
 
 FIX V4.1 :
   route_async() reçoit session_context (SessionContext) en plus de session_state.
   Quand le LLM retourne entities={} sur un message court multi-tour
-  (ex: "et le 8 ?"), on injecte la ligne depuis la session active
-  pour que les skills reçoivent toujours des entities complètes.
-
-  Avant : "et le 8 ?" → entities={} → question.py niveau 3 compensait
-          (historique), mais uniquement si history était chargé.
-  Après : router injecte entities={"ligne": ctx.ligne} si session active
-          ET entities vide après LLM.
+  (ex: "et le 8 ?"), on injecte la ligne depuis la session active.
 """
 import re
 import logging
@@ -21,6 +22,19 @@ from agent.normalizer import normalize, normalize_for_cache
 from agent import intent_cache
 
 logger = logging.getLogger(__name__)
+
+# ── Salutations — court-circuit immédiat, zéro LLM ───────
+_GREETING_PATTERNS = [
+    r"^\s*(bonjour|bonsoir|salut|hello|hi|hey|coucou|salam|assalam|waw|waaw|waoh)\s*[!.?]*\s*$",
+    r"^\s*(bonne\s+(matinée|journée|soirée|nuit))\s*[!.?]*\s*$",
+    r"^\s*(ça\s+va|ca\s+va|comment\s+(tu\s+vas|vous\s+allez|ça\s+va))\s*[!.?]*\s*$",
+    r"^\s*(merci|thank\s*you|thanks)\s*[!.?]*\s*$",
+]
+
+def _is_greeting(text: str) -> bool:
+    t = text.strip().lower()
+    return any(re.search(p, t) for p in _GREETING_PATTERNS)
+
 
 _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 
@@ -79,6 +93,10 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 
 _SCORE_THRESHOLD = 0.85
 _NEEDS_ENTITIES  = {"signalement", "itineraire", "abonnement"}
+
+# Intents pour lesquels on ne passe JAMAIS l'historique au LLM
+# (évite la pollution de contexte sur les messages simples)
+_NO_HISTORY_INTENTS = {"out_of_scope", "abandon", "escalade"}
 
 
 def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
@@ -140,6 +158,13 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
     normalized = normalize(text)
     cache_key  = normalize_for_cache(text)
 
+    # Court-circuit salutation — jamais au LLM
+    if _is_greeting(normalized):
+        return RouteResult(
+            intent="out_of_scope", raw_text=text,
+            normalized_text=normalized, confiance=1.0, source="greeting"
+        )
+
     if _is_identity_question(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
@@ -172,21 +197,12 @@ async def route_async(
     text: str,
     history: list | None = None,
     session_state: str | None = None,
-    session_context=None,       # SessionContext — injecte ligne si entities vide
+    session_context=None,
 ) -> RouteResult:
-    """
-    FIX V4.1 : session_context injecte la ligne active dans les entities
-    quand le LLM retourne entities={} sur un message court multi-tour.
-
-    Ex: session active bus 232, usager envoie "et le 8 ?"
-      → LLM retourne entities={"ligne": "8"}        ✅ (cas normal)
-      Ex: session active bus 232, usager envoie "et lui ?"
-      → LLM retourne entities={}
-      → router injecte entities={"ligne": "232"}    ✅ (fix)
-    """
     result = route(text, session_state)
 
-    if result.source in ("identity", "cache"):
+    # Court-circuit total : salutation, identité, cache → jamais au LLM
+    if result.source in ("greeting", "identity", "cache"):
         return result
 
     if result.source == "regex" and result.intent not in _NEEDS_ENTITIES:
@@ -199,7 +215,17 @@ async def route_async(
 
     try:
         from agent.llm_brain import classify_intent, _VALID_INTENTS
-        llm_data = await classify_intent(text=result.normalized_text, history=history)
+
+        # Ne pas passer l'historique pour les intents qui n'en ont pas besoin.
+        # Évite que "Bonjour" reçoive un contexte pollué par la session précédente.
+        history_for_llm = None
+        if result.intent not in _NO_HISTORY_INTENTS:
+            history_for_llm = history
+
+        llm_data = await classify_intent(
+            text=result.normalized_text,
+            history=history_for_llm
+        )
 
         if llm_data and isinstance(llm_data, dict):
             intent_str = llm_data.get("intent", "out_of_scope")
@@ -210,13 +236,15 @@ async def route_async(
 
             entities = llm_data.get("entities") or {}
 
-            # FIX : si entities vide ET session active avec une ligne → injecter
+            # Injecter ligne depuis session si entities vide + session active
             if not entities.get("ligne") and session_context and session_context.ligne:
-                entities = dict(entities)
-                entities["ligne"] = session_context.ligne
-                logger.debug(
-                    f"[Router] Ligne injectée depuis session: {session_context.ligne}"
-                )
+                # Seulement pour les intents qui utilisent une ligne
+                if intent_str in {"question", "signalement", "abonnement", "liste_arrets"}:
+                    entities = dict(entities)
+                    entities["ligne"] = session_context.ligne
+                    logger.debug(
+                        f"[Router] Ligne injectée depuis session: {session_context.ligne}"
+                    )
 
             intent_cache.set(normalize_for_cache(text), intent_str, session_state)
 
