@@ -1,25 +1,16 @@
 """
-skills/itineraire.py — V4 Walk-Aware Routing (LLM-Driven)
+skills/itineraire.py — V4.1 Walk-Aware Routing (LLM-Native)
 Calcule et formate les itinéraires avec le moteur Walk-Aware.
 
-V4 : entities injectées depuis route_result (main.py)
-     Suppression de _extract_od(), _NO_TRANSFER_PATTERNS, _PATTERNS
-     handle_origin_response accepte entities pour récupérer no_transfer_preference
-     extractor.extract() conservé UNIQUEMENT dans handle_origin_response
-     (flow multi-tour : l'usager répond juste "Liberté 5" sans contexte LLM)
-
-Statuts gérés :
-  direct              → bus direct origin → dest
-  walk_direct         → marche Xm + bus direct
-  transfer            → correspondance classique
-  no_transfer_not_found → aucun bus direct même en marchant
-  not_found           → aucun trajet trouvé
-  stop_not_found      → arrêt inconnu
-  same_stop           → départ = arrivée
+FIX V4.1 :
+  - handle_origin_response : extractor.extract() supprimé
+    → fallback : rag.validator.validate_and_suggest → texte brut
+  - history passé en paramètre (main.py → handle_origin_response)
 """
 import logging
 from agent.graph import get_graph
 from core.session_manager import set_attente_origin, get_context, reset_context
+from rag.validator import validate_and_suggest
 
 logger = logging.getLogger(__name__)
 
@@ -35,8 +26,7 @@ def _direct_fr(r: dict) -> str:
         f"Durée : ~{best['nb_stops'] * 2} min · {best['nb_stops']} arrêts",
     ]
     if other:
-        alts = " · ".join(f"Ligne {x['number']}" for x in other[:2])
-        lines.append(f"_Aussi : {alts}_")
+        lines.append(f"_Aussi : {' · '.join(f'Ligne {x[\"number\"]}' for x in other[:2])}_")
     lines.append("\n— *Xëtu*")
     return "\n".join(lines)
 
@@ -44,28 +34,24 @@ def _direct_fr(r: dict) -> str:
 def _walk_direct_fr(r: dict) -> str:
     best  = r["routes"][0]
     other = r["routes"][1:]
-
     lines = [f"🚶 {best['walk_min']} min → *{best['walk_stop']}*"]
     lines.append(f"🚌 *Ligne {best['number']}* · {best['nb_stops'] * 2} min")
-
     if best.get("walk_dest_m", 0) > 0:
         lines.append(f"🚶 {best['walk_dest_min']} min → *{r['dest_display']}*")
-
     lines.append(f"Total *~{best['total_min']} min*")
-
     if r.get("alt_transfer"):
         t = r["alt_transfer"]
-        lines.append(f"\n_Option B : Ligne {t['number1']} → Ligne {t['number2']} · ~{t['total_min']} min_")
+        lines.append(
+            f"\n_Option B : Ligne {t['number1']} → Ligne {t['number2']} · ~{t['total_min']} min_"
+        )
     elif other:
-        alts = " · ".join(f"Ligne {x['number']}" for x in other[:2])
-        lines.append(f"\n_Aussi : {alts}_")
-
+        lines.append(f"\n_Aussi : {' · '.join(f'Ligne {x[\"number\"]}' for x in other[:2])}_")
     lines.append("\n— *Xëtu*")
     return "\n".join(lines)
 
 
 def _transfer_fr(r: dict) -> str:
-    best  = r["routes"][0]
+    best = r["routes"][0]
     lines = [
         f"🚌 *Ligne {best['number1']}* depuis *{r['origin_display']}*",
         f"↳ Descends à *{best['transfer']}* (correspondance)",
@@ -75,7 +61,8 @@ def _transfer_fr(r: dict) -> str:
     if r.get("alt_walk"):
         w = r["alt_walk"]
         lines.append(
-            f"\n_Option B : Marche {w['walk_min']} min → {w['walk_stop']} · Ligne {w['number']} · ~{w['total_min']} min_"
+            f"\n_Option B : Marche {w['walk_min']} min → {w['walk_stop']} · "
+            f"Ligne {w['number']} · ~{w['total_min']} min_"
         )
     lines.append("\n— *Xëtu*")
     return "\n".join(lines)
@@ -85,8 +72,7 @@ def _not_found_fr(r: dict) -> str:
     return (
         f"❌ Aucun trajet trouvé entre *{r['origin_display']}* "
         f"et *{r['dest_display']}*.\n\n"
-        "Essaie Yango pour ce trajet. 🚗\n\n"
-        "— *Xëtu*"
+        "Essaie Yango pour ce trajet. 🚗\n\n— *Xëtu*"
     )
 
 
@@ -94,8 +80,7 @@ def _no_transfer_not_found_fr(r: dict) -> str:
     return (
         f"❌ Aucun bus direct entre *{r['origin_display']}* "
         f"et *{r['dest_display']}*, même en marchant un peu.\n\n"
-        "Tu veux que je cherche avec une correspondance ?\n\n"
-        "— *Xëtu*"
+        "Tu veux que je cherche avec une correspondance ?\n\n— *Xëtu*"
     )
 
 
@@ -111,16 +96,12 @@ def _stop_not_found_fr(r: dict) -> str:
 def _no_od_fr() -> str:
     return (
         "Pour un itinéraire, dis-moi d'où et où tu vas.\n\n"
-        "Exemple : _Yoff → Sandaga_ ou _Comment aller à UCAD ?_\n\n"
-        "— *Xëtu*"
+        "Exemple : _Yoff → Sandaga_ ou _Comment aller à UCAD ?_\n\n— *Xëtu*"
     )
 
 
 def _ask_origin_fr(dest: str) -> str:
-    return (
-        f"Tu veux aller à *{dest}*.\n\n"
-        "Tu es à quel arrêt en ce moment ?"
-    )
+    return f"Tu veux aller à *{dest}*.\n\nTu es à quel arrêt en ce moment ?"
 
 
 # ── Formatage Wolof ───────────────────────────────────────
@@ -159,8 +140,7 @@ def _transfer_wo(r: dict) -> str:
 def _not_found_wo(r: dict) -> str:
     return (
         f"❌ Amul yoon bi ci *{r['origin_display']}* ñëw *{r['dest_display']}*.\n\n"
-        "Jël taxi Yango. 🚗\n\n"
-        "— *Xëtu*"
+        "Jël taxi Yango. 🚗\n\n— *Xëtu*"
     )
 
 
@@ -191,13 +171,9 @@ _FMT = {
 # ── Point d'entrée principal ──────────────────────────────
 
 async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
-    """
-    Utilise directement les entités extraites par le LLM dans route_async.
-    Plus de regex d'extraction ici.
-    """
-    lang        = langue if langue in _FMT else "fr"
-    graph       = get_graph()
-    no_transfer = entities.get("no_transfer_preference", False)
+    lang         = langue if langue in _FMT else "fr"
+    graph        = get_graph()
+    no_transfer  = entities.get("no_transfer_preference", False)
     origin_query = entities.get("origin")
     dest_query   = entities.get("destination")
 
@@ -207,15 +183,13 @@ async def handle(message: str, contact: dict, langue: str, entities: dict) -> st
         )
 
     if not origin_query:
-        dest_display = dest_query.title()
         set_attente_origin(contact["phone"], dest_query)
-        return _ask_origin_fr(dest_display) if lang == "fr" else (
-            f"Fa nga dem *{dest_display}* — fi nga dëkk ?"
+        return _ask_origin_fr(dest_query.title()) if lang == "fr" else (
+            f"Fa nga dem *{dest_query.title()}* — fi nga dëkk ?"
         )
 
     result = graph.find_route(origin_query, dest_query, no_transfer=no_transfer)
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(result["status"])
-
     if fmt_fn:
         return fmt_fn(result)
 
@@ -225,33 +199,26 @@ async def handle(message: str, contact: dict, langue: str, entities: dict) -> st
 
 # ── Flow multi-tour : réponse origine ────────────────────
 
-async def handle_origin_response(phone: str, text: str, langue: str, entities: dict) -> str:
+async def handle_origin_response(phone: str, text: str, langue: str,
+                                  entities: dict, history: list = None) -> str:
     """
     Appelé depuis main.py quand session est en état 'attente_origin'.
-    L'usager vient de donner son arrêt de départ (ex: "Liberté 5").
-
-    On conserve extractor ici car le routeur a classifié ce message court
-    comme signalement ou out_of_scope → entities probablement vide.
-    Fallback sur text.strip() si tout échoue.
+    FIX V4.1 : extractor.extract() supprimé.
+    Fallback : rag.validator → texte brut.
     """
-    from agent.extractor import extract
-
     ctx         = get_context(phone)
     destination = ctx.destination
-
     reset_context(phone)
 
     if not destination:
         return _no_od_fr() if langue != "wo" else (
-            "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_\n\n— *Xëtu*"
+            "Wax ma fi nga dëkk ak fa nga dem.\n\n— *Xëtu*"
         )
 
-    # Priorité : entités LLM → extractor → texte brut
-    origin_query = (
-        entities.get("origin")
-        or entities.get("destination")
-        or _extract_origin_fallback(text)
-    )
+    # Résolution origine : entities LLM → fuzzy validator → texte brut
+    origin_raw   = entities.get("origin") or entities.get("destination") or text.strip()
+    origin_query = validate_and_suggest(origin_raw) or origin_raw
+
     no_transfer  = entities.get("no_transfer_preference", False)
     lang         = langue if langue in _FMT else "fr"
     graph        = get_graph()
@@ -266,8 +233,7 @@ async def handle_origin_response(phone: str, text: str, langue: str, entities: d
             )
         return (
             f"❓ Duma xam *{origin_query}* ci arrêts Dem Dikk yi.\n\n"
-            "Jëfandikoo : _Liberté 6 · Sandaga · Yoff Village_\n\n"
-            "— *Xëtu*"
+            "Jëfandikoo : _Liberté 6 · Sandaga · Yoff Village_\n\n— *Xëtu*"
         )
 
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(route_result["status"])
@@ -275,16 +241,3 @@ async def handle_origin_response(phone: str, text: str, langue: str, entities: d
         return fmt_fn(route_result)
 
     return _not_found_fr(route_result) if lang == "fr" else _not_found_wo(route_result)
-
-
-def _extract_origin_fallback(text: str) -> str:
-    """
-    Fallback léger pour handle_origin_response uniquement.
-    Utilise extractor si dispo, sinon retourne le texte brut nettoyé.
-    """
-    try:
-        from agent.extractor import extract
-        result = extract(text)
-        return result.arret_normalise or result.arret or text.strip()
-    except Exception:
-        return text.strip()

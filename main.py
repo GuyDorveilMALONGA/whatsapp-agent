@@ -187,13 +187,20 @@ async def _process_message_safe(phone: str, text: str):
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
+        # ── 5.5 HISTORY pour les flows multi-tour ─────────
+        # Chargé ici pour être disponible dans handle_arret_response
+        # et handle_origin_response même si on court-circuite l'étape 7
+        _contact_tmp = queries.get_or_create_contact(phone, langue)
+        _conv_tmp    = queries.get_or_create_conversation(_contact_tmp["id"])
+        history      = queries.get_recent_messages(_conv_tmp["id"])
+
         # ── 6. FLOW MULTI-TOUR (entities injectées) ───────
         if session.etat == "attente_arret":
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
             response = await skill_question.handle_arret_response(
-                phone, text, langue, route_result.entities
+                phone, text, langue, route_result.entities, history=history
             )
             queries.save_message(conv_id, "user",      text,     langue, "question")
             await send_message(phone, response)
@@ -205,7 +212,7 @@ async def _process_message_safe(phone: str, text: str):
             conversation = queries.get_or_create_conversation(contact["id"])
             conv_id      = conversation["id"]
             response = await skill_itineraire.handle_origin_response(
-                phone, text, langue, route_result.entities
+                phone, text, langue, route_result.entities, history=history
             )
             queries.save_message(conv_id, "user",      text,     langue, "itineraire")
             await send_message(phone, response)

@@ -1,63 +1,106 @@
 """
-skills/question.py — V5
+skills/question.py — V5.1
 Répond à "le bus X est où ?" et "quels sont les arrêts du bus X ?"
 
-FIX DÉFINITIF :
-  1. Chargement JSON lazy + validation au démarrage
-  2. entities enrichies depuis l'historique si vides (fallback multi-tour)
-  3. handle_liste_arrets : ligne depuis entities OU historique
+FIX V5.1 :
+  1. Source de vérité : core.network (singleton — plus de chargement JSON local)
+  2. _resolve_ligne : LLM → regex message → historique → ambiguïté 16A/16B
+  3. Fuzzy matching via rag.validator sur les arrêts usager
+  4. handle_arret_response reçoit history explicitement depuis main.py
 """
-import json
+import re
 import logging
 from datetime import datetime, timezone
+
 from db import queries
 from agent.llm_brain import generate_response
 from core.context_builder import build_context
-from core.session_manager import (
-    get_context, set_attente_arret, reset_context
-)
+from core.network import NETWORK, VALID_LINES, get_stop_names, ambiguous_lines
+from core.session_manager import get_context, set_attente_arret, reset_context
+from rag.validator import normalize_arret, confirmation_message
 
 logger = logging.getLogger(__name__)
 
 _MINUTES_PAR_ARRET = 3
 
-# ── Chargement source de vérité ───────────────────────────
-_NETWORK: dict    = {}
-_VALID_LINES: set = set()
 
-def _load_json():
-    global _NETWORK, _VALID_LINES
-    try:
-        with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
-            _RAW = json.load(f)
-        for _lines in _RAW.get("categories", {}).values():
-            for _line in _lines:
-                num = str(_line.get("number", "")).upper()
-                if num:
-                    _NETWORK[num] = _line
-                    _VALID_LINES.add(num)
-        logger.info(f"[Question] JSON chargé : {len(_VALID_LINES)} lignes")
-    except Exception as e:
-        logger.error(f"[Question] Erreur critique chargement JSON : {e}")
+# ── Résolution de ligne ───────────────────────────────────
 
-_load_json()
+def _ligne_depuis_texte(text: str) -> str | None:
+    match = re.search(
+        r'\b(?:bus|ligne)\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
+        text, re.IGNORECASE
+    )
+    if match:
+        c = match.group(1).upper()
+        if c in VALID_LINES:
+            return c
+    match2 = re.search(r'\b(\d{1,3}[A-Z]?)\b', text)
+    if match2:
+        c = match2.group(1).upper()
+        if c in VALID_LINES:
+            return c
+    return None
 
 
-# ── Helpers ───────────────────────────────────────────────
+def _ligne_depuis_historique(history: list) -> str | None:
+    for msg in reversed(history or []):
+        ligne = _ligne_depuis_texte(msg.get("content", ""))
+        if ligne:
+            return ligne
+    return None
 
-def _get_stops(ligne: str) -> list[str]:
-    line_data = _NETWORK.get(str(ligne).upper(), {})
-    return [s["nom"].lower() for s in line_data.get("stops", [])]
+
+def _resolve_ligne(entities: dict, message: str,
+                   history: list) -> tuple[str | None, str | None]:
+    """
+    Résolution en 3 niveaux.
+    Retourne (ligne, ambiguity_msg) :
+      - (ligne, None)        → trouvé, pas d'ambiguïté
+      - (None, msg)          → ambiguïté 16A/16B détectée
+      - (None, None)         → introuvable
+    """
+    # Niveau 1 : entities LLM
+    ligne = entities.get("ligne")
+    if ligne:
+        ligne = str(ligne).upper()
+        if ligne in VALID_LINES:
+            return ligne, None
+        # Ambiguïté : "16" → ["16A", "16B"]
+        alts = ambiguous_lines(ligne)
+        if alts:
+            return None, f"Tu parles de *{' ou '.join(alts)}* ? Précise !"
+
+    # Niveau 2 : regex message brut
+    ligne = _ligne_depuis_texte(message)
+    if ligne:
+        return ligne, None
+
+    # Niveau 3 : historique
+    ligne = _ligne_depuis_historique(history)
+    if ligne:
+        return ligne, None
+
+    return None, None
+
+
+# ── Distance / dépassement ────────────────────────────────
+
+def _resolve_arret(texte: str, ligne: str) -> str | None:
+    """Fuzzy match sur les arrêts de la ligne."""
+    result = normalize_arret(texte, ligne)
+    if result["found"]:
+        return result["arret_officiel"]
+    return texte.strip()  # fallback texte brut
 
 
 def _calculer_distance(ligne: str, position_bus: str, arret_usager: str) -> int | None:
-    stops = _get_stops(ligne)
+    stops = get_stop_names(ligne)
     if not stops:
         return None
-    bus_lower    = position_bus.lower()
-    usager_lower = arret_usager.lower()
-    idx_bus   = next((i for i, n in enumerate(stops) if bus_lower in n or n in bus_lower), None)
-    idx_cible = next((i for i, n in enumerate(stops) if usager_lower in n or n in usager_lower), None)
+    bus_l, usa_l = position_bus.lower(), arret_usager.lower()
+    idx_bus   = next((i for i, n in enumerate(stops) if bus_l in n or n in bus_l), None)
+    idx_cible = next((i for i, n in enumerate(stops) if usa_l in n or n in usa_l), None)
     if idx_bus is None or idx_cible is None:
         return None
     dist = idx_cible - idx_bus
@@ -65,106 +108,38 @@ def _calculer_distance(ligne: str, position_bus: str, arret_usager: str) -> int 
 
 
 def _bus_deja_passe(ligne: str, position_bus: str, arret_usager: str) -> bool:
-    stops = _get_stops(ligne)
+    stops = get_stop_names(ligne)
     if not stops:
         return False
-    bus_lower    = position_bus.lower()
-    usager_lower = arret_usager.lower()
-    idx_bus   = next((i for i, n in enumerate(stops) if bus_lower in n or n in bus_lower), None)
-    idx_cible = next((i for i, n in enumerate(stops) if usager_lower in n or n in usager_lower), None)
-    if idx_bus is not None and idx_cible is not None:
-        return idx_bus > idx_cible
-    return False
-
-
-def _ligne_depuis_historique(history: list) -> str | None:
-    """
-    Cherche la dernière ligne mentionnée dans l'historique.
-    Permet "et pour la ligne 8 ?" après avoir parlé du 232.
-    """
-    import re
-    for msg in reversed(history or []):
-        content = msg.get("content", "")
-        match = re.search(
-            r'\b(?:bus|ligne)\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
-            content, re.IGNORECASE
-        )
-        if match:
-            candidate = match.group(1).upper()
-            if candidate in _VALID_LINES:
-                return candidate
-    return None
-
-
-def _ligne_depuis_message(text: str) -> str | None:
-    """
-    Extraction directe depuis le message brut.
-    Utilisé quand les entities LLM sont vides.
-    """
-    import re
-    match = re.search(
-        r'\b(?:bus|ligne)\s*(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
-        text, re.IGNORECASE
-    )
-    if match:
-        candidate = match.group(1).upper()
-        if candidate in _VALID_LINES:
-            return candidate
-    # Essai numéro seul (ex: "et le 8 ?")
-    match2 = re.search(r'\b(\d{1,3}[A-Z]?)\b', text)
-    if match2:
-        candidate = match2.group(1).upper()
-        if candidate in _VALID_LINES:
-            return candidate
-    return None
-
-
-def _resolve_ligne(entities: dict, message: str, history: list) -> str | None:
-    """
-    Résolution de la ligne en 3 niveaux :
-    1. entities LLM (prioritaire)
-    2. extraction regex depuis le message brut
-    3. historique de conversation (multi-tour)
-    """
-    # Niveau 1 : LLM
-    ligne = entities.get("ligne")
-    if ligne and str(ligne).upper() in _VALID_LINES:
-        return str(ligne).upper()
-
-    # Niveau 2 : regex message brut
-    ligne = _ligne_depuis_message(message)
-    if ligne:
-        return ligne
-
-    # Niveau 3 : historique
-    ligne = _ligne_depuis_historique(history)
-    if ligne:
-        return ligne
-
-    return None
+    bus_l, usa_l = position_bus.lower(), arret_usager.lower()
+    idx_bus   = next((i for i, n in enumerate(stops) if bus_l in n or n in bus_l), None)
+    idx_cible = next((i for i, n in enumerate(stops) if usa_l in n or n in usa_l), None)
+    return (idx_bus is not None and idx_cible is not None and idx_bus > idx_cible)
 
 
 # ── Flow multi-tour : réponse arrêt ──────────────────────
 
 async def handle_arret_response(phone: str, text: str, langue: str,
-                                 entities: dict, history: list = None) -> str:
+                                 entities: dict, history: list) -> str:
     ctx         = get_context(phone)
     ligne       = ctx.ligne
     signalement = ctx.signalement
     reset_context(phone)
 
+    # Fallback session expirée : remonte la ligne depuis l'historique
+    if not ligne:
+        ligne = _ligne_depuis_historique(history)
+
     if not ligne or not signalement:
-        if langue == "wolof":
-            return "Wax ma ci bus bi ak arrêt bi 🙏"
-        return "Dis-moi quel bus et à quel arrêt tu es. 🙏"
+        return (
+            "Wax ma ci bus bi ak arrêt bi 🙏" if langue == "wolof"
+            else "Dis-moi quel bus et à quel arrêt tu es. 🙏"
+        )
 
-    arret_usager = (
-        entities.get("origin")
-        or entities.get("destination")
-        or _ligne_depuis_message(text)
-        or text.strip()
+    arret_brut = (
+        entities.get("origin") or entities.get("destination") or text.strip()
     )
-
+    arret_usager = _resolve_arret(arret_brut, ligne)
     position_bus = signalement.get("position", "")
     deja_passe   = _bus_deja_passe(ligne, position_bus, arret_usager)
 
@@ -180,22 +155,18 @@ async def handle_arret_response(phone: str, text: str, langue: str,
         )
 
     distance = _calculer_distance(ligne, position_bus, arret_usager)
-
     if distance is None:
-        if langue == "wolof":
-            return (
-                f"🚌 Bus *{ligne}* signalé à *{position_bus}*.\n"
-                f"Duma xam distance bi exact, waaye dafa jeex ci kanam. 🙏"
-            )
         return (
             f"🚌 Bus *{ligne}* signalé à *{position_bus}*.\n"
-            f"Je ne trouve pas ton arrêt exact — mais le bus avance ! 🙏"
+            + ("Duma xam distance bi exact, waaye dafa jeex ci kanam. 🙏"
+               if langue == "wolof"
+               else "Je ne trouve pas ton arrêt exact — mais le bus avance ! 🙏")
         )
 
     if distance == 0:
-        if langue == "wolof":
-            return f"🚌 Bus *{ligne}* — dafa am ci sa arrêt *{arret_usager}* ! Jël ko ! 🏃"
-        return f"🚌 Bus *{ligne}* est à ton arrêt *{arret_usager}* ! Cours ! 🏃"
+        return (
+            f"🚌 Bus *{ligne}* est à ton arrêt *{arret_usager}* ! Cours ! 🏃"
+        )
 
     temps = distance * _MINUTES_PAR_ARRET
     if langue == "wolof":
@@ -214,20 +185,23 @@ async def handle_arret_response(phone: str, text: str, langue: str,
 async def handle(message: str, contact: dict, langue: str,
                  history: list, entities: dict) -> str:
 
-    # Résolution robuste : LLM → regex → historique
-    ligne = _resolve_ligne(entities, message, history)
+    ligne, ambiguity_msg = _resolve_ligne(entities, message, history)
+
+    if ambiguity_msg:
+        return ambiguity_msg
 
     if not ligne:
-        if langue == "wolof":
-            return "Numéro bus bi soxor. Wax ma : *Bus 15 est où ?* 🚌"
-        return "Quel numéro de bus cherches-tu ? Ex : *Bus 15 est où ?* 🚌"
+        return (
+            "Numéro bus bi soxor. Wax ma : *Bus 15 est où ?* 🚌"
+            if langue == "wolof"
+            else "Quel numéro de bus cherches-tu ? Ex : *Bus 15 est où ?* 🚌"
+        )
 
     signalements = queries.get_signalements_actifs(ligne)
 
     if signalements:
-        s = signalement = signalements[0]
+        s = signalements[0]
         set_attente_arret(contact["phone"], ligne, s)
-
         try:
             now         = datetime.now(timezone.utc)
             created     = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
@@ -247,12 +221,8 @@ async def handle(message: str, contact: dict, langue: str,
         )
 
     ctx = build_context(
-        message=message,
-        intent="question",
-        contact=contact,
-        ligne=ligne,
-        signalements=[],
-        history=history,
+        message=message, intent="question", contact=contact,
+        ligne=ligne, signalements=[], history=history,
     )
     return await generate_response(ctx, langue, history)
 
@@ -260,24 +230,30 @@ async def handle(message: str, contact: dict, langue: str,
 # ── Liste des arrêts ──────────────────────────────────────
 
 async def handle_liste_arrets(message: str, contact: dict, langue: str,
-                               entities: dict, history: list = None) -> str:
+                               entities: dict, history: list) -> str:
 
-    # Résolution robuste : LLM → regex → historique
-    ligne = _resolve_ligne(entities, message, history or [])
+    ligne, ambiguity_msg = _resolve_ligne(entities, message, history)
+
+    if ambiguity_msg:
+        return ambiguity_msg
 
     if not ligne:
-        if langue == "wolof":
-            return "Numéro ligne bi soxor. Ex : *arrêts du bus 15*"
-        return "Quelle ligne ? Ex : *arrêts du bus 15*"
+        return (
+            "Numéro ligne bi soxor. Ex : *arrêts du bus 15*"
+            if langue == "wolof"
+            else "Quelle ligne ? Ex : *arrêts du bus 15*"
+        )
 
-    info       = _NETWORK.get(ligne, {})
+    info       = NETWORK.get(ligne, {})
     stops      = info.get("stops", [])
-    arrets_str = " → ".join([s["nom"] for s in stops])
-    nom_ligne  = info.get("name", info.get("description", ""))
+    arrets_str = " → ".join(s["nom"] for s in stops)
+    nom_ligne  = info.get("name", "")
 
     if not arrets_str:
         return f"❌ Aucun arrêt trouvé pour la ligne *{ligne}*."
 
-    if langue == "wolof":
-        return f"🚌 Bus *{ligne}* ({nom_ligne}) :\n{arrets_str}"
-    return f"🚌 *Bus {ligne}* — {nom_ligne}\nArrêts : {arrets_str}"
+    return (
+        f"🚌 Bus *{ligne}* ({nom_ligne}) :\n{arrets_str}"
+        if langue == "wolof"
+        else f"🚌 *Bus {ligne}* — {nom_ligne}\nArrêts : {arrets_str}"
+    )

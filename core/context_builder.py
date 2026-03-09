@@ -1,29 +1,17 @@
 """
-core/context_builder.py — V4 (LLM-Native)
+core/context_builder.py — V5 (LLM-Native)
 L'innovation principale de Xëtu.
 Le LLM ne reçoit jamais un message nu — il reçoit une situation complète.
+
+V5 : chargement JSON supprimé — source unique : core.network (singleton)
 """
-import json
 import re
 import logging
 from datetime import datetime, timezone
 from memory import user_memory, network_memory
+from core.network import NETWORK, VALID_LINES
 
 logger = logging.getLogger(__name__)
-
-# ── Chargement de la Source de Vérité ─────────────────────
-_NETWORK: dict = {}
-_VALID_LINES: set = set()
-
-try:
-    with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
-        _LINES_DATA = json.load(f)
-        for line in _LINES_DATA:
-            num = str(line.get("number", "")).upper()
-            _NETWORK[num] = line
-            _VALID_LINES.add(num)
-except Exception as e:
-    logger.error(f"Erreur critique chargement JSON dans context_builder: {e}")
 
 
 def build_context(
@@ -36,9 +24,6 @@ def build_context(
     history: list | None = None,
     entities: dict | None = None,
 ) -> str:
-    """
-    Construit le bloc de contexte injecté dans le prompt LLM.
-    """
     blocks = []
     entities = entities or {}
 
@@ -55,20 +40,22 @@ def build_context(
         ligne_historique = _extract_ligne_from_history(history)
         if ligne_historique:
             ligne = ligne_historique
-            blocks.append(f"[CONTEXTE] Ligne {ligne} mentionnée précédemment dans la conversation.")
+            blocks.append(
+                f"[CONTEXTE] Ligne {ligne} mentionnée précédemment dans la conversation."
+            )
 
     # ── [RÉSEAU] ──────────────────────────────────────────
     if ligne:
         ligne = str(ligne).upper()
-        if ligne in _VALID_LINES:
-            arrets_info = _NETWORK.get(ligne, {})
-            stops = arrets_info.get("stops", [])
-            description = arrets_info.get("description", "")
+        if ligne in VALID_LINES:
+            info  = NETWORK.get(ligne, {})
+            stops = info.get("stops", [])
+            desc  = info.get("name", info.get("description", ""))
             blocks.append(
-                f"[LIGNE] Bus {ligne} — {description} ({len(stops)} arrêts au total)"
+                f"[LIGNE] Bus {ligne} — {desc} ({len(stops)} arrêts au total)"
             )
         else:
-            valides = ", ".join(sorted(_VALID_LINES)[:15]) + "..."
+            valides = ", ".join(sorted(VALID_LINES)[:15]) + "..."
             blocks.append(
                 f"[LIGNE] La ligne '{ligne}' N'EXISTE PAS dans le réseau Dem Dikk. "
                 f"Lignes disponibles : {valides}"
@@ -77,26 +64,30 @@ def build_context(
     # ── [SIGNALEMENTS ACTIFS] ─────────────────────────────
     if signalements is not None:
         if signalements:
-            now = datetime.now(timezone.utc)
+            now      = datetime.now(timezone.utc)
             sig_lines = []
             for s in signalements[:3]:
                 try:
-                    created = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
+                    created     = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
                     minutes_ago = int((now - created).total_seconds() / 60)
                     sig_lines.append(f"  → {s['position']} il y a {minutes_ago} min")
                 except Exception:
                     sig_lines.append(f"  → {s.get('position', '?')}")
-            blocks.append(f"[SIGNALEMENTS ACTIFS bus {ligne}]\n" + "\n".join(sig_lines))
+            blocks.append(
+                f"[SIGNALEMENTS ACTIFS bus {ligne}]\n" + "\n".join(sig_lines)
+            )
         else:
-            blocks.append(f"[SIGNALEMENTS] Aucun signalement récent pour le bus {ligne}.")
+            blocks.append(
+                f"[SIGNALEMENTS] Aucun signalement récent pour le bus {ligne}."
+            )
 
     # ── [ARRÊT] ───────────────────────────────────────────
     if arret:
         blocks.append(f"[ARRÊT MENTIONNÉ] {arret}")
 
     # ── [USAGER] ──────────────────────────────────────────
-    langue = contact.get("langue", "fr")
-    fiabilite = contact.get("fiabilite_score", 0.5)
+    langue        = contact.get("langue", "fr")
+    fiabilite     = contact.get("fiabilite_score", 0.5)
     profil_summary = user_memory.get_profil_summary(contact)
     blocks.append(
         f"[USAGER] Langue: {langue} | Fiabilité: {fiabilite:.0%}"
@@ -104,9 +95,9 @@ def build_context(
     )
 
     # ── [MÉMOIRE RÉSEAU] ──────────────────────────────────
-    if ligne and ligne in _VALID_LINES:
+    if ligne and ligne in VALID_LINES:
         try:
-            eta = network_memory.get_eta_prediction(ligne)
+            eta     = network_memory.get_eta_prediction(ligne)
             mem_ctx = network_memory.format_for_context(eta)
             if mem_ctx:
                 blocks.append(mem_ctx)
@@ -119,7 +110,6 @@ def build_context(
 def _extract_ligne_from_history(history: list) -> str | None:
     """
     Cherche la dernière ligne mentionnée dans l'historique.
-    Regex simple — indépendant de l'ancien extracteur.
     Permet à Xëtu de comprendre 'et le 16 ?' après avoir parlé du 15.
     """
     for msg in reversed(history):
@@ -130,6 +120,6 @@ def _extract_ligne_from_history(history: list) -> str | None:
         )
         if match:
             ligne = match.group(1).upper()
-            if ligne in _VALID_LINES:
+            if ligne in VALID_LINES:
                 return ligne
     return None
