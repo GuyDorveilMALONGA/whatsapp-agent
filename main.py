@@ -1,5 +1,5 @@
 """
-main.py — V5.0 (LLM-Native)
+main.py — V5.1 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 Refonte : Routing asynchrone prioritaire + Slot Filling centralisé.
 """
@@ -60,14 +60,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.0 démarré — Architecture LLM-Native")
+    logger.info("🚌 Xëtu V5.1 démarré — Architecture LLM-Native")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.0"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.1"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -160,16 +160,17 @@ async def _process_message_safe(phone: str, text: str):
         # ── 1. NORMALISATION ──────────────────────────────
         normalized = normalize(text)
 
-        # ── 2. ROUTING & EXTRACTION (Priorité Absolue) ────
+        # ── 2. SESSION — lecture anticipée ────────────────
+        # Lue ici pour être disponible dès l'étape 3 (route_async)
+        session = get_context(phone)
+
+        # ── 3. ROUTING & EXTRACTION (Priorité Absolue) ────
         # LLM retourne intent + lang + entities en une seule passe
         route_result = await route_async(normalized, history=None, session_context=session)
 
-        # ── 3. LANGUE ─────────────────────────────────────
+        # ── 4. LANGUE ─────────────────────────────────────
         # Langue vient du LLM, fallback règles si absente
         langue = route_result.lang or detect_language(text)
-
-        # ── 4. SESSION — lecture ──────────────────────────
-        session = get_context(phone)
 
         # ── 5. ABANDON DE FLOW ────────────────────────────
         if session.etat and is_abandon(text):
