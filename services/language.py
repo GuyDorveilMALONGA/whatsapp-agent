@@ -1,13 +1,22 @@
 """
-services/language.py — V2
+services/language.py — V2.1
 Détection de langue SANS LLM.
 langdetect + liste de mots-clés wolof/pulaar pour les cas ratés.
+
+FIX V2.1 :
+  1. Nettoyage ponctuation : re.sub(r'[^\w\s]', ' ', text) avant split()
+     → "waaw!" / "dafa?" / "xam-xam" correctement isolés
+     → V2 ratait ces cas car la ponctuation restait collée au mot
+  2. WOLOF_STRONG complétée : "amul" et "nit" ajoutés
+     → couvre la liste exacte prévue dans la feuille de route
+     → "amul bus bi" → wolof (était raté en V2)
 
 FIX V2 :
   Seuil wolof/pulaar abaissé à 1 mot fort.
   "waaw" seul → wolof. "dafa" seul → wolof.
   Liste de mots FORTS séparée de la liste générale.
 """
+import re
 from langdetect import detect, LangDetectException
 
 # Mots FORTS wolof — 1 seul suffit pour déclencher Gemini
@@ -16,6 +25,7 @@ WOLOF_STRONG = {
     "sëde", "dinu", "ngi", "rekk", "yëgël", "lan", "wax",
     "nga", "naa", "dina", "danu", "dinañu", "jamm", "xarit",
     "mbokk", "téranga", "toubab", "ñëw", "dem", "jël",
+    "amul", "nit",
 }
 
 # Mots courants wolof — 2 requis (présents dans d'autres langues)
@@ -50,7 +60,10 @@ def detect_language(text: str) -> str:
     if not text or len(text.strip()) < 2:
         return "unknown"
 
-    words = set(text.lower().split())
+    # FIX V2.1 : nettoyage ponctuation avant split
+    # "waaw!" → {"waaw"}, "xam-xam" → {"xam", "xam"}
+    clean_text = re.sub(r'[^\w\s]', ' ', text)
+    words = set(clean_text.lower().split())
 
     # Wolof fort : 1 mot suffit
     if words & WOLOF_STRONG:
@@ -68,7 +81,7 @@ def detect_language(text: str) -> str:
     if len(words & PULAAR_COMMON) >= 2:
         return "pulaar"
 
-    # Fallback langdetect
+    # Fallback langdetect (texte original — pas nettoyé)
     try:
         code = detect(text)
         return {"fr": "fr", "en": "en", "ff": "pulaar", "wo": "wolof"}.get(code, "unknown")
