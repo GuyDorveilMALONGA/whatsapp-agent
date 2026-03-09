@@ -1,11 +1,18 @@
 """
-db/queries.py — V4.1
+db/queries.py — V4.2
 Règle absolue : SEUL fichier qui touche Supabase.
 
 V4.1 :
   + Horaires théoriques Moovit (save_schedules_batch, get_next_theoretical_bus)
   + Leaderboard limité à 30 jours (évite OOM sur gros volume)
   + logging ajouté
+
+V4.2 :
+  + FIX : created_at → timestamp sur table signalements
+    (colonne created_at n'existe pas dans signalements, c'est timestamp)
+    Fonctions corrigées : get_signalements_actifs, get_all_signalements_actifs,
+    get_lignes_silencieuses, get_stats_communaute
+
   ⚠️  get_leaderboard reste temporaire — migrer vers RPC Supabase
       (GROUP BY côté DB) avant 50k signalements
 """
@@ -109,7 +116,7 @@ def get_signalements_actifs(ligne: str) -> list[dict]:
              .select("*")
              .eq("ligne", ligne)
              .gt("expires_at", now)
-             .order("created_at", desc=True)
+             .order("timestamp", desc=True)   # ✅ FIX V4.2 : timestamp (pas created_at)
              .execute())
     return res.data or []
 
@@ -121,7 +128,7 @@ def get_all_signalements_actifs() -> list[dict]:
     res = (db.table("signalements")
              .select("*")
              .gt("expires_at", now)
-             .order("created_at", desc=True)
+             .order("timestamp", desc=True)   # ✅ FIX V4.2 : timestamp (pas created_at)
              .execute())
     return res.data or []
 
@@ -138,7 +145,10 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     since  = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
     lignes = db.table("lignes").select("numero").eq("actif", True).execute()
     toutes = {l["numero"] for l in (lignes.data or [])}
-    sigs   = db.table("signalements").select("ligne").gt("created_at", since).execute()
+    sigs   = (db.table("signalements")
+                .select("ligne")
+                .gt("timestamp", since)       # ✅ FIX V4.2 : timestamp (pas created_at)
+                .execute())
     actives = {s["ligne"] for s in (sigs.data or [])}
     return list(toutes - actives)
 
@@ -167,11 +177,11 @@ def create_abonnement(phone: str, ligne: str, arret: str,
     if existing.data:
         return existing.data[0]
     res = db.table("abonnements").insert({
-        "phone":       phone,
-        "ligne":       ligne,
-        "arret":       arret or "",
+        "phone":        phone,
+        "ligne":        ligne,
+        "arret":        arret or "",
         "heure_alerte": heure_alerte,
-        "actif":       True
+        "actif":        True
     }).execute()
     return res.data[0]
 
@@ -347,7 +357,7 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
              .select("conversations(contacts(phone, fiabilite_score))")
              .eq("intent", "signalement")
              .eq("role", "user")
-             .gte("created_at", un_mois)
+             .gte("created_at", un_mois)      # ✅ messages a bien created_at
              .execute())
 
     compteur: dict[str, dict] = {}
@@ -380,7 +390,7 @@ def get_stats_communaute() -> dict:
 
     res_today = (db.table("signalements")
                    .select("id", count="exact")
-                   .gte("created_at", today_start)
+                   .gte("timestamp", today_start)  # ✅ FIX V4.2 : timestamp
                    .execute())
 
     res_all = (db.table("messages")
