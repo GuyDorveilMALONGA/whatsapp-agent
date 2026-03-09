@@ -45,7 +45,13 @@ _PATTERNS = [
 ]
 
 def _extract_od(message: str) -> tuple[str | None, str | None]:
-    text = message.strip()
+    # Retire les mots-clés no_transfer avant d'extraire OD
+    text = re.sub(
+        r'\b(sans\s+correspondance|sans\s+changer|direct\s+seulement|'
+        r'bus\s+direct|direct\s+uniquement|uniquement\s+direct|'
+        r'je\s+ne\s+peux\s+pas\s+marcher|je\s+ne\s+veux\s+pas\s+marcher)\b',
+        '', message.strip(), flags=re.IGNORECASE
+    ).strip()
     for pattern in _PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
         if m:
