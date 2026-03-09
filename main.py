@@ -1,11 +1,12 @@
 """
-main.py — V4.0
+main.py — V5.0
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-V4.0 : + CORS + /api/buses + /api/leaderboard
-FIX #2 : Routing avant DB → normalize → route → DB (~30ms gagnés)
+V5.0 :
+  + entities propagées dans _dispatch → tous les skills reçoivent les entités LLM
+  + CORS + /api/buses + /api/leaderboard
+  FIX CRITIQUE : TypeError handle() missing 'entities' → résolu
 """
-import re
 import logging
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import PlainTextResponse
@@ -31,8 +32,6 @@ from memory import user_memory
 from core.session_manager import (
     get_context, is_abandon, reset_context
 )
-
-# ── Nouveaux routers API (V4) ─────────────────────────────
 from api.buses import router as buses_router
 from api.leaderboard import router as leaderboard_router
 
@@ -44,15 +43,13 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar")
 
-# ── CORS (V4) — permet au dashboard public d'appeler l'API ──
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # Restreindre à ton domaine en prod
+    allow_origins=["*"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
 
-# ── Enregistrement des routers API (V4) ──────────────────
 app.include_router(buses_router)
 app.include_router(leaderboard_router)
 
@@ -65,14 +62,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V4.0 démarré")
+    logger.info("🚌 Xëtu V5.0 démarré")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "4.0"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.0"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -83,11 +80,9 @@ async def verify_webhook(request: Request):
     mode      = params.get("hub.mode")
     token     = params.get("hub.verify_token")
     challenge = params.get("hub.challenge")
-
     if mode == "subscribe" and token == VERIFY_TOKEN:
         logger.info("✅ Webhook Meta vérifié")
         return PlainTextResponse(challenge)
-
     raise HTTPException(status_code=403, detail="Token invalide")
 
 
@@ -166,7 +161,7 @@ async def _process_message_safe(phone: str, text: str):
         # ── 2. LANGUE ─────────────────────────────────────
         langue = detect_language(text)
 
-        # ── 3. SESSION — lecture (légère, Supabase) ───────
+        # ── 3. SESSION ────────────────────────────────────
         session = get_context(phone)
 
         # ── 4. ABANDON DE FLOW ────────────────────────────
@@ -212,7 +207,7 @@ async def _process_message_safe(phone: str, text: str):
         # ── 6. ROUTING (AVANT DB) ─────────────────────────
         route_result = await route_async(normalized, history=None)
 
-        # ── 7. DB — seulement maintenant ──────────────────
+        # ── 7. DB ─────────────────────────────────────────
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
@@ -225,7 +220,10 @@ async def _process_message_safe(phone: str, text: str):
         # ── 9. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # ── 10. DISPATCH ──────────────────────────────────
+        # ── 10. DISPATCH — entities propagées ─────────────
+        entities = route_result.entities if hasattr(route_result, "entities") else {}
+        entities = entities or {}
+
         response = await _dispatch(
             text=text,
             intent=route_result.intent,
@@ -233,6 +231,7 @@ async def _process_message_safe(phone: str, text: str):
             langue=langue,
             conv_id=conv_id,
             history=history,
+            entities=entities,
         )
 
         # ── 11. ENVOI ─────────────────────────────────────
@@ -264,20 +263,31 @@ async def _process_message_safe(phone: str, text: str):
 # ── Dispatch ──────────────────────────────────────────────
 
 async def _dispatch(text: str, intent: str, contact: dict,
-                    langue: str, conv_id: str, history: list) -> str:
-
+                    langue: str, conv_id: str, history: list,
+                    entities: dict) -> str:
+    """
+    Dispatch vers les skills.
+    entities = dict extrait par le LLM (ligne, origin, destination, arret...)
+    Chaque skill reçoit entities pour ne pas re-parser le texte brut.
+    """
     if intent == "signalement":
-        return await skill_signalement.handle(text, contact, langue)
+        return await skill_signalement.handle(text, contact, langue, entities)
+
     elif intent == "question":
-        return await skill_question.handle(text, contact, langue, history)
+        return await skill_question.handle(text, contact, langue, history, entities)
+
     elif intent == "liste_arrets":
-        return await skill_question.handle_liste_arrets(text, contact, langue)
+        return await skill_question.handle_liste_arrets(text, contact, langue, entities)
+
     elif intent == "abonnement":
-        return await skill_abonnement.handle(text, contact, langue)
+        return await skill_abonnement.handle(text, contact, langue, entities)
+
     elif intent == "escalade":
         return await skill_escalade.handle(text, contact, langue, conv_id)
+
     elif intent == "itineraire":
-        return await skill_itineraire.handle(text, contact, langue)
+        return await skill_itineraire.handle(text, contact, langue, entities)
+
     else:
         from agent.llm_brain import generate_response
         ctx = build_context(
