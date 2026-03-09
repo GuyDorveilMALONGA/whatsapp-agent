@@ -1,8 +1,15 @@
 """
-skills/itineraire.py — V2
-Extrait origin/dest depuis le message, calcule et formate l'itinéraire.
-Source réseau : dem_dikk_lines.json (site officiel Dem Dikk · 39 lignes)
-V2 : flow multi-tour — si origine manquante, stocke dest en session Supabase
+skills/itineraire.py — V3 Walk-Aware Routing
+Calcule et formate les itinéraires avec le nouveau moteur Walk-Aware.
+
+Statuts gérés :
+  direct              → bus direct origin → dest
+  walk_direct         → marche Xm + bus direct
+  transfer            → correspondance classique
+  no_transfer_not_found → aucun bus direct même en marchant
+  not_found           → aucun trajet trouvé
+  stop_not_found      → arrêt inconnu
+  same_stop           → départ = arrivée
 """
 import re
 import logging
@@ -11,39 +18,33 @@ from core.session_manager import set_attente_origin, get_context, reset_context
 
 logger = logging.getLogger(__name__)
 
-_MINS_PAR_ARRET = 2
 
+# ── Détection mode no_transfer ────────────────────────────
 
-def _duree(nb_stops: int) -> str:
-    m = nb_stops * _MINS_PAR_ARRET
-    if m < 60:
-        return f"~{m} min"
-    h, r = divmod(m, 60)
-    return f"~{h}h{r:02d}" if r else f"~{h}h"
+_NO_TRANSFER_PATTERNS = [
+    r"\b(sans\s+correspondance|sans\s+changer|direct\s+seulement|bus\s+direct)\b",
+    r"\b(je\s+(ne\s+)?peux\s+pas\s+marcher|je\s+ne\s+veux\s+pas\s+marcher)\b",
+    r"\b(direct\s+uniquement|uniquement\s+direct)\b",
+]
+
+def _is_no_transfer(text: str) -> bool:
+    t = text.lower()
+    return any(re.search(p, t) for p in _NO_TRANSFER_PATTERNS)
 
 
 # ── Extraction origin/dest ────────────────────────────────
 
 _PATTERNS = [
-    # "de X à Y" / "depuis X vers Y"
     r'(?:de|depuis)\s+(.+?)\s+(?:à|au|vers|jusqu[aà]|pour)\s+(.+?)(?:\s*[?!.]|$)',
-    # "je suis à X je veux à Y" / "je suis à X je veux aller à Y"
     r'je\s+suis\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?je\s+veux\s+(?:aller\s+)?(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
-    # "je me trouve à X et je vais à Y"
     r'je\s+me\s+trouve\s+(?:à|au)\s+(.+?)\s+(?:et\s+)?(?:je\s+vais|je\s+veux\s+aller)\s+(?:à|au|vers)?\s*(.+?)(?:\s*[?!.]|$)',
-    # "X → Y"
     r'(.+?)\s*(?:→|->|➔)\s*(.+?)(?:\s*[?!.]|$)',
-    # "quel bus pour X depuis Y" / "comment aller à X"
     r'(?:quel\s+bus\s+(?:pour|pour\s+aller\s+[aà])|comment\s+aller\s+[aà])\s+(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
-    # "je prends quelle ligne pour X" / "quelle ligne pour aller à X"
     r'(?:quelle\s+ligne|quel\s+bus)\s+(?:pour\s+(?:aller\s+)?(?:à|au)\s+)(.+?)(?:\s+depuis\s+(.+?))?(?:\s*[?!.]|$)',
-    # Wolof
     r'(?:dem\s+(?:ci|fa))\s+(.+?)(?:\s+ci\s+(.+?))?(?:\s*[?!.]|$)',
 ]
 
-
 def _extract_od(message: str) -> tuple[str | None, str | None]:
-    """Extrait (origin, destination) depuis le message."""
     text = message.strip()
     for pattern in _PATTERNS:
         m = re.search(pattern, text, re.IGNORECASE)
@@ -62,9 +63,9 @@ def _direct_fr(r: dict) -> str:
     best  = r["routes"][0]
     other = r["routes"][1:]
     lines = [
-        f"🚌 *Ligne {best['number']}*",
+        f"🚌 *Ligne {best['number']}* — direct",
         f"De *{r['origin_display']}* → *{r['dest_display']}*",
-        f"Durée : {_duree(best['nb_stops'])} · {best['nb_stops']} arrêts",
+        f"Durée : ~{best['nb_stops'] * 2} min · {best['nb_stops']} arrêts",
     ]
     if other:
         alts = " · ".join(f"Ligne {x['number']}" for x in other[:2])
@@ -73,22 +74,60 @@ def _direct_fr(r: dict) -> str:
     return "\n".join(lines)
 
 
+def _walk_direct_fr(r: dict) -> str:
+    best  = r["routes"][0]
+    other = r["routes"][1:]
+
+    lines = [f"🚶 {best['walk_min']} min → *{best['walk_stop']}*"]
+    lines.append(f"🚌 *Ligne {best['number']}* · {best['nb_stops'] * 2} min")
+
+    if best.get("walk_dest_m", 0) > 0:
+        lines.append(f"🚶 {best['walk_dest_min']} min → *{r['dest_display']}*")
+
+    lines.append(f"Total *~{best['total_min']} min*")
+
+    if r.get("alt_transfer"):
+        t = r["alt_transfer"]
+        lines.append(f"\n_Option B : Ligne {t['number1']} → Ligne {t['number2']} · ~{t['total_min']} min_")
+    elif other:
+        alts = " · ".join(f"Ligne {x['number']}" for x in other[:2])
+        lines.append(f"\n_Aussi : {alts}_")
+
+    lines.append("\n— *Xëtu*")
+    return "\n".join(lines)
+
+
 def _transfer_fr(r: dict) -> str:
-    best = r["routes"][0]
-    return "\n".join([
+    best  = r["routes"][0]
+    lines = [
         f"🚌 *Ligne {best['number1']}* depuis *{r['origin_display']}*",
         f"↳ Descends à *{best['transfer']}* (correspondance)",
         f"🚌 *Ligne {best['number2']}* jusqu'à *{r['dest_display']}*",
-        f"Durée : {_duree(best['nb_stops'])} · {best['nb_stops']} arrêts au total",
-        "\n— *Xëtu*",
-    ])
+        f"Total *~{best['total_min']} min*",
+    ]
+    if r.get("alt_walk"):
+        w = r["alt_walk"]
+        lines.append(
+            f"\n_Option B : Marche {w['walk_min']} min → {w['walk_stop']} · Ligne {w['number']} · ~{w['total_min']} min_"
+        )
+    lines.append("\n— *Xëtu*")
+    return "\n".join(lines)
 
 
 def _not_found_fr(r: dict) -> str:
     return (
         f"❌ Aucun trajet trouvé entre *{r['origin_display']}* "
-        f"et *{r['dest_display']}* avec une correspondance max.\n\n"
+        f"et *{r['dest_display']}*.\n\n"
         "Essaie Yango pour ce trajet. 🚗\n\n"
+        "— *Xëtu*"
+    )
+
+
+def _no_transfer_not_found_fr(r: dict) -> str:
+    return (
+        f"❌ Aucun bus direct entre *{r['origin_display']}* "
+        f"et *{r['dest_display']}*, même en marchant un peu.\n\n"
+        "Tu veux que je cherche avec une correspondance ?\n\n"
         "— *Xëtu*"
     )
 
@@ -97,7 +136,7 @@ def _stop_not_found_fr(r: dict) -> str:
     which = "départ" if r.get("which") == "origin" else "destination"
     return (
         f"❓ Je ne connais pas *{r['query']}* comme arrêt de {which}.\n\n"
-        "Essaie : _Terminus Leclerc · Palais 2 · Yoff Village · Sandaga · UCAD_\n\n"
+        "Essaie : _Terminus Leclerc · Sandaga · Yoff Village · UCAD · Colobane_\n\n"
         "— *Xëtu*"
     )
 
@@ -113,7 +152,7 @@ def _no_od_fr() -> str:
 def _ask_origin_fr(dest: str) -> str:
     return (
         f"Tu veux aller à *{dest}*.\n\n"
-        f"Tu es à quel arrêt en ce moment ?"
+        "Tu es à quel arrêt en ce moment ?"
     )
 
 
@@ -124,7 +163,17 @@ def _direct_wo(r: dict) -> str:
     return "\n".join([
         f"🚌 *Ligne {best['number']}* la jëf.",
         f"Dëkk ci *{r['origin_display']}*, dem *{r['dest_display']}*.",
-        f"Jamm : {_duree(best['nb_stops'])} · {best['nb_stops']} areet.",
+        f"Jamm : ~{best['nb_stops'] * 2} min · {best['nb_stops']} areet.",
+        "\n— *Xëtu*",
+    ])
+
+
+def _walk_direct_wo(r: dict) -> str:
+    best = r["routes"][0]
+    return "\n".join([
+        f"🚶 Dem ak tank {best['walk_min']} min → *{best['walk_stop']}*",
+        f"🚌 *Ligne {best['number']}* · {best['nb_stops'] * 2} min",
+        f"Jamm : ~{best['total_min']} min",
         "\n— *Xëtu*",
     ])
 
@@ -135,7 +184,7 @@ def _transfer_wo(r: dict) -> str:
         f"🚌 Jël *Ligne {best['number1']}* ci *{r['origin_display']}*.",
         f"↳ Surfu ci *{best['transfer']}*.",
         f"🚌 Jël *Ligne {best['number2']}*, dem *{r['dest_display']}*.",
-        f"Jamm : {_duree(best['nb_stops'])}.",
+        f"Jamm : ~{best['total_min']} min.",
         "\n— *Xëtu*",
     ])
 
@@ -152,18 +201,22 @@ def _not_found_wo(r: dict) -> str:
 
 _FMT = {
     "fr": {
-        "direct":         _direct_fr,
-        "transfer":       _transfer_fr,
-        "not_found":      _not_found_fr,
-        "stop_not_found": _stop_not_found_fr,
-        "same_stop":      lambda r: f"Tu es déjà à *{r['stop']}* 😄\n\n— *Xëtu*",
+        "direct":                _direct_fr,
+        "walk_direct":           _walk_direct_fr,
+        "transfer":              _transfer_fr,
+        "not_found":             _not_found_fr,
+        "no_transfer_not_found": _no_transfer_not_found_fr,
+        "stop_not_found":        _stop_not_found_fr,
+        "same_stop":             lambda r: f"Tu es déjà à *{r['stop']}* 😄\n\n— *Xëtu*",
     },
     "wo": {
-        "direct":         _direct_wo,
-        "transfer":       _transfer_wo,
-        "not_found":      _not_found_wo,
-        "stop_not_found": _stop_not_found_fr,
-        "same_stop":      lambda r: f"Dëkk nga fi ci *{r['stop']}* 😄\n\n— *Xëtu*",
+        "direct":                _direct_wo,
+        "walk_direct":           _walk_direct_wo,
+        "transfer":              _transfer_wo,
+        "not_found":             _not_found_wo,
+        "no_transfer_not_found": _not_found_wo,
+        "stop_not_found":        _stop_not_found_fr,
+        "same_stop":             lambda r: f"Dëkk nga fi ci *{r['stop']}* 😄\n\n— *Xëtu*",
     },
 }
 
@@ -171,8 +224,9 @@ _FMT = {
 # ── Point d'entrée principal ──────────────────────────────
 
 async def handle(message: str, contact: dict, langue: str) -> str:
-    lang  = langue if langue in _FMT else "fr"
-    graph = get_graph()
+    lang        = langue if langue in _FMT else "fr"
+    graph       = get_graph()
+    no_transfer = _is_no_transfer(message)
 
     origin_query, dest_query = _extract_od(message)
 
@@ -188,7 +242,7 @@ async def handle(message: str, contact: dict, langue: str) -> str:
             f"Fa nga dem *{dest_display}* — fi nga dëkk ?"
         )
 
-    result = graph.find_route(origin_query, dest_query)
+    result = graph.find_route(origin_query, dest_query, no_transfer=no_transfer)
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(result["status"])
 
     if fmt_fn:
@@ -207,7 +261,7 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
     """
     from agent.extractor import extract
 
-    ctx = get_context(phone)
+    ctx         = get_context(phone)
     destination = ctx.destination
 
     reset_context(phone)
@@ -217,25 +271,24 @@ async def handle_origin_response(phone: str, text: str, langue: str) -> str:
             "Wax ma fi nga dëkk ak fa nga dem. Xeeti : _Yoff → Sandaga_\n\n— *Xëtu*"
         )
 
-    result = extract(text)
-    origin_query = result.arret_normalise or result.arret or text.strip()
+    result_ext   = extract(text)
+    origin_query = result_ext.arret_normalise or result_ext.arret or text.strip()
+    lang         = langue if langue in _FMT else "fr"
+    graph        = get_graph()
+    no_transfer  = _is_no_transfer(text)
+    route_result = graph.find_route(origin_query, destination, no_transfer=no_transfer)
 
-    lang  = langue if langue in _FMT else "fr"
-    graph = get_graph()
-    route_result = graph.find_route(origin_query, destination)
-
-    # Arrêt de départ non trouvé → message clair
     if route_result["status"] == "stop_not_found" and route_result.get("which") == "origin":
         if lang == "fr":
             return (
                 f"❓ Je ne connais pas *{origin_query}* comme arrêt Dem Dikk.\n\n"
-                f"Essaie : _Liberté 6 · Sandaga · Yoff Village · UCAD · Colobane_\n\n"
-                f"— *Xëtu*"
+                "Essaie : _Liberté 6 · Sandaga · Yoff Village · UCAD · Colobane_\n\n"
+                "— *Xëtu*"
             )
         return (
             f"❓ Duma xam *{origin_query}* ci arrêts Dem Dikk yi.\n\n"
-            f"Jëfandikoo : _Liberté 6 · Sandaga · Yoff Village_\n\n"
-            f"— *Xëtu*"
+            "Jëfandikoo : _Liberté 6 · Sandaga · Yoff Village_\n\n"
+            "— *Xëtu*"
         )
 
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(route_result["status"])
