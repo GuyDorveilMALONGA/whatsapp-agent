@@ -60,6 +60,20 @@ from core.session_manager import (
     get_context, is_abandon, reset_context
 )
 
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["https://xetudashbord.pages.dev"],
+    allow_methods=["GET"],
+    allow_headers=["*"],
+)
+
+# ... tes routers en dessous
+
 from api.buses import router as buses_router
 from api.leaderboard import router as leaderboard_router
 
