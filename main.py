@@ -162,7 +162,7 @@ async def _process_message_safe(phone: str, text: str):
 
         # ── 2. ROUTING & EXTRACTION (Priorité Absolue) ────
         # LLM retourne intent + lang + entities en une seule passe
-        route_result = await route_async(normalized, history=None)
+        route_result = await route_async(normalized, history=None, session_context=session)
 
         # ── 3. LANGUE ─────────────────────────────────────
         # Langue vient du LLM, fallback règles si absente

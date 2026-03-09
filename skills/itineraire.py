@@ -210,6 +210,17 @@ async def handle_origin_response(phone: str, text: str, langue: str,
     destination = ctx.destination
     reset_context(phone)
 
+    # FIX : si session expirée, tenter de remonter destination depuis l'historique
+    if not destination and history:
+        for msg in reversed(history):
+            if msg.get("role") == "assistant" and "Tu veux aller à" in msg.get("content", ""):
+                import re
+                m = re.search(r"Tu veux aller à \*(.+?)\*", msg["content"])
+                if m:
+                    destination = m.group(1)
+                    logger.debug(f"[Itinéraire] destination remontée depuis history: {destination}")
+                    break
+
     if not destination:
         return _no_od_fr() if langue != "wo" else (
             "Wax ma fi nga dëkk ak fa nga dem.\n\n— *Xëtu*"

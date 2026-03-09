@@ -1,13 +1,17 @@
 """
-agent/router.py — V4.0
+agent/router.py — V4.1
 Intent Gateway — 4 niveaux de classification.
 
-CORRECTIONS V4 :
-- RouteResult enrichi avec lang + entities
-- Forçage LLM pour intents nécessitant des entités (signalement, itineraire, abonnement)
-- classify_intent retourne un dict → extraction propre de intent_str
-- Cache ne stocke que la string intent (pas le dict)
-- Fallback propre si LLM crash
+FIX V4.1 :
+  route_async() reçoit session_context (SessionContext) en plus de session_state.
+  Quand le LLM retourne entities={} sur un message court multi-tour
+  (ex: "et le 8 ?"), on injecte la ligne depuis la session active
+  pour que les skills reçoivent toujours des entities complètes.
+
+  Avant : "et le 8 ?" → entities={} → question.py niveau 3 compensait
+          (historique), mais uniquement si history était chargé.
+  Après : router injecte entities={"ligne": ctx.ligne} si session active
+          ET entities vide après LLM.
 """
 import re
 import logging
@@ -74,14 +78,12 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 }
 
 _SCORE_THRESHOLD = 0.85
-
-# Intents qui nécessitent des entités → forçage LLM même si regex est confiant
-_NEEDS_ENTITIES = {"signalement", "itineraire", "abonnement"}
+_NEEDS_ENTITIES  = {"signalement", "itineraire", "abonnement"}
 
 
 def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
-    t = text.lower()
-    je_suis = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
+    t        = text.lower()
+    je_suis  = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
     has_bus  = re.search(r"\bbus\b", t)
     if je_suis and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.2
@@ -95,7 +97,7 @@ def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
 
 
 def _fast_classify(text: str) -> tuple[str, float]:
-    t = text.lower()
+    t      = text.lower()
     scores: dict[str, float] = {}
     for intent, rules in _SCORING_RULES.items():
         score = 0.0
@@ -103,7 +105,7 @@ def _fast_classify(text: str) -> tuple[str, float]:
             if re.search(pattern, t):
                 score += weight
         scores[intent] = min(score, 1.0)
-    scores = _apply_penalties(t, scores)
+    scores      = _apply_penalties(t, scores)
     best_intent = max(scores, key=scores.get)
     best_score  = scores[best_intent]
     if best_score < 0.3:
@@ -125,114 +127,97 @@ def _is_identity_question(text: str) -> bool:
 
 @dataclass
 class RouteResult:
-    intent: str
-    raw_text: str
+    intent:          str
+    raw_text:        str
     normalized_text: str
-    confiance: float
-    source: str
-    lang: str | None = None                          # ← NOUVEAU : langue détectée par LLM
-    entities: dict = field(default_factory=dict)     # ← NOUVEAU : entités extraites par LLM
+    confiance:       float
+    source:          str
+    lang:            str | None = None
+    entities:        dict       = field(default_factory=dict)
 
 
 def route(text: str, session_state: str | None = None) -> RouteResult:
-    """
-    Niveau synchrone : identity check → cache → regex scoring.
-    Ne retourne JAMAIS d'entités (pas de LLM ici).
-    session_state passé au cache pour éviter les collisions.
-    Ex: "liberté 5" en flow attente_arret ≠ "liberté 5" message libre.
-    """
     normalized = normalize(text)
     cache_key  = normalize_for_cache(text)
 
     if _is_identity_question(normalized):
         return RouteResult(
-            intent="out_of_scope",
-            raw_text=text,
-            normalized_text=normalized,
-            confiance=1.0,
-            source="identity"
+            intent="out_of_scope", raw_text=text,
+            normalized_text=normalized, confiance=1.0, source="identity"
         )
 
     cached = intent_cache.get(cache_key, session_state)
     if cached:
         return RouteResult(
-            intent=cached,
-            raw_text=text,
-            normalized_text=normalized,
-            confiance=1.0,
-            source="cache"
+            intent=cached, raw_text=text,
+            normalized_text=normalized, confiance=1.0, source="cache"
         )
 
     intent, score = _fast_classify(normalized)
 
-    # On met en cache uniquement les intents simples (pas besoin d'entités)
     if score >= _SCORE_THRESHOLD and intent not in _NEEDS_ENTITIES:
         intent_cache.set(cache_key, intent, session_state)
         return RouteResult(
-            intent=intent,
-            raw_text=text,
-            normalized_text=normalized,
-            confiance=score,
-            source="regex"
+            intent=intent, raw_text=text,
+            normalized_text=normalized, confiance=score, source="regex"
         )
 
     return RouteResult(
-        intent=intent,
-        raw_text=text,
-        normalized_text=normalized,
-        confiance=score,
-        source="regex_low"
+        intent=intent, raw_text=text,
+        normalized_text=normalized, confiance=score, source="regex_low"
     )
 
 
 async def route_async(
     text: str,
     history: list | None = None,
-    session_state: str | None = None
+    session_state: str | None = None,
+    session_context=None,       # SessionContext — injecte ligne si entities vide
 ) -> RouteResult:
     """
-    Niveau asynchrone : ajoute le LLM si nécessaire.
+    FIX V4.1 : session_context injecte la ligne active dans les entities
+    quand le LLM retourne entities={} sur un message court multi-tour.
 
-    Règle de forçage LLM :
-    - Intent identity → retour immédiat (pas de LLM)
-    - Intent depuis cache → retour immédiat (pas de LLM, entités non dispo)
-    - Intent simple (escalade, liste_arrets, out_of_scope) confirmé par regex → retour immédiat
-    - Intent nécessitant des entités (signalement, itineraire, abonnement) → LLM OBLIGATOIRE
-    - Score regex faible → LLM pour confirmer l'intent
+    Ex: session active bus 232, usager envoie "et le 8 ?"
+      → LLM retourne entities={"ligne": "8"}        ✅ (cas normal)
+      Ex: session active bus 232, usager envoie "et lui ?"
+      → LLM retourne entities={}
+      → router injecte entities={"ligne": "232"}    ✅ (fix)
     """
     result = route(text, session_state)
 
-    # Retour immédiat si pas besoin de LLM
-    if result.source == "identity":
-        return result
-
-    if result.source == "cache":
+    if result.source in ("identity", "cache"):
         return result
 
     if result.source == "regex" and result.intent not in _NEEDS_ENTITIES:
         return result
 
-    # Dans tous les autres cas → LLM
-    needs_entities = result.intent in _NEEDS_ENTITIES
     logger.info(
         f"[Router] Escalade LLM "
-        f"(source={result.source} | intent={result.intent} | needs_entities={needs_entities})"
+        f"(source={result.source} | intent={result.intent})"
     )
 
     try:
-        from agent.llm_brain import classify_intent
+        from agent.llm_brain import classify_intent, _VALID_INTENTS
         llm_data = await classify_intent(text=result.normalized_text, history=history)
 
         if llm_data and isinstance(llm_data, dict):
             intent_str = llm_data.get("intent", "out_of_scope")
 
-            # Valider que l'intent retourné est connu
-            from agent.llm_brain import _VALID_INTENTS
             if intent_str not in _VALID_INTENTS:
                 logger.warning(f"[Router] Intent LLM inconnu: {intent_str} → fallback regex")
                 return result
 
-            # Mettre en cache la string intent uniquement (pas le dict)
+            entities = llm_data.get("entities") or {}
+
+            # FIX : si entities vide ET session active avec une ligne → injecter
+            if not entities.get("ligne") and session_context and session_context.ligne:
+                entities = dict(entities)
+                entities["ligne"] = session_context.ligne
+                logger.debug(
+                    f"[Router] Ligne injectée depuis session: {session_context.ligne}"
+                )
+
             intent_cache.set(normalize_for_cache(text), intent_str, session_state)
 
             return RouteResult(
@@ -242,11 +227,10 @@ async def route_async(
                 confiance=llm_data.get("confidence", 0.95),
                 source="llm",
                 lang=llm_data.get("lang", "fr"),
-                entities=llm_data.get("entities") or {}
+                entities=entities,
             )
 
     except Exception as e:
         logger.error(f"[Router] LLM classify failed: {e}")
 
-    # Fallback propre sur le résultat regex sans entités
     return result
