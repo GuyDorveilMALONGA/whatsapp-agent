@@ -1,23 +1,34 @@
 """
-agent/llm_brain.py — V5.3
+agent/llm_brain.py — V5.5
 Deux responsabilités strictement séparées :
 
 1. classify_intent() — LLM classifier (niveau 3 du router)
 2. generate_response() — NLG (réponse finale)
+
+FIX V5.5 :
+  1. _build_prompt : langue_warning ajouté.
+     Quand langue != "wolof", une instruction explicite interdit
+     tout mot wolof dans la réponse, même en conclusion.
+     Empêche le LLM d'imiter les exemples wolof du SETU_SOUL
+     sur des usagers francophones.
+
+  2. _CLASSIFY_SYSTEM : exemple "Non merci" → abandon ajouté
+     dans la section abandon. Avant, le LLM classifiait
+     "Non merci" seul en out_of_scope (pas de destination,
+     pas d'action claire → générique). Maintenant :
+     "Non merci" après une relance = abandon explicite.
+
+  3. "alternatives_itineraire" ajouté dans _VALID_INTENTS (V5.4)
+     + section dédiée dans _CLASSIFY_SYSTEM
+
+FIX V5.4 :
+  "alternatives_itineraire" ajouté dans _VALID_INTENTS + prompt.
 
 FIX V5.3 :
   Chain of Thought (CoT) : champ "thought" ajouté au format de sortie.
   Le LLM est forcé de verbaliser l'état d'esprit de l'usager AVANT
   de classifier. Empêche la règle "lieu → itineraire" d'écraser
   les cas d'annulation/refus.
-
-  Ex: "Oublie pour la ligne 8"
-    thought: "L'usager cite la ligne 8 mais utilise 'oublie'. Annulation claire."
-    intent: "abandon"
-
-  Ex: "Je ne veux aller nulle part"
-    thought: "Négation explicite + absence de destination réelle. Refus."
-    intent: "abandon"
 """
 import json
 import logging
@@ -38,7 +49,8 @@ genai.configure(api_key=GEMINI_API_KEY)
 _VALID_INTENTS = {
     "abandon",
     "signalement", "question", "abonnement",
-    "escalade", "liste_arrets", "itineraire", "out_of_scope"
+    "escalade", "liste_arrets", "itineraire",
+    "out_of_scope", "alternatives_itineraire",
 }
 
 _CLASSIFY_SYSTEM = """Tu es l'intelligence NLP centrale de Xëtu, l'assistant transport Dem Dikk de Dakar.
@@ -88,7 +100,8 @@ Ce champ est ta réflexion interne. Suis ces étapes dans l'ordre :
 
 ÉTAPE 1 — ÉTAT D'ESPRIT : L'usager exprime-t-il une annulation, un refus, un
   changement d'avis, une négation ? Mots-clés : "oublie", "laisse", "non",
-  "nulle part", "rien", "basta", "wëcciku", "bayil", "forget it", "never mind".
+  "nulle part", "rien", "basta", "wëcciku", "bayil", "forget it", "never mind",
+  "non merci", "pas grave", "ça va", "c'est bon", "stop".
   Si OUI → intent = "abandon" immédiatement, sans extraire d'entités.
 
 ÉTAPE 2 — ENTITÉS : Seulement si l'état d'esprit n'est PAS un refus, extraire
@@ -107,6 +120,9 @@ Français :
 → "je ne veux aller nulle part" / "je veux rien" / "non merci" / "c'est bon"
 → "peu importe" / "pas la peine" / "oublie ça" / "non finalement"
 → "je m'en fous" / "tant pis" / "basta" / "stop"
+→ "Non merci" seul, après une relance → L'usager clôt la conversation. C'est un abandon,
+   PAS un out_of_scope. La distinction est cruciale : out_of_scope = hors sujet,
+   abandon = l'usager refuse explicitement de continuer.
 
 Wolof :
 → "wëcciku" / "sëde ko" / "du dara" / "amul solo"
@@ -115,7 +131,29 @@ Wolof :
 Anglais :
 → "forget it" / "never mind" / "cancel" / "no thanks" / "don't bother"
 
-━━━ 2. itineraire ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 2. alternatives_itineraire ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+L'usager vient de recevoir un itinéraire et demande d'autres options.
+⚠️ Contexte OBLIGATOIRE — l'historique doit montrer une réponse itinéraire précédente.
+   Sans historique d'itinéraire → classifier en itineraire ou out_of_scope selon le cas.
+
+Français :
+→ "il y a d'autres options ?" / "pas d'autres alternatives ?"
+→ "autre bus ?" / "autre ligne ?" / "sinon ?" / "et autrement ?"
+→ "tu as autre chose ?" / "autre chemin ?" / "autre trajet ?"
+
+Wolof :
+→ "am na yeneen ?" / "dafa am alternatives ?" / "yeneen bus ?"
+
+Exemple JSON :
+{
+  "thought": "L'usager vient de recevoir un itinéraire Bus 15 et demande s'il existe d'autres options. Historique confirme un itinéraire précédent.",
+  "intent": "alternatives_itineraire",
+  "lang": "fr",
+  "entities": {},
+  "confidence": 0.92
+}
+
+━━━ 3. itineraire ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 L'usager veut RÉELLEMENT se déplacer. Intent par défaut si un lieu est mentionné
 ET qu'il n'y a aucun refus/négation.
 
@@ -126,37 +164,48 @@ ET qu'il n'y a aucun refus/négation.
 → "Damay dem Parcelles" → destination: "Parcelles Assainies"
 → "sans correspondance pour UCAD" → destination: "UCAD", no_transfer_preference: true
 
-━━━ 3. question ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 4. question ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 L'usager cherche la position/heure d'UN BUS PRÉCIS. Contient TOUJOURS un numéro.
 
 → "où est le bus 15 ?" → ligne: "15"
 → "le 8 est où ?" → ligne: "8"
 → "Bus 15 bi ana mu ?" → ligne: "15"
 
-━━━ 4. signalement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 5. signalement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 L'usager VOIT le bus maintenant. Numéro + lieu visible.
 
 → "bus 15 à Liberté 5" → ligne: "15", origin: "Liberté 5"
 → "le 4 est devant le marché HLM" → ligne: "4", origin: "HLM"
 
-━━━ 5. abonnement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 6. abonnement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 → "préviens-moi pour le bus 15" → ligne: "15"
 → "Waar ma bu 15 bi ñëwé" → ligne: "15"
 
-━━━ 6. liste_arrets ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 7. liste_arrets ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 → "quels sont les arrêts du bus 15 ?" → ligne: "15"
 → "le 8 passe par où ?" → ligne: "8"
 
-━━━ 7. escalade ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 8. escalade ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Plaintes graves, insultes, demande d'un humain.
 
-━━━ 8. out_of_scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 9. out_of_scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Salutations, hors Dem Dikk, questions génériques sur Xëtu.
+⚠️ NE PAS confondre avec abandon : out_of_scope = hors sujet,
+   abandon = refus/clôture explicite de l'usager.
 
 ═══════════════════════════════════════════════════════════════
 FORMAT DE SORTIE — JSON STRICT, AUCUN MARKDOWN
 
 Le champ "thought" est OBLIGATOIRE. C'est ta réflexion avant de classifier.
+
+Exemple — "Non merci" après relance :
+{
+  "thought": "L'usager répond 'Non merci' après une relance de Xëtu. Ce n'est pas hors sujet — c'est un refus explicite de continuer. C'est un abandon, pas un out_of_scope.",
+  "intent": "abandon",
+  "lang": "fr",
+  "entities": {},
+  "confidence": 0.97
+}
 
 Exemple — annulation avec numéro de ligne :
 {
@@ -224,7 +273,7 @@ async def classify_intent(
         response = await _groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,
-            max_tokens=250,   # augmenté pour le champ thought
+            max_tokens=250,
             temperature=0.0,
             response_format={"type": "json_object"}
         )
@@ -273,6 +322,30 @@ def _build_prompt(context: str, langue: str, history: list[dict]) -> str:
         "unknown": "français",
     }.get(langue, "français")
 
+    # FIX V5.5 : instruction stricte pour empêcher le LLM d'imiter
+    # les exemples wolof du SETU_SOUL quand l'usager parle français.
+    # Le LLM voyait "Naka suba si ?" dans les few-shots et le répétait
+    # même sur des usagers FR — ce warning l'en empêche explicitement.
+    if langue == "wolof":
+        langue_warning = (
+            "\n⚠️ LANGUE STRICTE : wolof UNIQUEMENT. "
+            "Zéro mot en français sauf noms propres d'arrêts."
+        )
+    elif langue == "fr":
+        langue_warning = (
+            "\n⚠️ LANGUE STRICTE : français UNIQUEMENT. "
+            "Zéro mot en wolof, même en conclusion ou signature. "
+            "Les exemples wolof du SOUL sont des références de style, "
+            "PAS des phrases à reproduire pour un usager francophone."
+        )
+    elif langue == "en":
+        langue_warning = (
+            "\n⚠️ LANGUE STRICTE : anglais UNIQUEMENT. "
+            "Zéro mot en wolof ou en français sauf noms propres d'arrêts."
+        )
+    else:
+        langue_warning = ""
+
     history_text = ""
     if history:
         lines = [
@@ -283,7 +356,7 @@ def _build_prompt(context: str, langue: str, history: list[dict]) -> str:
 
     return f"""{SETU_SOUL}
 
-LANGUE DE RÉPONSE OBLIGATOIRE : {langue_label}
+LANGUE DE RÉPONSE OBLIGATOIRE : {langue_label}{langue_warning}
 
 {f"HISTORIQUE RÉCENT :{chr(10)}{history_text}{chr(10)}" if history_text else ""}SITUATION ACTUELLE :
 {context}

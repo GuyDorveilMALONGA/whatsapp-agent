@@ -1,14 +1,25 @@
 """
-main.py — V5.3 (LLM-Native)
+main.py — V5.5 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
+
+FIX V5.5 :
+  - is_abandon_regex : suppression de la condition `session.etat`
+    Avant : is_abandon_regex = (session.etat and is_abandon(text))
+    → "Non merci" hors flow multi-tour = session.etat None → False
+    → abandon non détecté, LLM relançait la conversation
+    Après : is_abandon_regex = is_abandon(text)
+    → "Non merci", "stop", "laisse tomber" détectés partout,
+    même sans session active
+  - _dispatch / out_of_scope : filet défensif supplémentaire
+    Si is_abandon(text) dans le else → reset + réponse courte
+    sans appel LLM (évite la relance generate_response)
+
+FIX V5.4 :
+  - _dispatch : ajout intent "alternatives_itineraire"
+    → route vers skill_itineraire.handle_alternatives()
 
 FIX V5.3 :
   - history chargé à l'étape 2.5 (avant route_async).
-    Avant : history=None passé au LLM → "Et le 232 ?" sans contexte
-    → LLM ne sait pas que l'usager parlait d'un itinéraire Liberté 5 → Yoff
-    → entities={} → ligne=None → crash ou réponse vide.
-    Après : LLM reçoit l'historique → comprend "Et le 232 ?" comme question
-    sur une alternative d'itinéraire → ligne="232" correctement extrait.
 
 FIX V5.2 :
   - session déplacée à l'étape 2 → fix UnboundLocalError
@@ -67,12 +78,12 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.3 démarré — Architecture LLM-Native")
+    logger.info("🚌 Xëtu V5.5 démarré — Architecture LLM-Native")
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.3"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.5"}
 
 
 @app.get("/webhook")
@@ -157,9 +168,6 @@ async def _process_message_safe(phone: str, text: str):
         session = get_context(phone)
 
         # ── 2.5 HISTORY — chargé AVANT route_async ────────
-        # Critique : le LLM reçoit le contexte conversationnel
-        # pour comprendre "Et le 232 ?" ou "et lui ?" correctement.
-        # On charge via contact temporaire — sera réutilisé à l'étape 7.
         _contact_pre  = queries.get_or_create_contact(phone, "fr")
         _conv_pre     = queries.get_or_create_conversation(_contact_pre["id"])
         history       = queries.get_recent_messages(_conv_pre["id"])
@@ -176,7 +184,11 @@ async def _process_message_safe(phone: str, text: str):
 
         # ── 5. ABANDON ────────────────────────────────────
         is_abandon_llm   = (route_result.intent == "abandon")
-        is_abandon_regex = (session.etat and is_abandon(text))
+        # FIX V5.5 : suppression de `session.etat and`
+        # Avant : (session.etat and is_abandon(text)) → False si pas de session active
+        # "Non merci" hors multi-tour n'était jamais capté par le regex
+        is_abandon_regex = is_abandon(text)
+
         if is_abandon_llm or is_abandon_regex:
             reset_context(phone)
             contact      = queries.get_or_create_contact(phone, langue)
@@ -184,7 +196,7 @@ async def _process_message_safe(phone: str, text: str):
             conv_id      = conversation["id"]
             queries.save_message(conv_id, "user", text, langue, "abandon")
             response = (
-                "OK, on laisse tomber. 👍 Dis-moi si tu as besoin d'autre chose."
+                "OK, pas de souci. 👍 Reviens quand tu veux."
                 if langue != "wolof" else
                 "Waaw, sëde ko. 👍 Wax ma dara buy soxor."
             )
@@ -221,7 +233,6 @@ async def _process_message_safe(phone: str, text: str):
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
-        # Recharge history avec la langue correcte si elle a changé
         if contact["id"] != _contact_pre["id"]:
             history = queries.get_recent_messages(conv_id)
 
@@ -285,7 +296,24 @@ async def _dispatch(text: str, intent: str, contact: dict,
         return await skill_escalade.handle(text, contact, langue, conv_id)
     elif intent == "itineraire":
         return await skill_itineraire.handle(text, contact, langue, entities)
+    elif intent == "alternatives_itineraire":
+        # V5.4 : alternatives → skill direct, jamais de prose LLM
+        return await skill_itineraire.handle_alternatives(
+            contact["phone"], langue, history
+        )
     else:
+        # FIX V5.5 : filet défensif — si le texte ressemble à un abandon
+        # mais est arrivé ici (classifié out_of_scope par le LLM),
+        # on coupe proprement sans appeler generate_response
+        if is_abandon(text):
+            reset_context(contact["phone"])
+            logger.info(f"[Dispatch] Abandon détecté en fallback out_of_scope pour {contact['phone'][-4:]}")
+            return (
+                "OK, pas de souci. 👍 Reviens quand tu veux."
+                if langue != "wolof" else
+                "Waaw, sëde ko. 👍 Wax ma dara buy soxor."
+            )
+
         from agent.llm_brain import generate_response
         ctx = build_context(
             message=text,
