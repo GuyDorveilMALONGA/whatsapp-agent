@@ -1,17 +1,25 @@
 """
-skills/signalement.py — V4 LLM-Driven
+skills/signalement.py — V4.1
 Enregistre un signalement + notifie les abonnés.
 
-V4 : entities injectées depuis route_result (main.py)
-     Suppression de l'import extractor
-     _VALID_LINES et _NETWORK déclarés ici (découplé de l'extracteur)
-     Cas ambiguïté conservé (deux lignes avec même numéro)
+V4.1 :
+  + BackgroundTasks FastAPI remplace asyncio.create_task()
+    Garantit l'exécution des notifications même si Railway redémarre.
+    asyncio.create_task() pouvait être garbage-collecté → notifications perdues.
+  + Vérification doublon depuis save_signalement() (retourne None si doublon)
+    Réponse douce à l'usager au lieu d'une erreur.
+  + boost_corroboration() appelé quand un signalement actif existe déjà
+    sur cette ligne/arret → booste le score du signaleur original.
 
-FIX #1 : File d'envoi avec délai entre chaque message
-→ évite le throttling/ban Meta si 100+ abonnés.
+V4 :
+  + entities injectées depuis route_result (main.py)
+  + Suppression de l'import extractor
+  + _VALID_LINES et _NETWORK déclarés ici (découplé de l'extracteur)
+  + Cas ambiguïté conservé (deux lignes avec même numéro)
+  + File d'envoi avec délai entre chaque message (anti-throttling Meta)
 """
-import asyncio
 import logging
+from fastapi import BackgroundTasks
 from db import queries
 from services.whatsapp import send_message
 
@@ -34,14 +42,14 @@ _VALID_LINES = {
 async def _notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
     """
     Notifie les abonnés avec délai entre chaque envoi.
-    Fire-and-forget — ne bloque pas la réponse au signaleur.
+    Appelé via BackgroundTasks FastAPI — exécution garantie après réponse HTTP.
 
-    ⚠️ asyncio.create_task() : si Railway redémarre, tâches non terminées
-    sont perdues. Migrer vers BackgroundTasks FastAPI ou Redis à l'échelle.
+    ⚠️ À l'échelle (>10k abonnés) : migrer vers Redis Queue / Celery.
     """
+    import asyncio
     try:
         abonnes = queries.get_abonnes(ligne)
-        alerte = (
+        alerte  = (
             f"🔔 Bus {ligne} signalé à *{arret}* à l'instant.\n"
             f"Communauté Xëtu 🚌"
         )
@@ -63,16 +71,23 @@ async def _notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
         return 0
 
 
-async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
+async def handle(
+    message: str,
+    contact: dict,
+    langue: str,
+    entities: dict,
+    background_tasks: BackgroundTasks,
+) -> str:
     """
     Gère un signalement en utilisant les entités pré-extraites par le LLM.
+
+    background_tasks : injecté depuis main.py pour garantir l'exécution
+    des notifications même si le process redémarre.
     """
     phone = contact["phone"]
 
     # ── 1. Extraction depuis les entités LLM ──────────────
     ligne = entities.get("ligne")
-    # L'arrêt peut être dans origin (tournure "Bus 15 à Liberté 5")
-    # ou destination selon la formulation
     arret = entities.get("origin") or entities.get("destination")
 
     # ── 2. Validation de la ligne ─────────────────────────
@@ -109,24 +124,47 @@ async def handle(message: str, contact: dict, langue: str, entities: dict) -> st
             f"Envoie : *Bus {ligne} à [nom de l'arrêt]* 🙏"
         )
 
-    # ── 4. Enregistrement en base ─────────────────────────
+    # ── 4. Boost corroboration si signalement actif existant ─
+    # Un 2ème usager signale le même bus → boost le score du 1er signaleur
     try:
-        queries.save_signalement(ligne, arret, phone)
+        sigs_actifs = queries.get_signalements_actifs(ligne)
+        corrobore   = any(
+            s["position"].lower() == arret.lower()
+            for s in sigs_actifs
+            if s["phone"] != phone
+        )
+        if corrobore:
+            queries.boost_corroboration(ligne, arret, phone)
+            logger.info(f"[Signalement] Corroboration ligne={ligne} arret={arret}")
+    except Exception as e:
+        logger.warning(f"[Signalement] Erreur check corroboration: {e}")
+
+    # ── 5. Enregistrement en base ─────────────────────────
+    try:
+        result = queries.save_signalement(ligne, arret, phone)
     except Exception as e:
         logger.error(f"Erreur save_signalement: {e}")
         return "❌ Erreur lors de l'enregistrement. Réessaie."
 
-    # ── 5. Comptage abonnés ───────────────────────────────
+    # ── 6. Doublon détecté ────────────────────────────────
+    if result is None:
+        if langue == "wolof":
+            return f"👍 Bus {ligne} ci *{arret}* — déjà signalé récemment. Jërëjëf !"
+        return f"👍 Bus {ligne} à *{arret}* — déjà signalé il y a moins de 2 min. Merci quand même ! 🙏"
+
+    # ── 7. Comptage abonnés ───────────────────────────────
     try:
-        abonnes = queries.get_abonnes(ligne)
+        abonnes    = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
     except Exception:
         nb_abonnes = 0
 
-    # ── 6. Notifications en arrière-plan ──────────────────
-    asyncio.create_task(_notify_abonnes(ligne, arret, phone))
+    # ── 8. Notifications via BackgroundTasks ──────────────
+    # FIX V4.1 : BackgroundTasks garantit l'exécution après la réponse HTTP.
+    # asyncio.create_task() pouvait être GC'd si le process redémarrait.
+    background_tasks.add_task(_notify_abonnes, ligne, arret, phone)
 
-    # ── 7. Réponse ────────────────────────────────────────
+    # ── 9. Réponse ────────────────────────────────────────
     if nb_abonnes == 0:
         if langue == "wolof":
             return f"✅ Jërëjëf ! Bus {ligne} ci {arret} — enregistré. 🙏"

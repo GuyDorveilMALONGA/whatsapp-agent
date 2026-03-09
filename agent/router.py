@@ -1,14 +1,20 @@
 """
-agent/router.py — V4.4
+agent/router.py — V4.5
 Intent Gateway — 4 niveaux de classification.
+
+FIX V4.5 :
+  - _is_correction() refactorisée pour ne plus casser le wolof.
+    "non ak ci tëral bi" (wolof) ne déclenche plus out_of_scope.
+    Logique :
+      1. Refus wolof explicites (bëgguma, bayil, wëcciku...) → True toujours
+      2. "non" en début de message + contexte wolof positif → False
+      3. "non" seul sans contexte wolof → True (refus français classique)
+      4. Patterns FR inchangés
+  - Pénalité "je veux prendre" → question (pas itineraire)
 
 FIX V4.4 :
   - Détection NÉGATION/CORRECTION ajoutée en court-circuit prioritaire
     (après salutations, avant tout scoring)
-    Patterns : "non", "c'est pas", "oublie", "laisse tomber", "pas ma ligne",
-               "je veux pas", "c'est faux", "incorrect", "erreur"
-    → routé out_of_scope immédiatement, zéro LLM
-    → évite que "Non le bus 5 n'est pas ma ligne" → itinéraire/question
 
 FIX V4.3 :
   - "liste_arrets" et "question" ajoutés dans _NEEDS_ENTITIES
@@ -45,21 +51,57 @@ def _is_greeting(text: str) -> bool:
 
 
 # ── Négations/Corrections — court-circuit, zéro LLM ──────
-# Si l'usager nie ou corrige → out_of_scope immédiatement
-# Priorité absolue sur tout scoring (bus X présent ou non)
-_CORRECTION_PATTERNS = [
-    r"^\s*non\b",                                    # "Non le bus 5..."
+# FIX V4.5 : séparation wolof / français pour éviter les faux positifs
+
+# Mots-clés wolof qui indiquent un contexte positif (pas un refus)
+_WOLOF_POSITIVE_CONTEXT = re.compile(
+    r"\b(ak|ci|bi|bu|la|nga|ngi|dafa|def|dem|ñëw|tëral|wax|xam|bëgg|jëf|dëkk|tëb)\b"
+)
+
+# Refus wolof explicites — priorité absolue
+_WOLOF_REFUSAL = re.compile(
+    r"\b(bëgguma|duma\s+ko\s+bëgg|amul\s+solo|bayil\s+lolu|bayil|wëcciku|du\s+dara|sëde\s+ko)\b"
+)
+
+# Patterns de correction français — inchangés
+_CORRECTION_PATTERNS_FR = [
     r"\b(c[' ]est\s+pas|c[' ]est\s+faux|c[' ]est\s+incorrect)\b",
     r"\b(pas\s+ma\s+(ligne|bus|arrêt|station))\b",
     r"\b(pas\s+ce\s+que\s+je\s+veux|pas\s+ça)\b",
     r"\b(oublie\s+(ça|tout)|laisse\s+tomber|laisse\s+beton)\b",
     r"\b(je\s+(ne\s+veux\s+pas|veux\s+pas)\s+(ça|aller|de\s+ça))\b",
-    r"^\s*(nan|nope|négatif|incorrect|erreur|faux)\s*[!.?]*\s*$",
+    r"^\s*(nope|négatif|incorrect|erreur|faux)\s*[!.?]*\s*$",
 ]
 
 def _is_correction(text: str) -> bool:
+    """
+    FIX V4.5 — Détecte les annulations/corrections sans casser le wolof.
+
+    Ordre de vérification :
+      1. Refus wolof explicites → True (priorité absolue)
+      2. "non" en début + contexte wolof positif → False (pas un refus)
+      3. "non" / "nan" seuls sans contexte wolof → True
+      4. Patterns FR → True si match
+    """
     t = text.strip().lower()
-    return any(re.search(p, t) for p in _CORRECTION_PATTERNS)
+
+    # 1. Refus wolof explicites — toujours valides
+    if _WOLOF_REFUSAL.search(t):
+        return True
+
+    # 2. "non" en début de message
+    if re.match(r"^\s*non\b", t):
+        # Si contexte wolof positif → pas un refus
+        if _WOLOF_POSITIVE_CONTEXT.search(t):
+            return False
+        return True
+
+    # 3. "nan" seul
+    if re.match(r"^\s*nan\s*[!.?]*\s*$", t):
+        return True
+
+    # 4. Patterns FR
+    return any(re.search(p, t) for p in _CORRECTION_PATTERNS_FR)
 
 
 _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
@@ -129,14 +171,23 @@ def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
     t        = text.lower()
     je_suis  = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
     has_bus  = re.search(r"\bbus\b", t)
+
     if je_suis and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.2
         scores["itineraire"]  = min(scores.get("itineraire", 0) + 0.4, 1.0)
+
     quartier = re.search(r"\b(liberté|hlm|sacré[- ]cœur|grand[- ]yoff|parcelles)\s+\d+\b", t)
     if quartier and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.15
+
+    # FIX V4.5 : "je veux prendre le bus X" → question, pas itinéraire
+    if re.search(r"\bje\s+veux\s+prendre\b", t):
+        scores["itineraire"] = scores.get("itineraire", 0) * 0.2
+        scores["question"]   = min(scores.get("question", 0) + 0.5, 1.0)
+
     if re.search(r"\b(tu\s+es|t[' ]es|chatgpt|gpt|ia|robot|bot|qui\s+es[- ]tu)\b", t):
         scores["out_of_scope"] = 1.0
+
     return scores
 
 
@@ -199,7 +250,7 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
         )
 
     # 3. Court-circuit négation/correction — PRIORITÉ ABSOLUE
-    # "Non le bus 5 n'est pas ma ligne" → out_of_scope, zéro LLM
+    # FIX V4.5 : wolof-safe
     if _is_correction(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,

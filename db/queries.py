@@ -1,21 +1,19 @@
 """
-db/queries.py — V4.4
+db/queries.py — V4.5
 Règle absolue : SEUL fichier qui touche Supabase.
+
+V4.5 :
+  + Anti-spam deduplication signalements
+    is_signalement_doublon() — fenêtre 2 min par phone+ligne+arret
+    save_signalement() retourne None si doublon (non bloquant UX)
+    penalise_spam() — appelé sur doublon, -10% fiabilite_score
+  + boost_corroboration() — +5% quand 2ème usager confirme même signalement
 
 V4.4 :
   + enrichir_signalement(ligne, arret, qualite, phone)
-    Utilisé par main.py V6.0 _handle_enrichissement()
-    pour enrichir un signalement existant avec une info qualitative
-    (bondé, vide, en retard, déjà parti, repart maintenant).
-    Met à jour le champ `qualite` du dernier signalement actif
-    correspondant à ligne + position + phone.
-    Si aucun signalement actif trouvé → crée une note orpheline
-    dans la table signalement_notes (non bloquant).
 
 V4.3 :
   + get_derniers_signalements(ligne, limit) — même expirés
-    Utilisé par core.frequencies pour estimer l'ETA
-    (dernier signalement connu même si TTL dépassé)
 
 V4.2 :
   + FIX : created_at → timestamp sur table signalements
@@ -33,6 +31,9 @@ from db.client import get_client
 from config.settings import SIGNALEMENT_TTL_MINUTES
 
 logger = logging.getLogger(__name__)
+
+# Fenêtre anti-doublon : même phone + ligne + arret dans cette fenêtre = spam
+DEDUP_WINDOW_SECONDS = 120  # 2 minutes
 
 
 # ── Contacts ──────────────────────────────────────────────
@@ -107,7 +108,42 @@ def get_recent_messages(conversation_id: str, limit: int = 10) -> list[dict]:
 
 # ── Signalements ──────────────────────────────────────────
 
-def save_signalement(ligne: str, arret: str, phone: str) -> dict:
+def is_signalement_doublon(ligne: str, arret: str, phone: str) -> bool:
+    """
+    Retourne True si ce phone a déjà signalé cette ligne à cet arrêt
+    dans les DEDUP_WINDOW_SECONDS dernières secondes.
+    Empêche le spam et le ban Meta WhatsApp.
+    Fail open : si Supabase KO, retourne False (mieux vaut un doublon qu'un signalement perdu).
+    """
+    db    = get_client()
+    now   = datetime.now(timezone.utc)
+    since = (now - timedelta(seconds=DEDUP_WINDOW_SECONDS)).isoformat()
+    try:
+        res = (db.table("signalements")
+                 .select("id")
+                 .eq("ligne", ligne)
+                 .eq("position", arret)
+                 .eq("phone", phone)
+                 .gte("timestamp", since)
+                 .limit(1)
+                 .execute())
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"[dedup] Erreur check doublon: {e}")
+        return False
+
+
+def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
+    """
+    Enregistre un signalement avec protection anti-doublon.
+    Retourne None si doublon détecté dans la fenêtre de 2 min.
+    Le caller doit vérifier None et adapter sa réponse.
+    """
+    if is_signalement_doublon(ligne, arret, phone):
+        logger.info(f"[Dedup] Doublon ignoré — {phone[-4:]} ligne={ligne} arret={arret}")
+        penalise_spam(phone)
+        return None
+
     db = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=SIGNALEMENT_TTL_MINUTES)
     res = db.table("signalements").insert({
@@ -117,6 +153,76 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict:
         "expires_at": expires_at.isoformat()
     }).execute()
     return res.data[0]
+
+
+def penalise_spam(phone: str):
+    """
+    Pénalise le score de fiabilité d'un usager qui spam (-10%).
+    Non bloquant — échec silencieux.
+    """
+    db = get_client()
+    try:
+        res = (db.table("contacts")
+                 .select("fiabilite_score")
+                 .eq("phone", phone)
+                 .execute())
+        if not res.data:
+            return
+        current   = res.data[0].get("fiabilite_score", 0.5)
+        penalised = max(0.10, current * 0.9)
+        db.table("contacts").update({
+            "fiabilite_score": round(penalised, 3)
+        }).eq("phone", phone).execute()
+        logger.info(f"[Reliability] Spam pénalisé {phone[-4:]}: {current:.2f} → {penalised:.2f}")
+    except Exception as e:
+        logger.error(f"[Reliability] Erreur pénalité spam: {e}")
+
+
+def boost_corroboration(ligne: str, arret: str, phone_confirmateur: str):
+    """
+    Booste le score du signaleur original quand un 2ème usager
+    confirme le même signalement (+5%).
+    Appelé depuis skills/signalement.py quand un signalement actif
+    existe déjà sur cette ligne/arret.
+    """
+    db = get_client()
+    try:
+        res = (db.table("signalements")
+                 .select("phone")
+                 .eq("ligne", ligne)
+                 .eq("position", arret)
+                 .neq("phone", phone_confirmateur)
+                 .order("timestamp", desc=True)
+                 .limit(1)
+                 .execute())
+        if not res.data:
+            return
+        original_phone = res.data[0]["phone"]
+
+        contact_res = (db.table("contacts")
+                         .select("fiabilite_score, profil_json")
+                         .eq("phone", original_phone)
+                         .execute())
+        if not contact_res.data:
+            return
+
+        current = contact_res.data[0].get("fiabilite_score", 0.5)
+        profil  = contact_res.data[0].get("profil_json") or {}
+
+        old_rate = profil.get("corroboration_rate", 0.5)
+        profil["corroboration_rate"] = min(1.0, old_rate + 0.05)
+
+        boosted = min(1.0, current * 1.05)
+        db.table("contacts").update({
+            "fiabilite_score": round(boosted, 3),
+            "profil_json":     profil,
+        }).eq("phone", original_phone).execute()
+        logger.info(
+            f"[Reliability] Corroboration boost {original_phone[-4:]}: "
+            f"{current:.2f} → {boosted:.2f}"
+        )
+    except Exception as e:
+        logger.error(f"[Reliability] Erreur boost corroboration: {e}")
 
 
 def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bool:
@@ -129,8 +235,8 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
       1. Cherche le signalement actif le plus récent pour
          cette ligne + position + phone.
       2. Met à jour le champ `qualite` s'il existe.
-      3. Si aucun signalement actif trouvé, log un warning
-         et retourne False (non bloquant pour l'UX).
+      3. Si aucun signalement actif trouvé, tente sur le plus récent
+         même expiré (fallback non bloquant).
 
     Prérequis Supabase :
       ALTER TABLE signalements ADD COLUMN IF NOT EXISTS qualite TEXT;
@@ -141,7 +247,6 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
     now = datetime.now(timezone.utc).isoformat()
 
     try:
-        # Cherche le signalement actif le plus récent
         res = (db.table("signalements")
                  .select("id")
                  .eq("ligne", ligne)
@@ -153,9 +258,6 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
                  .execute())
 
         if not res.data:
-            # Aucun signalement actif — peut arriver si TTL expiré
-            # entre le signalement et l'enrichissement.
-            # On tente quand même sur le plus récent (même expiré).
             res_fallback = (db.table("signalements")
                               .select("id")
                               .eq("ligne", ligne)
@@ -188,7 +290,7 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
     """Retourne les signalements non expirés pour une ligne donnée."""
-    db = get_client()
+    db  = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
              .select("*")
@@ -201,7 +303,7 @@ def get_signalements_actifs(ligne: str) -> list[dict]:
 
 def get_all_signalements_actifs() -> list[dict]:
     """Retourne tous les signalements non expirés (toutes lignes — pour /api/buses)."""
-    db = get_client()
+    db  = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("signalements")
              .select("*")
@@ -232,14 +334,14 @@ def get_derniers_signalements(ligne: str, limit: int = 1) -> list[dict]:
 
 
 def purge_signalements_expires():
-    db = get_client()
+    db  = get_client()
     now = datetime.now(timezone.utc).isoformat()
     db.table("signalements").delete().lt("expires_at", now).execute()
 
 
 def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     """Retourne les numéros de lignes sans signalement récent."""
-    db = get_client()
+    db     = get_client()
     since  = (datetime.now(timezone.utc) - timedelta(minutes=seuil_minutes)).isoformat()
     lignes = db.table("lignes").select("numero").eq("actif", True).execute()
     toutes = {l["numero"] for l in (lignes.data or [])}
@@ -254,7 +356,7 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
 # ── Abonnements ───────────────────────────────────────────
 
 def get_abonnes(ligne: str) -> list[dict]:
-    db = get_client()
+    db  = get_client()
     res = (db.table("abonnements")
              .select("phone, arret, heure_alerte")
              .eq("ligne", ligne)
@@ -286,20 +388,20 @@ def create_abonnement(phone: str, ligne: str, arret: str,
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
     """Abonnés dont l'heure habituelle approche dans X minutes."""
-    db = get_client()
+    db          = get_client()
     heure_cible = (datetime.now(timezone.utc) + timedelta(minutes=avant_minutes)).strftime("%H:%M")
-    res = (db.table("abonnements")
-             .select("*")
-             .eq("actif", True)
-             .eq("heure_alerte", heure_cible)
-             .execute())
+    res         = (db.table("abonnements")
+                     .select("*")
+                     .eq("actif", True)
+                     .eq("heure_alerte", heure_cible)
+                     .execute())
     return res.data or []
 
 
 # ── Tickets (escalade) ────────────────────────────────────
 
 def create_ticket(phone: str, motif: str) -> dict:
-    db = get_client()
+    db  = get_client()
     res = db.table("tickets").insert({
         "phone":    phone,
         "motif":    motif,
@@ -312,13 +414,13 @@ def create_ticket(phone: str, motif: str) -> dict:
 # ── Lignes ────────────────────────────────────────────────
 
 def get_all_lignes() -> list[dict]:
-    db = get_client()
+    db  = get_client()
     res = db.table("lignes").select("*").eq("actif", True).execute()
     return res.data or []
 
 
 def ligne_existe(numero: str) -> bool:
-    db = get_client()
+    db  = get_client()
     res = db.table("lignes").select("id").eq("numero", numero).execute()
     return bool(res.data)
 
@@ -329,7 +431,7 @@ SESSION_CONTEXT_TTL_SECONDS = 600  # 10 min
 
 
 def get_session(phone: str) -> dict | None:
-    db = get_client()
+    db  = get_client()
     now = datetime.now(timezone.utc).isoformat()
     res = (db.table("sessions")
              .select("*")
@@ -344,7 +446,7 @@ def set_session(phone: str, etat: str,
                 ligne: str | None = None,
                 signalement: dict | None = None,
                 destination: str | None = None) -> dict:
-    db = get_client()
+    db         = get_client()
     expires_at = (datetime.now(timezone.utc)
                   + timedelta(seconds=SESSION_CONTEXT_TTL_SECONDS)).isoformat()
     data = {
@@ -365,7 +467,7 @@ def delete_session(phone: str):
 
 
 def purge_sessions_expires():
-    db = get_client()
+    db  = get_client()
     now = datetime.now(timezone.utc).isoformat()
     db.table("sessions").delete().lt("expires_at", now).execute()
 
@@ -374,7 +476,7 @@ def purge_sessions_expires():
 
 def get_network_memory() -> list[dict]:
     """Retourne les données de ponctualité par ligne (pour Dead Reckoning)."""
-    db = get_client()
+    db  = get_client()
     res = db.table("network_memory").select("*").execute()
     return res.data or []
 
@@ -391,21 +493,21 @@ def save_schedules_batch(schedules: list[dict]):
 
 
 def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dict]:
-    db = get_client()
+    db       = get_client()
     now_time = datetime.now(timezone.utc).strftime("%H:%M")
-    res = (db.table("schedules")
-             .select("heure_passage, arret, ligne")
-             .eq("ligne", ligne)
-             .ilike("arret", f"%{arret}%")
-             .gte("heure_passage", now_time)
-             .order("heure_passage", desc=False)
-             .limit(limit)
-             .execute())
+    res      = (db.table("schedules")
+                  .select("heure_passage, arret, ligne")
+                  .eq("ligne", ligne)
+                  .ilike("arret", f"%{arret}%")
+                  .gte("heure_passage", now_time)
+                  .order("heure_passage", desc=False)
+                  .limit(limit)
+                  .execute())
     return res.data or []
 
 
 def get_first_departure(ligne: str) -> str | None:
-    db = get_client()
+    db  = get_client()
     res = (db.table("schedules")
              .select("heure_passage")
              .eq("ligne", ligne)
@@ -424,14 +526,14 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
     Top signaleurs du mois.
     ⚠️ DETTE TECHNIQUE : migrer vers RPC Supabase avant 50k signalements.
     """
-    db = get_client()
+    db      = get_client()
     un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    res = (db.table("messages")
-             .select("conversations(contacts(phone, fiabilite_score))")
-             .eq("intent", "signalement")
-             .eq("role", "user")
-             .gte("created_at", un_mois)
-             .execute())
+    res     = (db.table("messages")
+                 .select("conversations(contacts(phone, fiabilite_score))")
+                 .eq("intent", "signalement")
+                 .eq("role", "user")
+                 .gte("created_at", un_mois)
+                 .execute())
 
     compteur: dict[str, dict] = {}
     for row in (res.data or []):
@@ -455,7 +557,7 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
 
 
 def get_stats_communaute() -> dict:
-    db = get_client()
+    db          = get_client()
     today_start = datetime.combine(
         date.today(), datetime.min.time()
     ).replace(tzinfo=timezone.utc).isoformat()
@@ -464,11 +566,11 @@ def get_stats_communaute() -> dict:
                    .select("id", count="exact")
                    .gte("timestamp", today_start)
                    .execute())
-    res_all = (db.table("messages")
-                 .select("id", count="exact")
-                 .eq("intent", "signalement")
-                 .eq("role", "user")
-                 .execute())
+    res_all   = (db.table("messages")
+                   .select("id", count="exact")
+                   .eq("intent", "signalement")
+                   .eq("role", "user")
+                   .execute())
     res_contacts = (db.table("contacts")
                       .select("id", count="exact")
                       .execute())
