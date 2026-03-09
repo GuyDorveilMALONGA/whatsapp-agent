@@ -1,15 +1,23 @@
 """
-agent/llm_brain.py — V5.1
+agent/llm_brain.py — V5.3
 Deux responsabilités strictement séparées :
 
 1. classify_intent() — LLM classifier (niveau 3 du router)
 2. generate_response() — NLG (réponse finale)
 
-FIX V5.1 :
-  _call_gemini : try/except avec fallback wolof si Gemini timeout/rate limit.
-  Avant : exception non catchée → "Une erreur s'est produite." en FR pour un wolof.
-  Après : fallback wolof cohérent dans _get_fallback_message().
-  (classify_intent avait déjà son try/except — inchangé)
+FIX V5.3 :
+  Chain of Thought (CoT) : champ "thought" ajouté au format de sortie.
+  Le LLM est forcé de verbaliser l'état d'esprit de l'usager AVANT
+  de classifier. Empêche la règle "lieu → itineraire" d'écraser
+  les cas d'annulation/refus.
+
+  Ex: "Oublie pour la ligne 8"
+    thought: "L'usager cite la ligne 8 mais utilise 'oublie'. Annulation claire."
+    intent: "abandon"
+
+  Ex: "Je ne veux aller nulle part"
+    thought: "Négation explicite + absence de destination réelle. Refus."
+    intent: "abandon"
 """
 import json
 import logging
@@ -28,6 +36,7 @@ _groq_client = AsyncGroq(api_key=GROQ_API_KEY)
 genai.configure(api_key=GEMINI_API_KEY)
 
 _VALID_INTENTS = {
+    "abandon",
     "signalement", "question", "abonnement",
     "escalade", "liste_arrets", "itineraire", "out_of_scope"
 }
@@ -68,110 +77,131 @@ CORRECTIONS AUDIO WHISPER (fautes phonétiques fréquentes) :
 "bus vingt trois" → ligne: "23" · "bus deuce" → ligne: "2"
 "bus un" → ligne: "1" · "bus trente" → null (pas de ligne 30)
 
-TA MISSION : analyser le message (parfois mal écrit, en argot, en wolof, transcrit par Whisper),
-déduire l'intention STRICTE, détecter la langue dominante, extraire les entités.
+TA MISSION : analyser le message (parfois mal écrit, en argot, en wolof, transcrit par Whisper)
+ET l'historique récent pour déduire l'intention RÉELLE de l'usager.
 
 ═══════════════════════════════════════════════════════════════
-RÈGLE D'OR ABSOLUE :
-- Lieu mentionné SANS numéro de bus → TOUJOURS "itineraire"
-- Numéro de bus + question sur position → "question"
-- Numéro de bus + lieu où on le voit → "signalement"
-- Intent le plus ACTIONNABLE si conflit entre deux intentions
+PROTOCOLE D'ANALYSE — CHAIN OF THOUGHT (OBLIGATOIRE)
+
+Avant de classifier, tu DOIS analyser l'état d'esprit de l'usager dans le champ "thought".
+Ce champ est ta réflexion interne. Suis ces étapes dans l'ordre :
+
+ÉTAPE 1 — ÉTAT D'ESPRIT : L'usager exprime-t-il une annulation, un refus, un
+  changement d'avis, une négation ? Mots-clés : "oublie", "laisse", "non",
+  "nulle part", "rien", "basta", "wëcciku", "bayil", "forget it", "never mind".
+  Si OUI → intent = "abandon" immédiatement, sans extraire d'entités.
+
+ÉTAPE 2 — ENTITÉS : Seulement si l'état d'esprit n'est PAS un refus, extraire
+  les entités pertinentes (ligne, origin, destination).
+
+ÉTAPE 3 — CLASSIFICATION : Choisir l'intent le plus cohérent avec l'action
+  souhaitée, pas avec les mots-clés présents.
 ═══════════════════════════════════════════════════════════════
 
-━━━ 1. itineraire ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-L'usager veut aller quelque part. C'est l'intention PAR DÉFAUT si un lieu est mentionné.
-ATTENTION : ne jamais confondre avec "question" (question = cherche un bus précis).
+━━━ 1. abandon (PRIORITÉ ABSOLUE) ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+L'usager annule, refuse, exprime un changement d'avis.
+⚠️ La présence d'un numéro de ligne ou d'un lieu NE CHANGE RIEN si le verbe exprime un refus.
 
-Français standard :
-→ "je veux me rendre au palais 2" → destination: "Palais 2"
+Français :
+→ "oublie" / "oublie pour la ligne 8" / "laisse tomber" / "annule"
+→ "je ne veux aller nulle part" / "je veux rien" / "non merci" / "c'est bon"
+→ "peu importe" / "pas la peine" / "oublie ça" / "non finalement"
+→ "je m'en fous" / "tant pis" / "basta" / "stop"
+
+Wolof :
+→ "wëcciku" / "sëde ko" / "du dara" / "amul solo"
+→ "bëgguma" / "duma ko bëgg" / "bayil lolu" / "bayil"
+
+Anglais :
+→ "forget it" / "never mind" / "cancel" / "no thanks" / "don't bother"
+
+━━━ 2. itineraire ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+L'usager veut RÉELLEMENT se déplacer. Intent par défaut si un lieu est mentionné
+ET qu'il n'y a aucun refus/négation.
+
+→ "je veux aller à Yoff depuis Liberté 5" → origin: "Liberté 5", destination: "Yoff"
 → "comment aller à Sandaga ?" → destination: "Sandaga"
 → "quelle ligne pour UCAD ?" → destination: "UCAD"
-→ "je veux aller à Yoff depuis Liberté 5" → origin: "Liberté 5", destination: "Yoff"
-→ "quel bus prendre pour aller à Colobane ?" → destination: "Colobane"
-→ "emmène moi à l'aéroport" → destination: "Aéroport"
-→ "trajet Keur Massar → Plateau" → origin: "Keur Massar", destination: "Plateau"
-→ "je suis à HLM je veux aller à Médina" → origin: "HLM", destination: "Médina"
-→ "bus direct pour Parcelles ?" → destination: "Parcelles Assainies", no_transfer: true
-→ "sans correspondance pour UCAD" → destination: "UCAD", no_transfer: true
-
-Lieu seul (= itineraire par défaut) :
 → "Sandaga" seul → destination: "Sandaga"
-→ "Vers UCAD" → destination: "UCAD"
-→ "Palais 2" → destination: "Palais 2"
-→ "HLM ?" → destination: "HLM"
-→ "Aéroport stp" → destination: "Aéroport"
-
-Wolof / Françolof :
 → "Damay dem Parcelles" → destination: "Parcelles Assainies"
-→ "Fan lay diar pour dem HLM ?" → destination: "HLM"
-→ "Yobou ma aéroport" → destination: "Aéroport"
-→ "Dem ci UCAD, foo dem ?" → destination: "UCAD"
-→ "Keur Massar dem fa Plateau" → origin: "Keur Massar", destination: "Plateau"
-→ "Dama ci Liberté 5, dama dem Sandaga" → origin: "Liberté 5", destination: "Sandaga"
+→ "sans correspondance pour UCAD" → destination: "UCAD", no_transfer_preference: true
 
-no_transfer_preference: true si :
-→ "sans correspondance" · "sans changer" · "bus direct seulement"
-→ "direct uniquement" · "bu kanam" (directement)
-
-━━━ 2. question ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-L'usager cherche la position / l'heure d'UN BUS PRÉCIS.
-RÈGLE : il y a TOUJOURS un numéro de ligne. Sans numéro → itineraire.
+━━━ 3. question ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+L'usager cherche la position/heure d'UN BUS PRÉCIS. Contient TOUJOURS un numéro.
 
 → "où est le bus 15 ?" → ligne: "15"
 → "le 8 est où ?" → ligne: "8"
 → "Bus 15 bi ana mu ?" → ligne: "15"
-→ "Ana bus 2 bi ?" → ligne: "2"
-→ "Bus fukk ak juróom bi ana ?" → ligne: "15"
 
-━━━ 3. signalement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-L'usager VOIT le bus en ce moment ou rapporte son état.
-RÈGLE : numéro de ligne + lieu/arrêt où il est vu.
+━━━ 4. signalement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+L'usager VOIT le bus maintenant. Numéro + lieu visible.
 
 → "bus 15 à Liberté 5" → ligne: "15", origin: "Liberté 5"
 → "le 4 est devant le marché HLM" → ligne: "4", origin: "HLM"
-→ "Maa ngi gis 15 bi ci Liberté 6" → ligne: "15", origin: "Liberté 6"
 
-━━━ 4. abonnement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 5. abonnement ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 → "préviens-moi pour le bus 15" → ligne: "15"
 → "Waar ma bu 15 bi ñëwé" → ligne: "15"
 
-━━━ 5. liste_arrets ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+━━━ 6. liste_arrets ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 → "quels sont les arrêts du bus 15 ?" → ligne: "15"
 → "le 8 passe par où ?" → ligne: "8"
 
-━━━ 6. escalade ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Plaintes graves, insultes, demande humain.
+━━━ 7. escalade ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Plaintes graves, insultes, demande d'un humain.
 
-━━━ 7. out_of_scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Salutations, hors Dem Dikk, questions génériques.
+━━━ 8. out_of_scope ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Salutations, hors Dem Dikk, questions génériques sur Xëtu.
 
 ═══════════════════════════════════════════════════════════════
-RÈGLES DE DÉCISION RAPIDE (priorité décroissante) :
-1. Insulte ou demande humain → escalade
-2. Salutation / hors Dem Dikk / générique → out_of_scope
-3. Numéro de bus + lieu visible maintenant → signalement
-4. Numéro de bus + question sur position → question
-5. "préviens" / "alerte" / "waar" / "fissal" → abonnement
-6. "par où passe" / "arrêts de" + numéro → liste_arrets
-7. Lieu mentionné (avec ou sans numéro) → itineraire
-8. Conflit entre deux intents → prendre le plus ACTIONNABLE
-═══════════════════════════════════════════════════════════════
+FORMAT DE SORTIE — JSON STRICT, AUCUN MARKDOWN
 
-Langues : "fr", "wolof", "pulaar", "en"
+Le champ "thought" est OBLIGATOIRE. C'est ta réflexion avant de classifier.
 
-Retourne UNIQUEMENT un JSON valide, sans markdown, sans explication :
+Exemple — annulation avec numéro de ligne :
 {
-  "intent": "...",
-  "lang": "...",
+  "thought": "L'usager cite la ligne 8 mais utilise le verbe 'oublie'. La présence du numéro ne change rien : c'est une annulation explicite de l'action en cours.",
+  "intent": "abandon",
+  "lang": "fr",
+  "entities": {},
+  "confidence": 0.98
+}
+
+Exemple — négation de destination :
+{
+  "thought": "L'usager dit 'nulle part' avec une négation forte. Il ne demande pas d'itinéraire, il refuse d'en donner un. Abandon.",
+  "intent": "abandon",
+  "lang": "fr",
+  "entities": {},
+  "confidence": 0.97
+}
+
+Exemple — itinéraire normal :
+{
+  "thought": "L'usager donne un lieu de destination sans aucun signe de refus. Itinéraire classique.",
+  "intent": "itineraire",
+  "lang": "fr",
   "entities": {
-    "ligne": "15",
-    "origin": "Liberté 5",
-    "destination": "Sandaga",
-    "no_transfer_preference": false
+    "destination": "Parcelles Assainies"
   },
   "confidence": 0.95
-}"""
+}
+
+Exemple — signalement :
+{
+  "thought": "L'usager signale voir le bus 15 à un arrêt précis maintenant.",
+  "intent": "signalement",
+  "lang": "fr",
+  "entities": {
+    "ligne": "15",
+    "origin": "Liberté 5"
+  },
+  "confidence": 0.96
+}
+═══════════════════════════════════════════════════════════════
+
+Langues détectables : "fr", "wolof", "pulaar", "en"
+"""
 
 
 async def classify_intent(
@@ -194,7 +224,7 @@ async def classify_intent(
         response = await _groq_client.chat.completions.create(
             model=GROQ_MODEL,
             messages=messages,
-            max_tokens=150,
+            max_tokens=250,   # augmenté pour le champ thought
             temperature=0.0,
             response_format={"type": "json_object"}
         )
@@ -205,6 +235,7 @@ async def classify_intent(
         if intent in _VALID_INTENTS:
             logger.info(
                 f"[LLM Classify] '{text[:50]}' → {intent} "
+                f"| thought={data.get('thought', '')[:80]} "
                 f"| lang={data.get('lang')} "
                 f"| entities={data.get('entities')} "
                 f"| confidence={data.get('confidence', '?')}"
@@ -275,11 +306,6 @@ async def _call_groq(prompt: str, langue: str) -> str:
 
 
 async def _call_gemini(prompt: str, langue: str) -> str:
-    """
-    FIX V5.1 : try/except complet avec fallback wolof.
-    Avant : exception remontait jusqu'à main.py → "Une erreur s'est produite." en FR.
-    Après : fallback wolof cohérent retourné directement depuis ici.
-    """
     try:
         model    = genai.GenerativeModel(GEMINI_MODEL)
         response = await model.generate_content_async(prompt)

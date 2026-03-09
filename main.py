@@ -1,7 +1,12 @@
 """
-main.py — V5.1 (LLM-Native)
+main.py — V5.2 (LLM-Native)
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
-Refonte : Routing asynchrone prioritaire + Slot Filling centralisé.
+
+FIX V5.2 :
+  - session déplacée à l'étape 2 (avant route_async) → fix UnboundLocalError
+  - abandon géré depuis intent LLM ET is_abandon() — plus seulement si session.etat
+    Ex: "oublie pour la ligne 8" → LLM retourne intent=abandon → reset + réponse douce
+    Ex: "je ne veux aller nulle part" → même traitement
 """
 import logging
 from fastapi import FastAPI, Request, HTTPException
@@ -60,14 +65,14 @@ _MIN_MESSAGE_LENGTH = 1
 @app.on_event("startup")
 async def startup():
     start_heartbeat()
-    logger.info("🚌 Xëtu V5.1 démarré — Architecture LLM-Native")
+    logger.info("🚌 Xëtu V5.2 démarré — Architecture LLM-Native")
 
 
 # ── Health check ──────────────────────────────────────────
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "Xëtu", "version": "5.1"}
+    return {"status": "ok", "service": "Xëtu", "version": "5.2"}
 
 
 # ── Webhook Meta — vérification ───────────────────────────
@@ -140,8 +145,6 @@ def _check_message(text: str) -> str | None:
 
 async def _process_message(phone: str, text: str):
     try:
-        # Note: Asyncio lock limitant pour le multi-instance.
-        # À migrer vers Redis Redlock pour le vrai scale.
         async with queue_manager.process(phone):
             await _process_message_safe(phone, text)
     except Exception as e:
@@ -169,11 +172,15 @@ async def _process_message_safe(phone: str, text: str):
         route_result = await route_async(normalized, history=None, session_context=session)
 
         # ── 4. LANGUE ─────────────────────────────────────
-        # Langue vient du LLM, fallback règles si absente
         langue = route_result.lang or detect_language(text)
 
-        # ── 5. ABANDON DE FLOW ────────────────────────────
-        if session.etat and is_abandon(text):
+        # ── 5. ABANDON ────────────────────────────────────
+        # Double détection :
+        #   a) LLM classifie "abandon" (ex: "oublie pour la ligne 8")
+        #   b) session active + is_abandon() regex (filet de sécurité)
+        is_abandon_llm   = (route_result.intent == "abandon")
+        is_abandon_regex = (session.etat and is_abandon(text))
+        if is_abandon_llm or is_abandon_regex:
             reset_context(phone)
             contact      = queries.get_or_create_contact(phone, langue)
             conversation = queries.get_or_create_conversation(contact["id"])
@@ -189,8 +196,6 @@ async def _process_message_safe(phone: str, text: str):
             return
 
         # ── 5.5 HISTORY pour les flows multi-tour ─────────
-        # Chargé ici pour être disponible dans handle_arret_response
-        # et handle_origin_response même si on court-circuite l'étape 7
         _contact_tmp = queries.get_or_create_contact(phone, langue)
         _conv_tmp    = queries.get_or_create_conversation(_contact_tmp["id"])
         history      = queries.get_recent_messages(_conv_tmp["id"])
