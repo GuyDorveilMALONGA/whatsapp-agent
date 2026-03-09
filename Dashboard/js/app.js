@@ -1,100 +1,103 @@
 /**
- * XËTU — js/app.js
- * Orchestrateur. Coordonne ApiService, XetuMap et UI.
- * Contient l'état centralisé et la boucle de refresh.
- * Ne manipule jamais le DOM directement — délègue tout à UI.
+ * js/app.js
+ * Point d'entrée — orchestre Api, MapManager, UI.
+ * Aucune logique de rendu ici, seulement la coordination.
+ *
+ * Dépend de (dans l'ordre de chargement) :
+ *   utils.js → api.js → map.js → ui.js → app.js
  */
-const App = (() => {
 
-  // État centralisé — une seule source de vérité
-  const state = {
-    buses:         [],
-    currentFilter: 'all',
-    countdown:     30,
-    isFirstLoad:   true,
-  };
+// ── STATE ─────────────────────────────────────────────────
+const State = {
+  buses:      [],
+  leaderboard: [],
+  selectedId: null,
+};
 
-  // ── Interactions utilisateur ───────────────────────────
+// ── INIT ─────────────────────────────────────────────────
 
-  const onFilterChange = (filterValue) => {
-    state.currentFilter = filterValue;
-    UI.renderFilters(state.buses, state.currentFilter, onFilterChange);
-    UI.renderBusList(state.buses, state.currentFilter, onBusCardClick);
-  };
+document.addEventListener('DOMContentLoaded', () => {
+  // Carte
+  MapManager.init('map', onBusSelect);
 
-  const onBusCardClick = (bus) => {
-    XetuMap.focusOn(bus.lat, bus.lon);
-    const busId = bus.id_unique || bus.ligne;
-    XetuMap.openMarkerPopup(busId);
-  };
+  // Tabs sidebar
+  UI.initTabs();
 
-  // ── Fetch et mise à jour ───────────────────────────────
+  // Boutons WhatsApp
+  _bindWhatsAppButtons();
 
-  const refreshData = async () => {
-    try {
-      // Requêtes en parallèle — on ne attend pas l'une pour lancer l'autre
-      const [busesData, leaderboardData] = await Promise.all([
-        ApiService.getActiveBuses(),
-        ApiService.getLeaderboard(),
-      ]);
+  // Premier chargement
+  loadAndRender().then(() => {
+    UI.startTimer(Config.REFRESH_SEC, onTimerComplete);
+  });
+});
 
-      const previousCount = state.buses.length;
-      state.buses = busesData;
+// ── CHARGEMENT ────────────────────────────────────────────
 
-      // Mise à jour UI
-      UI.animateValue(UI.DOM.statBuses, state.buses.length);
-      UI.renderFilters(state.buses, state.currentFilter, onFilterChange);
-      UI.renderBusList(state.buses, state.currentFilter, onBusCardClick);
-      UI.renderLeaderboard(leaderboardData);
+/**
+ * Charge les données et met à jour toute l'interface.
+ */
+async function loadAndRender() {
+  const data = await Api.fetchAll();
 
-      // Mise à jour carte
-      XetuMap.updateFleet(state.buses);
+  State.buses       = data.buses       || [];
+  State.leaderboard = data.leaderboard || [];
 
-      // Notification — seulement après le premier chargement
-      if (!state.isFirstLoad && state.buses.length > previousCount) {
-        UI.showToast('🚌 Nouveau bus signalé !', 'success');
-      }
+  // Carte
+  MapManager.updateMarkers(State.buses, State.selectedId);
 
-      if (state.isFirstLoad) {
-        UI.hideLoader();
-        state.isFirstLoad = false;
-      }
+  // Sidebar
+  UI.renderBusList(State.buses, State.selectedId, onBusSelect);
+  UI.renderLeaderboard(State.leaderboard);
 
-    } catch (error) {
-      console.error('[App] Erreur de refresh :', error);
-      UI.showToast('Connexion perdue. Réessai en cours…', 'error');
+  // Stats bar
+  UI.updateStats(State.buses.length, data.stats || {});
+}
+
+// ── CALLBACKS ─────────────────────────────────────────────
+
+/**
+ * Appelé quand l'usager clique sur un bus (carte ou sidebar).
+ * @param {number} busId
+ */
+function onBusSelect(busId) {
+  State.selectedId = busId;
+
+  const bus = State.buses.find(b => b.id === busId);
+  if (!bus) return;
+
+  // Highlight sidebar
+  UI.selectBusCard(busId);
+
+  // Fly to + popup
+  MapManager.flyToBus(bus);
+
+  // Redessiner les markers pour refléter la sélection
+  MapManager.updateMarkers(State.buses, State.selectedId);
+}
+
+/**
+ * Appelé quand le timer atteint 0 — rafraîchit les données.
+ */
+async function onTimerComplete() {
+  await loadAndRender();
+  UI.startTimer(Config.REFRESH_SEC, onTimerComplete);
+}
+
+// ── WHATSAPP ──────────────────────────────────────────────
+
+function _bindWhatsAppButtons() {
+  const defaultMsg = 'Bonjour Xëtu ! Je veux signaler un bus 🚌';
+
+  ['btn-signal-main', 'btn-signal-mobile'].forEach(id => {
+    const btn = document.getElementById(id);
+    if (btn) {
+      btn.addEventListener('click', () => {
+        window.open(
+          Utils.buildWhatsAppUrl(Config.WA_NUMBER, defaultMsg),
+          '_blank'
+        );
+      });
     }
-  };
-
-  // ── Boucle de rafraîchissement ─────────────────────────
-
-  const startRefreshLoop = () => {
-    state.countdown = 30;
-
-    const tick = setInterval(() => {
-      state.countdown--;
-      UI.updateTimer(state.countdown);
-
-      if (state.countdown <= 0) {
-        clearInterval(tick);
-        UI.updateTimer(0);
-        refreshData().then(startRefreshLoop);
-      }
-    }, 1000);
-  };
-
-  // ── Initialisation ─────────────────────────────────────
-
-  const init = () => {
-    UI.init();          // Cache DOM d'abord
-    XetuMap.init('map');
-    refreshData();
-    startRefreshLoop();
-  };
-
-  return { init };
-
-})();
-
-// Point d'entrée unique — après que le DOM est prêt
-document.addEventListener('DOMContentLoaded', App.init);
+  });
+}

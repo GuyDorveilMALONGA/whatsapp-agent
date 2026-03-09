@@ -1,60 +1,94 @@
 /**
- * XËTU — js/utils.js
- * Utilitaires purs. Zéro DOM, zéro effet de bord.
- * Peut être testé unitairement sans navigateur.
+ * js/utils.js
+ * Fonctions utilitaires pures — aucune dépendance externe.
+ * Pas de DOM, pas d'API, pas de Leaflet ici.
  */
+
 const Utils = (() => {
 
   /**
-   * Neutralise les injections XSS via le DOM lui-même.
-   * Plus fiable qu'une regex car le navigateur gère tous les cas edge.
+   * Retourne la classe CSS selon l'âge du signalement.
+   * @param {number} minutesAgo
+   * @returns {'age-fresh'|'age-ok'|'age-old'}
    */
-  const escapeHTML = (str) => {
-    if (str == null) return '';
-    const node = document.createTextNode(String(str));
-    const wrapper = document.createElement('span');
-    wrapper.appendChild(node);
-    return wrapper.innerHTML;
-  };
+  function getAgeClass(minutesAgo) {
+    if (minutesAgo <= 5)  return 'age-fresh';
+    if (minutesAgo <= 15) return 'age-ok';
+    return 'age-old';
+  }
 
   /**
-   * Classe de confiance selon fraîcheur du signalement.
-   * Retourne 'good' | 'warning' | 'danger' — lisible par un humain.
+   * Retourne la couleur hex selon l'âge.
+   * @param {number} minutesAgo
+   * @returns {string} couleur hex
    */
-  const getConfidenceClass = (confiance, minutesAgo) => {
-    if (confiance === 'high' || confiance === 'vert' || minutesAgo < 10)   return 'good';
-    if (confiance === 'medium' || confiance === 'jaune' || minutesAgo < 30) return 'warning';
-    return 'danger';
-  };
-
-  const CONFIDENCE_LABELS = {
-    good:    'FIABLE',
-    warning: 'ESTIMÉ',
-    danger:  'PEU SÛR',
-  };
-
-  const CONFIDENCE_COLORS = {
-    good:    '#00935A',
-    warning: '#C47D00',
-    danger:  '#C42020',
-  };
+  function getAgeColor(minutesAgo) {
+    if (minutesAgo <= 5)  return '#00D67F';
+    if (minutesAgo <= 15) return '#FFD166';
+    return '#FF4757';
+  }
 
   /**
-   * Temps relatif lisible.
+   * Formate l'âge en texte lisible.
+   * @param {number} minutesAgo
+   * @returns {string}
    */
-  const timeAgo = (minutes) => {
-    if (minutes == null) return '?';
-    if (minutes < 1)    return "à l'instant";
-    if (minutes === 1)  return 'il y a 1 min';
-    return `il y a ${minutes} min`;
-  };
+  function formatAge(minutesAgo) {
+    if (minutesAgo < 1) return "à l'instant";
+    if (minutesAgo === 1) return '1 min';
+    return `${minutesAgo} min`;
+  }
+
+  /**
+   * Classe CSS du rang leaderboard.
+   * @param {number} rank
+   * @returns {string}
+   */
+  function getRankClass(rank) {
+    if (rank === 1) return 'gold';
+    if (rank === 2) return 'silver';
+    if (rank === 3) return 'bronze';
+    return 'other';
+  }
+
+  /**
+   * Symbole emoji du rang.
+   * @param {number} rank
+   * @returns {string}
+   */
+  function getRankSymbol(rank) {
+    if (rank === 1) return '🥇';
+    if (rank === 2) return '🥈';
+    if (rank === 3) return '🥉';
+    return String(rank);
+  }
+
+  /**
+   * Génère une classe badge cyclique.
+   * @param {number} index
+   * @returns {string}
+   */
+  function getBadgeClass(index) {
+    return ['badge-orange', 'badge-green', 'badge-yellow'][index % 3];
+  }
+
+  /**
+   * Encode un message pour une URL WhatsApp.
+   * @param {string} message
+   * @returns {string} URL wa.me
+   */
+  function buildWhatsAppUrl(phoneNumber, message) {
+    return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+  }
 
   return {
-    escapeHTML,
-    getConfidenceClass,
-    CONFIDENCE_LABELS,
-    CONFIDENCE_COLORS,
-    timeAgo,
+    getAgeClass,
+    getAgeColor,
+    formatAge,
+    getRankClass,
+    getRankSymbol,
+    getBadgeClass,
+    buildWhatsAppUrl,
   };
 
 })();
