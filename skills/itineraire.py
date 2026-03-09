@@ -26,7 +26,8 @@ def _direct_fr(r: dict) -> str:
         f"Durée : ~{best['nb_stops'] * 2} min · {best['nb_stops']} arrêts",
     ]
     if other:
-        lines.append(f"_Aussi : {' · '.join(f'Ligne {x[\"number\"]}' for x in other[:2])}_")
+        autres = ' · '.join(f"Ligne {x['number']}" for x in other[:2])
+        lines.append(f"_Aussi : {autres}_")
     lines.append("\n— *Xëtu*")
     return "\n".join(lines)
 
@@ -45,7 +46,8 @@ def _walk_direct_fr(r: dict) -> str:
             f"\n_Option B : Ligne {t['number1']} → Ligne {t['number2']} · ~{t['total_min']} min_"
         )
     elif other:
-        lines.append(f"\n_Aussi : {' · '.join(f'Ligne {x[\"number\"]}' for x in other[:2])}_")
+        autres = ' · '.join(f"Ligne {x['number']}" for x in other[:2])
+        lines.append(f"\n_Aussi : {autres}_")
     lines.append("\n— *Xëtu*")
     return "\n".join(lines)
 
