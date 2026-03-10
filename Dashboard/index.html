@@ -5,13 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="theme-color" content="#0A0F1E">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Xëtu">
 <meta name="description" content="Xëtu — Radar Bus Dem Dikk en temps réel à Dakar">
-<title>Xëtu — Radar Bus Dakar</title>
 
-<!-- Fonts -->
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<!-- PWA manifest -->
+<link rel="manifest" href="/manifest.json">
+
+<!-- Apple touch icon -->
+<link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
+
+<!-- Favicon -->
+<link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
+
+<title>Xëtu — Radar Bus Dakar</title>
 
 <!-- Leaflet -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
@@ -36,6 +43,10 @@
     </div>
   </div>
   <div class="header-right">
+    <!-- Bouton installer PWA (visible uniquement si beforeinstallprompt dispo) -->
+    <button id="btn-install" class="btn-install" aria-label="Installer l'application" hidden>
+      ⬇️ Installer
+    </button>
     <div class="live-badge" aria-label="En direct">
       <div class="live-dot" aria-hidden="true"></div>
       EN DIRECT
@@ -107,7 +118,7 @@
       </div>
     </div>
 
-    <!-- Bouton signalement natif (remplace WhatsApp comme action primaire) -->
+    <!-- Bouton signalement natif -->
     <div class="bottom-cta">
       <button class="btn-signaler" id="btn-signaler"
               aria-label="Signaler un bus directement">

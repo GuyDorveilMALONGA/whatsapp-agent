@@ -29,6 +29,39 @@ html, body {
   position: relative;
 }
 
+/* ── Bouton installer PWA (à ajouter dans la section #app-header de layout.css) ── */
+
+.btn-install {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: 6px var(--space-md);
+  background: var(--orange-dim);
+  color: var(--orange);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background var(--transition-fast), transform var(--transition-fast);
+  white-space: nowrap;
+}
+
+.btn-install:hover {
+  background: rgba(255, 107, 53, 0.25);
+  transform: translateY(-1px);
+}
+
+.btn-install:active {
+  transform: translateY(0);
+}
+
+/* Masqué par défaut, affiché via JS (hidden attribute retiré) */
+.btn-install[hidden] {
+  display: none !important;
+}
+
 .logo {
   display: flex;
   align-items: center;

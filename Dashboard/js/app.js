@@ -1,5 +1,5 @@
 /**
- * js/app.js — Phase 3
+ * js/app.js — Phase 4
  * Point d'entrée unique. Orchestre sans logique de rendu.
  *
  * Cycle de vie :
@@ -11,6 +11,7 @@
  *  6. chat UI + WebSocket
  *  7. fetchAll initial
  *  8. polling 30s
+ *  9. Service Worker + PWA install prompt
  */
 
 import * as store      from './store.js';
@@ -87,12 +88,81 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 10. Listeners globaux
   window.addEventListener('online',  () => Toast.info('Connexion rétablie ✅'));
   window.addEventListener('offline', () => Toast.error('Hors ligne — données en cache'));
+
+  // 11. PWA : Service Worker + install prompt
+  _initPWA();
+
+  // 12. Shortcut manifest (?action=report)
+  const action = new URLSearchParams(window.location.search).get('action');
+  if (action === 'report') {
+    // Attendre que le DOM soit prêt avant d'ouvrir le modal
+    setTimeout(() => Modal.openModal({}, document.getElementById('btn-signaler')), 300);
+  }
 });
+
+// ── PWA ───────────────────────────────────────────────────
+
+let _deferredInstallPrompt = null;
+
+function _initPWA() {
+  // Enregistrement du Service Worker
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/' })
+      .then(reg => {
+        console.log('[PWA] Service Worker enregistré :', reg.scope);
+
+        // Mise à jour silencieuse dès qu'un nouveau SW est prêt
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          if (!newWorker) return;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // Un nouveau SW est disponible — on l'active sans déranger l'utilisateur
+              newWorker.postMessage({ type: 'SKIP_WAITING' });
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[PWA] Enregistrement SW échoué :', err));
+
+    // Rechargement propre quand le nouveau SW prend le contrôle
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+  }
+
+  // Bouton "Installer"
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    const btn = document.getElementById('btn-install');
+    if (btn) btn.hidden = false;
+  });
+
+  const installBtn = document.getElementById('btn-install');
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!_deferredInstallPrompt) return;
+      _deferredInstallPrompt.prompt();
+      const { outcome } = await _deferredInstallPrompt.userChoice;
+      console.log('[PWA] Install prompt outcome :', outcome);
+      _deferredInstallPrompt = null;
+      installBtn.hidden = true;
+    });
+  }
+
+  // Masquer le bouton si déjà installé
+  window.addEventListener('appinstalled', () => {
+    const btn = document.getElementById('btn-install');
+    if (btn) btn.hidden = true;
+    _deferredInstallPrompt = null;
+    Toast.success('Xëtu installé ! 🎉');
+  });
+}
 
 // ── CHAT + WEBSOCKET ──────────────────────────────────────
 
 function _initChat() {
-  // Initialise l'UI chat avec le callback d'envoi
   Chat.init({
     onSend: (text) => {
       const sent = Ws.sendChat(text);
@@ -103,22 +173,18 @@ function _initChat() {
     },
   });
 
-  // Initialise le WebSocket
   Ws.init({
     onOpen: () => {
       Chat.setStatus('open');
     },
-
     onWelcome: (text, suggestions) => {
       Chat.appendMessage('bot', text);
       Chat.setSuggestions(suggestions);
     },
-
     onChatResponse: (text) => {
       Chat.hideTyping();
       Chat.appendMessage('bot', text);
     },
-
     onReportAck: (payload) => {
       Chat.hideTyping();
       if (payload.success) {
@@ -128,25 +194,19 @@ function _initChat() {
         Chat.appendMessage('bot', `❌ ${payload.error || 'Erreur lors du signalement.'}`);
       }
     },
-
     onError: (message) => {
       Chat.hideTyping();
       Chat.appendMessage('bot', `⚠️ ${message}`);
     },
-
     onClose: (wasClean) => {
       Chat.setStatus('closed');
-      if (!wasClean) {
-        store.set('wsStatus', 'closed');
-      }
+      if (!wasClean) store.set('wsStatus', 'closed');
     },
-
-    onReconnecting: (attempt) => {
+    onReconnecting: () => {
       Chat.setStatus('connecting');
     },
   });
 
-  // Synchronise le statut WS dans le chat
   store.subscribe('wsStatus', (status) => {
     Chat.setStatus(status);
   });

@@ -1,0 +1,37 @@
+{
+  "name": "Xëtu — Radar Bus Dakar",
+  "short_name": "Xëtu",
+  "description": "Radar Bus Dem Dikk en temps réel à Dakar",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#0A0F1E",
+  "theme_color": "#0A0F1E",
+  "lang": "fr",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "assets/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "screenshots": [],
+  "categories": ["travel", "utilities"],
+  "shortcuts": [
+    {
+      "name": "Signaler un bus",
+      "short_name": "Signaler",
+      "description": "Ouvrir le formulaire de signalement",
+      "url": "/?action=report",
+      "icons": [{ "src": "assets/icons/icon-192.png", "sizes": "192x192" }]
+    }
+  ]
+}
