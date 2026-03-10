@@ -69,7 +69,9 @@ app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://xetudashbord.pages.dev"],
+    allow_origins=["https://xetudashbord.pages.dev",
+    "http://localhost:8080",
+    "http://127.0.0.1:5500"],
     allow_methods=["GET", "POST"],
     allow_headers=["Content-Type", "*"],
 )
