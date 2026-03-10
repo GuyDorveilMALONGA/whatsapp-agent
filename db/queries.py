@@ -433,7 +433,7 @@ def ligne_existe(numero: str) -> bool:
 
 # ── Sessions ──────────────────────────────────────────────
 
-SESSION_CONTEXT_TTL_SECONDS = 600  # 10 min
+SESSION_CONTEXT_TTL_SECONDS = 1800  # 30 min
 
 
 def get_session(phone: str) -> dict | None:
