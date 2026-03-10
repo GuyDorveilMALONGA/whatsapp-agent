@@ -17,6 +17,14 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+
+# Validation phone E.164
+PHONE_REGEX = re.compile(r'^\+?[1-9]\d{6,14}$')
+
+# Rate limiting
+RATE_LIMIT_PER_PHONE_PER_MIN = 10
+RATE_LIMIT_GLOBAL_PER_MIN    = 200
+
 # ── FORÇAGE FUSEAU HORAIRE ────────────────────────────────
 os.environ['TZ'] = 'UTC'
 if hasattr(time, 'tzset'):
