@@ -8,7 +8,7 @@
 
 // ── API ───────────────────────────────────────────────────
 
-export const API_BASE     = 'https://xetu.railway.app';
+export const API_BASE = 'https://web-production-ccab8.up.railway.app'; 
 export const WA_NUMBER    = '221XXXXXXXXX';   // ← remplacer par le vrai numéro
 export const REFRESH_SEC  = 30;
 
