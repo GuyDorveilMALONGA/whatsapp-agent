@@ -19,7 +19,7 @@ load_dotenv()
 
 
 # Validation phone E.164
-PHONE_REGEX = re.compile(r'^\+?[1-9]\d{6,14}$')
+PHONE_REGEX = re.compile(r'^[1-9]\d{6,14}$')
 
 # Rate limiting
 RATE_LIMIT_PER_PHONE_PER_MIN = 10
