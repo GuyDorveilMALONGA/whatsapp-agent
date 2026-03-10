@@ -1,6 +1,7 @@
 /* ════════════════════════════════════════════════════════
    components.css — Composants réutilisables
-   bus-card, leaderboard, badges, empty, toast, whatsapp-btn
+   bus-card, leaderboard, badges, empty, toast, whatsapp-btn,
+   modal signalement, autocomplete
    ════════════════════════════════════════════════════════ */
 
 /* ── Bus Card ── */
@@ -196,14 +197,13 @@
   background: rgba(255, 107, 53, 0.25);
 }
 
-/* ── Bouton WhatsApp ── */
-.whatsapp-btn {
+/* ── Boutons d'action sidebar / sheet ── */
+.whatsapp-btn,
+.btn-signaler {
   width: 100%;
   padding: 13px;
-  background: #25D366;
   border: none;
   border-radius: var(--radius-lg);
-  color: white;
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
@@ -212,8 +212,13 @@
   justify-content: center;
   gap: var(--space-sm);
   transition: all var(--transition-fast);
-  box-shadow: var(--shadow-green);
   min-height: 44px;
+}
+
+.whatsapp-btn {
+  background: #25D366;
+  color: white;
+  box-shadow: var(--shadow-green);
 }
 
 .whatsapp-btn:hover {
@@ -223,6 +228,20 @@
 }
 
 .whatsapp-btn:active { transform: translateY(0); }
+
+.btn-signaler {
+  background: var(--orange);
+  color: white;
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.3);
+}
+
+.btn-signaler:hover {
+  background: #e85d20;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(255, 107, 53, 0.45);
+}
+
+.btn-signaler:active { transform: translateY(0); }
 
 /* ── Toast ── */
 #toast-container {
@@ -285,7 +304,7 @@
   color: var(--orange);
 }
 
-.toast-icon { font-size: 16px; flex-shrink: 0; }
+.toast-icon    { font-size: 16px; flex-shrink: 0; }
 .toast-message { flex: 1; }
 
 .toast-retry {
@@ -294,6 +313,9 @@
   padding: 3px 8px;
   border-radius: var(--radius-sm);
   border: 1px solid currentColor;
+  background: none;
+  color: inherit;
+  cursor: pointer;
   opacity: 0.8;
   transition: opacity var(--transition-fast);
   flex-shrink: 0;
@@ -302,11 +324,16 @@
 .toast-retry:hover { opacity: 1; }
 
 .toast-dismiss {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
   opacity: 0.5;
   font-size: 18px;
   line-height: 1;
   transition: opacity var(--transition-fast);
   flex-shrink: 0;
+  padding: 0;
 }
 
 .toast-dismiss:hover { opacity: 1; }
@@ -335,4 +362,320 @@
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }
+}
+
+
+/* ════════════════════════════════════════════════════════
+   MODAL SIGNALEMENT
+   ════════════════════════════════════════════════════════ */
+
+/* ── Overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  backdrop-filter: blur(2px);
+  z-index: var(--z-modal-overlay, 900);
+}
+
+/* ── Conteneur modal ── */
+.modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: var(--z-modal, 901);
+  width: min(480px, calc(100vw - 32px));
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  background: var(--surface1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.6);
+  animation: modalSlideIn 0.22s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.modal[hidden] { display: none; }
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -48%) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* ── Header modal ── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 20px 0;
+}
+
+.modal-title {
+  font-family: var(--font-head);
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  line-height: 1;
+  transition: color var(--transition-fast), background var(--transition-fast);
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modal-close:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+/* ── Formulaire ── */
+.modal-form {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.required {
+  color: var(--red);
+  margin-left: 2px;
+}
+
+.form-optional {
+  color: var(--muted);
+  font-weight: 400;
+  text-transform: none;
+  font-size: 0.78rem;
+  opacity: 0.7;
+}
+
+.form-select,
+.form-input {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text);
+  font-size: 0.95rem;
+  font-family: var(--font-body);
+  padding: 11px 14px;
+  width: 100%;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 44px;
+}
+
+/* Flèche select custom */
+.form-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='rgba(255,255,255,0.35)' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  padding-right: 36px;
+}
+
+.form-select option {
+  background: var(--surface1);
+  color: var(--text);
+}
+
+.form-select:focus,
+.form-input:focus {
+  outline: none;
+  border-color: var(--orange);
+  box-shadow: 0 0 0 3px var(--orange-dim);
+}
+
+.form-error {
+  font-size: 0.78rem;
+  color: var(--red);
+  display: block;
+  min-height: 1em;
+}
+
+/* ── Autocomplete arrêts ── */
+.autocomplete-wrapper {
+  position: relative;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  z-index: 10;
+  list-style: none;
+  margin: 0;
+  padding: 4px;
+  background: var(--surface2);
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  max-height: 220px;
+  overflow-y: auto;
+}
+
+.autocomplete-list[hidden] { display: none; }
+
+.autocomplete-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+  font-size: 0.88rem;
+  color: var(--text);
+}
+
+.autocomplete-item:hover,
+.autocomplete-item.is-highlighted {
+  background: var(--surface3);
+}
+
+.autocomplete-item mark {
+  background: none;
+  color: var(--orange);
+  font-weight: 700;
+}
+
+.suggestion-name {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.suggestion-lines {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.suggestion-line-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: var(--orange-dim);
+  color: var(--orange);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
+
+/* ── Bouton submit modal ── */
+.modal-submit-btn {
+  background: var(--orange);
+  color: white;
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-head);
+  font-size: 0.95rem;
+  font-weight: 700;
+  padding: 13px 20px;
+  cursor: pointer;
+  width: 100%;
+  min-height: 48px;
+  transition: opacity var(--transition-fast), transform 0.1s;
+  margin-top: 4px;
+  box-shadow: 0 4px 14px rgba(255, 107, 53, 0.3);
+}
+
+.modal-submit-btn:hover:not(:disabled) {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.modal-submit-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.modal-submit-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* ── Footer liens WA / TG ── */
+.modal-footer-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 20px 20px;
+  flex-wrap: wrap;
+}
+
+.modal-footer-text {
+  font-size: 0.75rem;
+  color: var(--muted);
+  opacity: 0.6;
+}
+
+.modal-channel-link {
+  font-size: 0.75rem;
+  color: var(--muted);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color var(--transition-fast);
+}
+
+.modal-channel-link:hover { color: var(--text); }
+
+.modal-footer-sep {
+  font-size: 0.75rem;
+  color: var(--muted);
+  opacity: 0.3;
+}
+
+/* ── Responsive mobile : modal → bottom sheet ── */
+@media (max-width: 480px) {
+  .modal {
+    top: auto;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transform: none;
+    width: 100%;
+    border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+    max-height: 92dvh;
+    animation: modalSlideUp 0.25s cubic-bezier(0.34, 1.2, 0.64, 1) both;
+  }
+
+  @keyframes modalSlideUp {
+    from { opacity: 0; transform: translateY(40px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 }

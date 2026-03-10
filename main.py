@@ -1,21 +1,18 @@
 """
-main.py — V7.4
+main.py — V7.5
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V7.4 depuis V7.3 :
-  - FIX B2  : Proactivité hallucinée — guard strict : ligne doit venir du signalement courant
-              uniquement, jamais du session_context résiduel
-  - FIX B3  : Confirmation signalement moins rigide
-              → _is_confirmation_implicite() étendu (vas-y, go, yep, exact, affirm…)
-              → branche else : feedback utile au lieu de silence total
-  - FIX B6  : send_fn passé à _dispatch → proactivité Telegram fonctionne
-  - FIX B8  : Enrichissement qualitatif multi-qualités
-              → extract_qualites() depuis router, toutes les qualités enregistrées
-  - FIX B9  : send_fn erreur Telegram — closure capture chat_id (entier), pas user_id (string)
+MIGRATIONS V7.5 depuis V7.4 :
+  - PHASE 1 DASHBOARD : Ajout endpoint POST /api/report (api/report.py)
+  - CORS : allow_methods étendu à GET + POST
+  - allow_headers : Content-Type autorisé
 
-MIGRATIONS V7.3 depuis V7.2 :
-  - SESSION 3 : Ajout adaptateur Telegram
-  - FIX : send_fn passé en paramètre à tous les handlers (pas de monkey-patch)
+MIGRATIONS V7.4 depuis V7.3 :
+  - FIX B2  : Proactivité hallucinée — guard strict ligne depuis signalement courant uniquement
+  - FIX B3  : Confirmation signalement moins rigide
+  - FIX B6  : send_fn passé à _dispatch
+  - FIX B8  : Enrichissement qualitatif multi-qualités
+  - FIX B9  : send_fn erreur Telegram — closure capture chat_id
 
 ARCHITECTURE — Ordre de priorité strict :
     1. ABANDON             → toujours prioritaire, reset propre
@@ -71,9 +68,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.4 démarré — fixes proactivité + confirmation + multi-qualités")
+    logger.info("🚌 Xëtu V7.5 démarré — Phase 1 Dashboard : POST /api/report")
     yield
-    logger.info("🚌 Xëtu V7.4 arrêté proprement")
+    logger.info("🚌 Xëtu V7.5 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -81,15 +78,17 @@ app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["https://xetudashbord.pages.dev"],
-    allow_methods=["GET"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "*"],
 )
 
-from api.buses import router as buses_router
+from api.buses       import router as buses_router
 from api.leaderboard import router as leaderboard_router
+from api.report      import router as report_router
 
 app.include_router(buses_router)
 app.include_router(leaderboard_router)
+app.include_router(report_router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -105,7 +104,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.4", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "7.5", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -184,15 +183,13 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     if not msg:
         return {"status": "ignored"}
 
-    user_id = msg["user_id"]   # ex: "tg_123456789"
-    chat_id = msg["chat_id"]   # entier, pour répondre
+    user_id = msg["user_id"]
+    chat_id = msg["chat_id"]
     text    = msg["text"]
 
     if not check_rate_limit(user_id):
         return {"status": "rate_limited"}
 
-    # FIX B9 : closure capture chat_id (entier Telegram), pas user_id (string "tg_xxx")
-    # Le premier arg est ignoré — send_fn(_, msg) répond toujours au bon chat_id
     async def _send_telegram(_: str, message: str) -> bool:
         return await telegram_service.send_message(chat_id, message)
 
@@ -222,28 +219,20 @@ def _check_message(text: str) -> str | None:
 
 
 def _is_confirmation_implicite(text: str) -> bool:
-    """
-    FIX B3 : Étendu pour couvrir les vraies réponses naturelles.
-    Avant : oui/waaw/ok/exactement/parfait
-    Après : + vas-y, go, yep, affirm, bien sûr, évidemment, confirme, tout à fait…
-    """
     t = text.strip().lower()
     patterns = [
-        # Confirmations directes
         r"^\s*(je\s+signal[e]?|signal[e]?)\s*[!.]*\s*$",
         r"^\s*(oui|ouais|yes|waaw|waaw\s+waaw)\s*[!.]*\s*$",
         r"^\s*(c['']est\s+(bon|là|ça|correct|ok)|voilà|voila)\s*[!.]*\s*$",
         r"^\s*(ok|okay|ça\s+marche|d['']accord)\s*[!.]*\s*$",
         r"^\s*(exactement|exact|c['']est\s+ça)\s*[!.]*\s*$",
         r"^\s*(parfait|super|cool)\s*[!.]*\s*$",
-        # FIX B3 : patterns naturels supplémentaires
         r"^\s*(vas[- ]y|go|yep|yap)\s*[!.]*\s*$",
         r"^\s*(affirm[e]?|affirmatif)\s*[!.]*\s*$",
         r"^\s*(bien\s+sûr|bien\s+sur|évidemment|evidemment|absolument)\s*[!.]*\s*$",
         r"^\s*(confirm[e]?|je\s+confirm[e]?)\s*[!.]*\s*$",
         r"^\s*(tout\s+à\s+fait|tout\s+a\s+fait)\s*[!.]*\s*$",
         r"^\s*(carrément|carrement|clairement)\s*[!.]*\s*$",
-        # Wolof
         r"^\s*(waaw\s+lool|waaw\s+bañ|ndax|diaxle)\s*[!.]*\s*$",
     ]
     return any(re.search(p, t) for p in patterns)
@@ -264,7 +253,6 @@ def _is_annulation(text: str) -> bool:
 
 
 def _is_enrichissement_qualitatif(text: str) -> bool:
-    """Vérifie si le texte contient au moins une qualité (délègue à extract_qualites)."""
     return len(extract_qualites(text)) > 0
 
 
@@ -343,7 +331,6 @@ async def _process_message_telegram(
             await _process_message_safe(user_id, text, background_tasks, send_fn=send_fn)
     except Exception as e:
         logger.error(f"[Telegram] Erreur pipeline [{user_id}]: {e}", exc_info=True)
-        # FIX B9 : send_fn est une closure — elle sait déjà à quel chat_id envoyer
         await send_fn(user_id, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
@@ -486,8 +473,6 @@ async def _process_message_safe(
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
         # ── PROACTIVITÉ ───────────────────────────────────
-        # FIX B2 : guard strict — ligne UNIQUEMENT depuis entities du message courant
-        # source doit être un vrai résultat de routing, jamais un résidu de session
         ligne_extraite = route_result.entities.get("ligne")
         if (
             route_result.intent == "signalement"
@@ -530,12 +515,10 @@ async def _handle_session_active(
     intent   = route_result.intent
     entities = route_result.entities
 
-    # ── Annulation explicite ──────────────────────────────
     if _is_annulation(text):
         reset_context(phone)
         return _reponse_annulation(langue)
 
-    # ── État : attente_arret ──────────────────────────────
     if session.etat == "attente_arret":
         if (
             _is_confirmation_implicite(text)
@@ -557,13 +540,11 @@ async def _handle_session_active(
             phone, text, langue, entities, history=history
         )
 
-    # ── État : attente_origin ─────────────────────────────
     if session.etat == "attente_origin":
         return await skill_itineraire.handle_origin_response(
             phone, text, langue, entities, history=history
         )
 
-    # ── État : post_signalement ───────────────────────────
     if session.etat == "post_signalement":
         logger.info(
             f"[Session] post_signalement — text='{text}' "
@@ -581,7 +562,6 @@ async def _handle_session_active(
         reset_context(phone)
         return None
 
-    # ── État : attente_confirmation_signalement (RED TEAM) ─
     if session.etat == "attente_confirmation_signalement":
         if _is_confirmation_implicite(text):
             ligne_conf = session.ligne
@@ -635,7 +615,6 @@ async def _handle_session_active(
             return "👍 OK, signalement annulé."
 
         else:
-            # FIX B3 : feedback utile au lieu du silence total (return None)
             reset_context(phone)
             if langue == "wolof":
                 return (
@@ -646,11 +625,9 @@ async def _handle_session_active(
                 "*Bus 15 à Liberté 5* 😊"
             )
 
-    # ── État : itineraire_actif → laisser passer ──────────
     if session.etat == "itineraire_actif":
         return None
 
-    # ── État inconnu ──────────────────────────────────────
     logger.warning(f"[Session] État inconnu '{session.etat}' pour {phone}, reset.")
     reset_context(phone)
     return None
@@ -725,10 +702,6 @@ async def _handle_multi_ligne(
 async def _handle_enrichissement(
     phone: str, text: str, langue: str, session
 ) -> str:
-    """
-    FIX B8 : Enregistre TOUTES les qualités présentes dans le message.
-    "bondé et en retard" → les deux qualités sont enregistrées en DB.
-    """
     ligne    = session.ligne or ""
     position = session.signalement.get("position", "") if session.signalement else ""
 
@@ -745,7 +718,6 @@ async def _handle_enrichissement(
         except Exception as e:
             logger.error(f"[Enrichissement] Erreur qualite={qualite}: {e}")
 
-    # Confirmation adaptée à la qualité principale
     q = qualites[0]
 
     if q == "déjà parti":
@@ -834,11 +806,6 @@ def _reponse_annulation(langue: str) -> str:
 # ═══════════════════════════════════════════════════════════
 
 async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str, send_fn):
-    """
-    Propose un abonnement uniquement si l'usager n'est pas encore abonné.
-    FIX B2 : Appelé UNIQUEMENT si ligne vient du signalement courant (guard dans pipeline).
-    N'est JAMAIS appelé si est_auteur_signalement == True.
-    """
     try:
         abonnes     = queries.get_abonnes(ligne)
         deja_abonne = any(a["phone"] == phone for a in abonnes)
