@@ -1,36 +1,21 @@
 """
-main.py — V7.3
+main.py — V7.4
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
+
+MIGRATIONS V7.4 depuis V7.3 :
+  - FIX B2  : Proactivité hallucinée — guard strict : ligne doit venir du signalement courant
+              uniquement, jamais du session_context résiduel
+  - FIX B3  : Confirmation signalement moins rigide
+              → _is_confirmation_implicite() étendu (vas-y, go, yep, exact, affirm…)
+              → branche else : feedback utile au lieu de silence total
+  - FIX B6  : send_fn passé à _dispatch → proactivité Telegram fonctionne
+  - FIX B8  : Enrichissement qualitatif multi-qualités
+              → extract_qualites() depuis router, toutes les qualités enregistrées
+  - FIX B9  : send_fn erreur Telegram — closure capture chat_id (entier), pas user_id (string)
 
 MIGRATIONS V7.3 depuis V7.2 :
   - SESSION 3 : Ajout adaptateur Telegram
-    → Import services.telegram
-    → Route POST /telegram/webhook
-    → _process_message_telegram() avec send_fn injecté proprement
   - FIX : send_fn passé en paramètre à tous les handlers (pas de monkey-patch)
-
-MIGRATIONS V7.2 depuis V7.1 :
-  - FIX B9-BIS : après attente_confirmation_signalement + "oui"
-    → set_session post_signalement AVANT reset pour permettre l'enrichissement qualitatif
-    → le flow "bondé" fonctionne enfin
-
-MIGRATIONS V7.1 depuis V7.0 :
-  - RED TEAM : attente_confirmation_signalement → demande "oui/non" si confiance basse
-  - RED TEAM : messages hybrides mieux gérés (#14 #15 #18)
-
-MIGRATIONS V7.0 depuis V6.2 :
-  - FIX S1 : Vérification HMAC X-Hub-Signature-256 sur webhook POST
-  - FIX S2 : Validation phone E.164
-  - FIX S4 : Rate limiting par phone + global
-  - FIX B1 : Signalement fort → on passe le texte brut au router pour extraction
-  - FIX B2 : Message hybride → return après signalement silencieux si intent=signalement
-  - FIX B4 : Greeting check déplacé APRÈS la session active (priorité 2)
-  - FIX B7 : Multi-ligne dédupliqué avant boucle
-  - FIX B8 : save_message AVANT proactivité
-  - FIX B9 : set_session() au lieu de set_context() (qui n'existe pas)
-  - FIX A3 : lifespan context manager au lieu de @app.on_event("startup")
-  - FIX A4 : /health vérifie Supabase
-  - FIX : proactivité ne notifie jamais l'auteur du signalement
 
 ARCHITECTURE — Ordre de priorité strict :
     1. ABANDON             → toujours prioritaire, reset propre
@@ -53,7 +38,7 @@ from services.language import detect_language
 from services import whisper
 from services import telegram as telegram_service
 from db import queries
-from agent.router import route_async
+from agent.router import route_async, extract_qualites
 from agent.normalizer import normalize
 from core.context_builder import build_context
 from core.security import verify_webhook_signature, validate_phone, check_rate_limit
@@ -80,16 +65,15 @@ _MIN_MESSAGE_LENGTH = 1
 
 
 # ═══════════════════════════════════════════════════════════
-# LIFESPAN (remplace @app.on_event — FIX A3)
+# LIFESPAN
 # ═══════════════════════════════════════════════════════════
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup et shutdown propres."""
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.3 démarré — Telegram + enrichissement qualitatif")
+    logger.info("🚌 Xëtu V7.4 démarré — fixes proactivité + confirmation + multi-qualités")
     yield
-    logger.info("🚌 Xëtu V7.3 arrêté proprement")
+    logger.info("🚌 Xëtu V7.4 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -109,7 +93,7 @@ app.include_router(leaderboard_router)
 
 
 # ═══════════════════════════════════════════════════════════
-# HEALTH — FIX A4 : vérifie Supabase
+# HEALTH
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/health")
@@ -121,7 +105,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.3", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "7.4", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -142,7 +126,6 @@ async def verify_webhook(request: Request):
 
 @app.post("/webhook")
 async def receive_message(request: Request, background_tasks: BackgroundTasks):
-    # ── FIX S1 : Vérification HMAC ────────────────────────
     body_bytes = await request.body()
     signature  = request.headers.get("X-Hub-Signature-256")
     if not verify_webhook_signature(body_bytes, signature):
@@ -160,12 +143,10 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
 
     phone = msg["phone"]
 
-    # ── FIX S2 : Validation phone ─────────────────────────
     if not validate_phone(phone):
         logger.warning(f"[Webhook] Phone invalide rejeté : {phone[:20]}")
         return {"status": "invalid_phone"}
 
-    # ── FIX S4 : Rate limiting ────────────────────────────
     if not check_rate_limit(phone):
         return {"status": "rate_limited"}
 
@@ -176,7 +157,9 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         if audio_id:
             text = await whisper.transcribe(audio_id)
         if not text:
-            await _whatsapp_service.send_message(phone, "🎤 Impossible de transcrire ton message vocal. Écris-moi !")
+            await _whatsapp_service.send_message(
+                phone, "🎤 Impossible de transcrire ton message vocal. Écris-moi !"
+            )
             return {"status": "audio_failed"}
 
     if not text:
@@ -192,10 +175,6 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
-    """
-    Reçoit les updates Telegram.
-    Telegram ne signe pas les requêtes par défaut → pas de vérification HMAC ici.
-    """
     try:
         payload = await request.json()
     except Exception:
@@ -212,8 +191,9 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     if not check_rate_limit(user_id):
         return {"status": "rate_limited"}
 
-    # send_fn spécifique à ce chat Telegram
-    async def _send_telegram(phone: str, message: str) -> bool:
+    # FIX B9 : closure capture chat_id (entier Telegram), pas user_id (string "tg_xxx")
+    # Le premier arg est ignoré — send_fn(_, msg) répond toujours au bon chat_id
+    async def _send_telegram(_: str, message: str) -> bool:
         return await telegram_service.send_message(chat_id, message)
 
     await _process_message_telegram(user_id, text, background_tasks, _send_telegram)
@@ -242,14 +222,29 @@ def _check_message(text: str) -> str | None:
 
 
 def _is_confirmation_implicite(text: str) -> bool:
+    """
+    FIX B3 : Étendu pour couvrir les vraies réponses naturelles.
+    Avant : oui/waaw/ok/exactement/parfait
+    Après : + vas-y, go, yep, affirm, bien sûr, évidemment, confirme, tout à fait…
+    """
     t = text.strip().lower()
     patterns = [
+        # Confirmations directes
         r"^\s*(je\s+signal[e]?|signal[e]?)\s*[!.]*\s*$",
         r"^\s*(oui|ouais|yes|waaw|waaw\s+waaw)\s*[!.]*\s*$",
         r"^\s*(c['']est\s+(bon|là|ça|correct|ok)|voilà|voila)\s*[!.]*\s*$",
         r"^\s*(ok|okay|ça\s+marche|d['']accord)\s*[!.]*\s*$",
         r"^\s*(exactement|exact|c['']est\s+ça)\s*[!.]*\s*$",
         r"^\s*(parfait|super|cool)\s*[!.]*\s*$",
+        # FIX B3 : patterns naturels supplémentaires
+        r"^\s*(vas[- ]y|go|yep|yap)\s*[!.]*\s*$",
+        r"^\s*(affirm[e]?|affirmatif)\s*[!.]*\s*$",
+        r"^\s*(bien\s+sûr|bien\s+sur|évidemment|evidemment|absolument)\s*[!.]*\s*$",
+        r"^\s*(confirm[e]?|je\s+confirm[e]?)\s*[!.]*\s*$",
+        r"^\s*(tout\s+à\s+fait|tout\s+a\s+fait)\s*[!.]*\s*$",
+        r"^\s*(carrément|carrement|clairement)\s*[!.]*\s*$",
+        # Wolof
+        r"^\s*(waaw\s+lool|waaw\s+bañ|ndax|diaxle)\s*[!.]*\s*$",
     ]
     return any(re.search(p, t) for p in patterns)
 
@@ -269,15 +264,8 @@ def _is_annulation(text: str) -> bool:
 
 
 def _is_enrichissement_qualitatif(text: str) -> bool:
-    t = text.strip().lower()
-    patterns = [
-        r"\b(bond[eé]|plein|blindé|bourr[eé])\b",
-        r"\b(vide|personne\s+dedans|d[eé]sert)\b",
-        r"\ben\s+retard\b",
-        r"\b(vient\s+de\s+partir|vient\s+de\s+passer|déjà\s+parti)\b",
-        r"\b(il\s+repart|repart\s+maintenant)\b",
-    ]
-    return any(re.search(p, t) for p in patterns)
+    """Vérifie si le texte contient au moins une qualité (délègue à extract_qualites)."""
+    return len(extract_qualites(text)) > 0
 
 
 def _detecter_signalement_dans_message(entities: dict) -> bool:
@@ -335,7 +323,9 @@ async def _process_message(phone: str, text: str, background_tasks: BackgroundTa
             )
     except Exception as e:
         logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
-        await _whatsapp_service.send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
+        await _whatsapp_service.send_message(
+            phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏"
+        )
 
 
 # ═══════════════════════════════════════════════════════════
@@ -348,15 +338,12 @@ async def _process_message_telegram(
     background_tasks: BackgroundTasks,
     send_fn,
 ):
-    """
-    Pipeline Core Xëtu pour les messages Telegram.
-    send_fn est injecté directement — pas de monkey-patch, pas d'effet de bord.
-    """
     try:
         async with queue_manager.process(user_id):
             await _process_message_safe(user_id, text, background_tasks, send_fn=send_fn)
     except Exception as e:
         logger.error(f"[Telegram] Erreur pipeline [{user_id}]: {e}", exc_info=True)
+        # FIX B9 : send_fn est une closure — elle sait déjà à quel chat_id envoyer
         await send_fn(user_id, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
@@ -499,10 +486,16 @@ async def _process_message_safe(
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
         # ── PROACTIVITÉ ───────────────────────────────────
+        # FIX B2 : guard strict — ligne UNIQUEMENT depuis entities du message courant
+        # source doit être un vrai résultat de routing, jamais un résidu de session
         ligne_extraite = route_result.entities.get("ligne")
-        if route_result.intent == "signalement" and ligne_extraite:
-            if not est_auteur_signalement:
-                await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue, send_fn)
+        if (
+            route_result.intent == "signalement"
+            and ligne_extraite
+            and route_result.source in ("signalement_fort", "llm", "regex", "regex_low")
+            and not est_auteur_signalement
+        ):
+            await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue, send_fn)
 
         # ── MÉMOIRE USAGER ────────────────────────────────
         contact["_last_message"] = text
@@ -618,8 +611,14 @@ async def _handle_session_active(
                     )
 
                     if langue == "wolof":
-                        return f"✅ Jërëjëf ! Bus {ligne_conf} ci *{arret_conf}* enregistré.\nTu veux ajouter une info ? (bondé, vide, en retard…) 🙏"
-                    return f"✅ Merci ! Bus {ligne_conf} à *{arret_conf}* enregistré.\nTu peux ajouter : *bondé*, *vide*, *en retard*… 🙏"
+                        return (
+                            f"✅ Jërëjëf ! Bus {ligne_conf} ci *{arret_conf}* enregistré.\n"
+                            f"Tu veux ajouter une info ? (bondé, vide, en retard…) 🙏"
+                        )
+                    return (
+                        f"✅ Merci ! Bus {ligne_conf} à *{arret_conf}* enregistré.\n"
+                        f"Tu peux ajouter : *bondé*, *vide*, *en retard*… 🙏"
+                    )
 
                 except Exception as e:
                     logger.error(f"[Confirmation] Erreur save: {e}")
@@ -634,9 +633,18 @@ async def _handle_session_active(
             if langue == "wolof":
                 return "👍 OK, signal bi annulé."
             return "👍 OK, signalement annulé."
+
         else:
+            # FIX B3 : feedback utile au lieu du silence total (return None)
             reset_context(phone)
-            return None
+            if langue == "wolof":
+                return (
+                    "Waxal ma ko ci kanam — envoie *Bus [numéro] ci [arrêt]* bou neex nga. 😊"
+                )
+            return (
+                "Pas de souci ! Pour signaler un bus, envoie-moi par exemple :\n"
+                "*Bus 15 à Liberté 5* 😊"
+            )
 
     # ── État : itineraire_actif → laisser passer ──────────
     if session.etat == "itineraire_actif":
@@ -717,42 +725,44 @@ async def _handle_multi_ligne(
 async def _handle_enrichissement(
     phone: str, text: str, langue: str, session
 ) -> str:
+    """
+    FIX B8 : Enregistre TOUTES les qualités présentes dans le message.
+    "bondé et en retard" → les deux qualités sont enregistrées en DB.
+    """
     ligne    = session.ligne or ""
     position = session.signalement.get("position", "") if session.signalement else ""
-    t        = text.strip().lower()
 
-    qualite = "info"
-    if re.search(r"\b(bond[eé]|plein|blindé|bourr[eé])\b", t):
-        qualite = "bondé"
-    elif re.search(r"\b(vide|personne\s+dedans)\b", t):
-        qualite = "vide"
-    elif re.search(r"\ben\s+retard\b", t):
-        qualite = "en retard"
-    elif re.search(r"\b(vient\s+de\s+partir|déjà\s+parti)\b", t):
-        qualite = "déjà parti"
-    elif re.search(r"\b(il\s+repart|repart\s+maintenant)\b", t):
-        qualite = "repart maintenant"
+    qualites = extract_qualites(text)
+    if not qualites:
+        qualites = ["info"]
 
-    try:
-        queries.enrichir_signalement(
-            ligne=ligne.upper(), arret=position, qualite=qualite, phone=phone
-        )
-        logger.info(f"[Enrichissement] ligne={ligne} arret={position} qualite={qualite}")
-    except Exception as e:
-        logger.error(f"[Enrichissement] Erreur: {e}")
+    for qualite in qualites:
+        try:
+            queries.enrichir_signalement(
+                ligne=ligne.upper(), arret=position, qualite=qualite, phone=phone
+            )
+            logger.info(f"[Enrichissement] ligne={ligne} arret={position} qualite={qualite}")
+        except Exception as e:
+            logger.error(f"[Enrichissement] Erreur qualite={qualite}: {e}")
 
-    if qualite == "déjà parti":
+    # Confirmation adaptée à la qualité principale
+    q = qualites[0]
+
+    if q == "déjà parti":
         if langue == "wolof":
             return f"👍 Compris — Bus *{ligne}* dem na ci *{position}*. Info enregistrée."
         return f"👍 Noté — Bus *{ligne}* déjà parti de *{position}*. Info utile pour la communauté !"
-    if qualite == "bondé":
+    if q == "bondé":
         if langue == "wolof":
             return f"👍 Bus *{ligne}* ci *{position}* — dëkk na ! Signalé. 🚌"
         return f"👍 Bus *{ligne}* à *{position}* — bondé ! Info enregistrée. 🚌"
-    if qualite == "vide":
+    if q == "vide":
         return f"👍 Bus *{ligne}* à *{position}* — peu de monde. Noté !"
-    if qualite == "repart maintenant":
+    if q == "repart maintenant":
         return f"🔄 Re-signalement noté — Bus *{ligne}* repart de *{position}*. Merci !"
+    if len(qualites) > 1:
+        qualites_str = " et ".join(qualites)
+        return f"👍 Bus *{ligne}* à *{position}* — {qualites_str}. Noté pour la communauté ! 🙏"
 
     return f"👍 Info notée pour le Bus *{ligne}* à *{position}*. Merci ! 🙏"
 
@@ -826,6 +836,7 @@ def _reponse_annulation(langue: str) -> str:
 async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str, send_fn):
     """
     Propose un abonnement uniquement si l'usager n'est pas encore abonné.
+    FIX B2 : Appelé UNIQUEMENT si ligne vient du signalement courant (guard dans pipeline).
     N'est JAMAIS appelé si est_auteur_signalement == True.
     """
     try:

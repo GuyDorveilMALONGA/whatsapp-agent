@@ -1,21 +1,19 @@
 """
-agent/router.py — V5.1
+agent/router.py — V5.2
 Intent Gateway — 4 niveaux de classification.
+
+MIGRATIONS V5.2 depuis V5.1 :
+  - FIX B1-TG : Cas 3 signalement fort — arrêt connu SANS préposition
+    "Bus 15 liberté 5", "15 Sandaga", "Bus DDD Petersen" → signalement ✅
+  - FIX B4 : _extract_arret_connu() robuste — fallback sur match regex si after_ligne vide
+  - FIX B8 : _is_enrichissement_qualitatif() capture TOUTES les qualités d'un message multi-qualité
+    "bondé et en retard" → qualites = ["bondé", "en retard"] (retourné pour enrichissement multiple)
 
 MIGRATIONS V5.1 depuis V5.0 :
   - RED TEAM : blacklist anti-signalement intégrée (anti_fraud.is_blacklisted_signalement)
-    "je prends le 15 à liberté" ne matche plus comme signalement
-  - RED TEAM : messages hybrides mieux triés (#14 "je vois le 10 mais j'attends le 15")
+  - RED TEAM : messages hybrides mieux triés
   - RED TEAM : "15 bi dem na" (wolof passé) détecté comme signalement négatif
   - RED TEAM : "le 15 arrive" sans localisation → question, pas signalement
-  
-MIGRATIONS V5.0 depuis V4.6 :
-  - FIX B1 : Signalement fort extrait AUSSI les entités (ligne + arrêt)
-  - FIX B3 : _is_signalement_fort() renforcé
-  - FIX B4 : _is_greeting() limité aux VRAIES salutations
-  - FIX B5 : _is_correction() wolof sécurisé
-  - FIX A6 : _extract_ligne_from_history() exige "bus" ou "ligne"
-  - VALID_LINES importé depuis config.settings
 """
 import re
 import logging
@@ -29,7 +27,6 @@ logger = logging.getLogger(__name__)
 
 
 # ── Salutations — court-circuit immédiat, zéro LLM ───────
-# FIX B4 : retiré ok/merci/parfait/super/cool/d'accord — ce sont des confirmations
 _GREETING_PATTERNS = [
     r"^\s*(bonjour|bonsoir|salut|hello|hi|hey|coucou|salam|assalam)\s*[!.?]*\s*$",
     r"^\s*(bonne\s+(matinée|journée|soirée|nuit))\s*[!.?]*\s*$",
@@ -41,19 +38,13 @@ def _is_greeting(text: str) -> bool:
     return any(re.search(p, t) for p in _GREETING_PATTERNS)
 
 
-# ── Négations/Corrections — court-circuit, zéro LLM ──────
-
-# FIX B5 : mots-clés wolof positifs restreints aux VRAIS marqueurs d'intention
-# Retiré : bi, la, ci, bu, ak (articles/prépositions trop fréquents)
+# ── Négations/Corrections ─────────────────────────────────
 _WOLOF_POSITIVE_CONTEXT = re.compile(
     r"\b(bëgg|dama\s+bëgg|mangi|dinaa|dama|ngi\s+dem|ñëw|jël|tëral)\b"
 )
-
-# Refus wolof explicites — priorité absolue
 _WOLOF_REFUSAL = re.compile(
     r"\b(bëgguma|duma\s+ko\s+bëgg|amul\s+solo|bayil\s+lolu|bayil|wëcciku|du\s+dara|sëde\s+ko)\b"
 )
-
 _CORRECTION_PATTERNS_FR = [
     r"\b(c[' ]est\s+pas|c[' ]est\s+faux|c[' ]est\s+incorrect)\b",
     r"\b(pas\s+ma\s+(ligne|bus|arrêt|station))\b",
@@ -63,59 +54,45 @@ _CORRECTION_PATTERNS_FR = [
     r"^\s*(nope|négatif|incorrect|erreur|faux)\s*[!.?]*\s*$",
 ]
 
-
 def _is_correction(text: str) -> bool:
     t = text.strip().lower()
-
-    # 1. Refus wolof explicites — toujours valides
     if _WOLOF_REFUSAL.search(t):
         return True
-
-    # 2. "non" en début de message
     if re.match(r"^\s*non\b", t):
-        # FIX B5 : si VRAIS marqueurs positifs wolof → pas un refus
         if _WOLOF_POSITIVE_CONTEXT.search(t):
             return False
         return True
-
-    # 3. "nan" seul
     if re.match(r"^\s*nan\s*[!.?]*\s*$", t):
         return True
-
-    # 4. Patterns FR
     return any(re.search(p, t) for p in _CORRECTION_PATTERNS_FR)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
-# FIX B1+B3 : SIGNALEMENT FORT — extrait les entités ET exige ligne+localisation
+# SIGNALEMENT FORT — détection + extraction entités
 # ══════════════════════════════════════════════════════════════════════════════
 
-# Numéro de ligne valide
 _LIGNE_RE = re.compile(
     r"(?:bus|ligne)\s+(\d{1,3}[A-Z]?)\b|"
     r"\b(\d{1,3}[A-Z]?)\b",
     re.IGNORECASE
 )
 
-# Arrêts connus (pour différencier localisation d'un arrêt vs "à quelle heure")
 _ARRETS_CONNUS_RE = re.compile(
     r"\b(libert[eé]\s*\d?|hlm\s*\d?|gare|march[eé]|mosqu[eé]e|palais|parcelles|"
     r"m[eé]dina|plateau|sandaga|colobane|castor|ucad|yoff|pikine|thiaroye|"
     r"gu[eé]diawaye|petersen|til[eè]ne|pompiers|foire|vdn|patte\s+d[' ]oie|"
     r"point\s+e|jet\s+d[' ]eau|embarcad[eè]re|keur\s+massar|"
-    r"cambérène|niary\s+tally|ouakam|almadies|grand\s+yoff|"
+    r"camb[eé]r[eè]ne|niary\s+tally|ouakam|almadies|grand\s+yoff|"
     r"rond\s+point|terminus|leclerc|sacr[eé]\s*c[oœ]ur|rufisque|mbao|"
     r"a[eé]roport|h[oô]pital)\b",
     re.IGNORECASE
 )
 
-# Prépositions de localisation
 _LOCALISATION_RE = re.compile(
     r"\b(à|au|niveau|devant|près\s+de|derrière|ci|face\s+à|avant|en\s+face)\b",
     re.IGNORECASE
 )
 
-# Verbes d'observation / signalement (FR)
 _VERBES_OBSERVATION_FR = re.compile(
     r"(?:"
     r"je\s+signal[e]?|je\s+signale\s+(?:le\s+|un\s+)?bus|"
@@ -127,7 +104,6 @@ _VERBES_OBSERVATION_FR = re.compile(
     re.IGNORECASE
 )
 
-# Verbes d'observation wolof
 _VERBES_OBSERVATION_WO = re.compile(
     r"(?:"
     r"bus\s+bi\s+ngi|bi\s+ngi\s+fi|ngi\s+fi|dafa\s+ngi|"
@@ -136,14 +112,12 @@ _VERBES_OBSERVATION_WO = re.compile(
     re.IGNORECASE
 )
 
-# Mots qui INVALIDENT un signalement (c'est une question ou itinéraire)
 _ANTI_SIGNALEMENT_RE = re.compile(
     r"\b(quelle\s+heure|combien|quand|comment\s+aller|pour\s+aller|"
     r"prendre\s+pour|à\s+quelle|est\s+où|où\s+est|ana\s+mu)\b",
     re.IGNORECASE
 )
 
-# RED TEAM : Wolof passé / négatif → pas un signalement
 _WOLOF_PASSE_RE = re.compile(
     r"\b(dem\s+na|romb\s+na|jëm\s+na|dafa\s+dem|dafa\s+romb)\b",
     re.IGNORECASE
@@ -151,7 +125,6 @@ _WOLOF_PASSE_RE = re.compile(
 
 
 def _extract_ligne_from_text(text: str) -> str | None:
-    """Extrait le numéro de ligne depuis le texte."""
     for m in _LIGNE_RE.finditer(text):
         num = (m.group(1) or m.group(2) or "").upper()
         if num in VALID_LINES:
@@ -160,34 +133,50 @@ def _extract_ligne_from_text(text: str) -> str | None:
 
 
 def _extract_arret_from_text_router(text: str) -> str | None:
-    """
-    Extrait l'arrêt depuis le texte brut pour le signalement fort.
-    Cherche : préposition + nom de lieu.
-    """
-    # Pattern : "à/niveau/devant [arrêt]"
+    """Extrait l'arrêt après une préposition."""
     m = re.search(
         r"(?:à|au|niveau|devant|près\s+de|ci|face\s+à)\s+(.+?)(?:\s*[.!?,]|$)",
         text, re.IGNORECASE
     )
     if m:
         arret = m.group(1).strip()
-        # Vérifier que ce n'est pas "à quelle heure", "à combien", etc.
         if not re.match(r"(quelle?|combien|quel\s+arrêt)", arret, re.IGNORECASE):
             return arret
     return None
 
 
+def _extract_arret_connu(text: str) -> str | None:
+    """
+    FIX B4 : Extrait l'arrêt connu depuis le texte, SANS préposition requise.
+    Stratégie : tout ce qui suit le numéro de ligne dans le texte.
+    Fallback : le match regex directement.
+    """
+    # Essaie d'abord ce qui suit "bus NNN" ou "ligne NNN"
+    after_match = re.search(
+        r"(?:bus|ligne)\s*\d{1,3}[A-Z]?\s+(.+?)(?:\s*[.!?,]|$)",
+        text, re.IGNORECASE
+    )
+    if after_match:
+        candidate = after_match.group(1).strip()
+        if candidate and len(candidate) >= 2:
+            return candidate
+
+    # Fallback : retourne le nom d'arrêt connu directement
+    m = _ARRETS_CONNUS_RE.search(text)
+    if m:
+        return m.group(0).strip()
+
+    return None
+
+
 def _is_signalement_fort(text: str) -> tuple[bool, dict]:
     """
-    FIX B3 + RED TEAM : Détection prioritaire d'un signalement fort.
+    V5.2 : Détection prioritaire d'un signalement fort.
     Retourne (True, entities) ou (False, {}).
 
-    Exigences renforcées :
-      1. Verbe d'observation OU préposition de localisation avec arrêt connu
-      2. Numéro de ligne présent
-      3. PAS de mots anti-signalement (question/itinéraire)
-      4. PAS de phrases blacklistées ("je prends", "j'attends", etc.)
-      5. PAS de wolof au passé ("dem na" = il est parti)
+    Cas 1 : verbe d'observation + ligne
+    Cas 2 : ligne + préposition + arrêt connu
+    Cas 3 (NEW) : "bus NNN [arrêt connu]" sans préposition — pattern le plus fréquent sur mobile
     """
     t = text.strip().lower()
 
@@ -195,12 +184,12 @@ def _is_signalement_fort(text: str) -> tuple[bool, dict]:
     if _ANTI_SIGNALEMENT_RE.search(t):
         return False, {}
 
-    # RED TEAM : blacklist "je prends", "j'attends", "si je prends"...
+    # Blacklist "je prends", "j'attends", etc.
     from core.anti_fraud import is_blacklisted_signalement
     if is_blacklisted_signalement(t):
         return False, {}
 
-    # RED TEAM : wolof passé ("15 bi dem na" = le 15 est parti)
+    # Wolof passé ("15 bi dem na" = le 15 est parti)
     if _WOLOF_PASSE_RE.search(t):
         return False, {}
 
@@ -214,16 +203,50 @@ def _is_signalement_fort(text: str) -> tuple[bool, dict]:
 
     # Cas 1 : verbe d'observation + ligne → signalement fort
     if has_verbe_obs:
-        arret = _extract_arret_from_text_router(text) or ""
+        arret = _extract_arret_from_text_router(text) or _extract_arret_connu(text) or ""
         return True, {"ligne": ligne, "origin": arret}
 
-    # Cas 2 : ligne + localisation + arrêt connu → signalement fort
-    # Ex: "Bus 8 à Liberté 6", "15 niveau Sandaga"
+    # Cas 2 : ligne + préposition + arrêt connu
     if has_localisation and has_arret_connu:
-        arret = _extract_arret_from_text_router(text) or ""
+        arret = _extract_arret_from_text_router(text) or _extract_arret_connu(text) or ""
         return True, {"ligne": ligne, "origin": arret}
+
+    # Cas 3 (FIX B1-TG) : "Bus 15 liberté 5", "Bus DDD Sandaga", "15 Petersen"
+    # Pattern minimal mais non ambigu : mot "bus" ou "ligne" + numéro valide + arrêt connu
+    # Pas de verbe de question, pas de destination (pas d'itinéraire implicite)
+    if has_arret_connu and re.search(r"\b(bus|ligne)\b", text, re.IGNORECASE):
+        arret = _extract_arret_connu(text) or ""
+        if arret:
+            logger.debug(f"[Router] Signalement fort Cas 3 — ligne={ligne} arret={arret}")
+            return True, {"ligne": ligne, "origin": arret}
 
     return False, {}
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# FIX B8 : Enrichissement qualitatif multi-qualités
+# ══════════════════════════════════════════════════════════════════════════════
+
+# Mapping qualité → pattern (ordre : du plus spécifique au plus général)
+_QUALITE_PATTERNS: list[tuple[str, str]] = [
+    ("déjà parti",        r"\b(vient\s+de\s+partir|vient\s+de\s+passer|déjà\s+parti|dem\s+na)\b"),
+    ("repart maintenant", r"\b(il\s+repart|repart\s+maintenant)\b"),
+    ("bondé",             r"\b(bond[eé]|plein|blindé|bourr[eé])\b"),
+    ("vide",              r"\b(vide|personne\s+dedans|d[eé]sert)\b"),
+    ("en retard",         r"\ben\s+retard\b"),
+]
+
+def extract_qualites(text: str) -> list[str]:
+    """
+    FIX B8 : Retourne TOUTES les qualités présentes dans le message.
+    "bondé et en retard" → ["bondé", "en retard"]
+    """
+    t = text.strip().lower()
+    found = []
+    for qualite, pattern in _QUALITE_PATTERNS:
+        if re.search(pattern, t):
+            found.append(qualite)
+    return found
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -294,16 +317,14 @@ _SCORING_RULES: dict[str, list[tuple[str, float]]] = {
 }
 
 _SCORE_THRESHOLD = 0.85
-
-_NEEDS_ENTITIES = {"signalement", "itineraire", "abonnement", "liste_arrets", "question"}
-
+_NEEDS_ENTITIES  = {"signalement", "itineraire", "abonnement", "liste_arrets", "question"}
 _NO_HISTORY_INTENTS = {"out_of_scope", "abandon", "escalade"}
 
 
 def _apply_penalties(text: str, scores: dict[str, float]) -> dict[str, float]:
-    t        = text.lower()
-    je_suis  = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
-    has_bus  = re.search(r"\bbus\b", t)
+    t       = text.lower()
+    je_suis = re.search(r"\bje\s+(suis|me\s+trouve)\s+(à|au|ici|là)\b", t)
+    has_bus = re.search(r"\bbus\b", t)
 
     if je_suis and not has_bus:
         scores["signalement"] = scores.get("signalement", 0) * 0.2
@@ -368,28 +389,25 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
     normalized = normalize(text)
     cache_key  = normalize_for_cache(text)
 
-    # 1. Court-circuit salutation
     if _is_greeting(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
             normalized_text=normalized, confiance=1.0, source="greeting"
         )
 
-    # 2. Court-circuit identité
     if _is_identity_question(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
             normalized_text=normalized, confiance=1.0, source="identity"
         )
 
-    # 3. Court-circuit négation/correction
     if _is_correction(normalized):
         return RouteResult(
             intent="out_of_scope", raw_text=text,
             normalized_text=normalized, confiance=1.0, source="correction"
         )
 
-    # ── FIX B1+B3 : Court-circuit SIGNALEMENT FORT avec entités ──────
+    # Court-circuit SIGNALEMENT FORT
     is_fort, fort_entities = _is_signalement_fort(normalized)
     if is_fort:
         logger.debug(f"[Router] Signalement fort détecté avec entités={fort_entities}")
@@ -400,10 +418,9 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
             confiance=0.97,
             source="signalement_fort",
             is_signalement_fort=True,
-            entities=fort_entities,  # FIX B1 : plus jamais vide
+            entities=fort_entities,
         )
 
-    # 4. Cache
     cached = intent_cache.get(cache_key, session_state)
     if cached:
         return RouteResult(
@@ -411,7 +428,6 @@ def route(text: str, session_state: str | None = None) -> RouteResult:
             normalized_text=normalized, confiance=1.0, source="cache"
         )
 
-    # 5. Scoring regex
     intent, score = _fast_classify(normalized)
 
     if score >= _SCORE_THRESHOLD and intent not in _NEEDS_ENTITIES:
@@ -435,7 +451,6 @@ async def route_async(
 ) -> RouteResult:
     result = route(text, session_state)
 
-    # Court-circuits totaux → jamais au LLM
     if result.source in ("greeting", "identity", "correction", "cache", "signalement_fort"):
         return result
 
@@ -468,6 +483,7 @@ async def route_async(
 
             entities = llm_data.get("entities") or {}
 
+            # Injection ligne depuis session uniquement si pas déjà présente
             if not entities.get("ligne") and session_context and session_context.ligne:
                 if intent_str in {"question", "signalement", "abonnement", "liste_arrets"}:
                     entities = dict(entities)
