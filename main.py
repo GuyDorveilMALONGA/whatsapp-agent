@@ -67,14 +67,38 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
 
+# ═══════════════════════════════════════════════════════════
+# CORS — FIX Railway proxy
+# ═══════════════════════════════════════════════════════════
+
+ALLOWED_ORIGINS = [
+    "https://xetudashbord.pages.dev",
+    "http://localhost:8080",
+    "http://127.0.0.1:5500",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://xetudashbord.pages.dev",
-    "http://localhost:8080",
-    "http://127.0.0.1:5500"],
-    allow_methods=["GET", "POST"],
-    allow_headers=["Content-Type", "*"],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
 )
+
+
+# Handler OPTIONS explicite pour forcer les bons headers CORS
+# (nécessaire quand Railway écrase les headers via son reverse proxy)
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(rest_of_path: str, request: Request):
+    origin = request.headers.get("origin", "")
+    allowed = origin if origin in ALLOWED_ORIGINS else ALLOWED_ORIGINS[0]
+    return PlainTextResponse("OK", headers={
+        "Access-Control-Allow-Origin": allowed,
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Max-Age": "600",
+    })
+
 
 from api.buses       import router as buses_router
 from api.leaderboard import router as leaderboard_router
