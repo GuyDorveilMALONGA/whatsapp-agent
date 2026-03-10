@@ -1,0 +1,326 @@
+/**
+ * js/chat.js
+ * UI chat — bulles de messages, suggestions rapides, typing indicator.
+ *
+ * RÈGLE : ne parle jamais à map.js, ui.js, mobile.js directement.
+ *         Reçoit ses données via l'API publique (init, appendMessage, etc.)
+ *         Communique vers l'extérieur uniquement via les callbacks injectés.
+ *
+ * API publique :
+ *   Chat.init({ onSend, onClose })
+ *   Chat.open()
+ *   Chat.close()
+ *   Chat.toggle()
+ *   Chat.appendMessage(role, text)   — 'user' | 'bot'
+ *   Chat.showTyping()
+ *   Chat.hideTyping()
+ *   Chat.setSuggestions(list)
+ *   Chat.setStatus(status)          — 'connecting' | 'open' | 'closed' | 'failed'
+ *   Chat.isOpen()
+ */
+
+// ── Constantes ────────────────────────────────────────────
+
+const MAX_INPUT_LENGTH = 500;
+
+// ── État interne ──────────────────────────────────────────
+
+let _isOpen     = false;
+let _onSend     = null;
+let _onClose    = null;
+let _typingEl   = null;
+let _inputEl    = null;
+let _messagesEl = null;
+let _sendBtn    = null;
+let _statusDot  = null;
+let _fab        = null;
+
+// ── INIT ─────────────────────────────────────────────────
+
+export function init({ onSend, onClose } = {}) {
+  _onSend  = onSend;
+  _onClose = onClose;
+
+  _buildDOM();
+  _attachEvents();
+}
+
+// ── DOM ───────────────────────────────────────────────────
+
+function _buildDOM() {
+  // FAB bouton flottant
+  _fab = document.createElement('button');
+  _fab.id        = 'chat-fab';
+  _fab.className = 'chat-fab';
+  _fab.setAttribute('aria-label', 'Ouvrir le chat Xëtu');
+  _fab.innerHTML = '💬';
+  document.body.appendChild(_fab);
+
+  // Fenêtre chat
+  const win = document.createElement('div');
+  win.id        = 'chat-window';
+  win.className = 'chat-window';
+  win.setAttribute('role', 'dialog');
+  win.setAttribute('aria-label', 'Chat avec Xëtu');
+  win.setAttribute('aria-hidden', 'true');
+  win.hidden = true;
+
+  win.innerHTML = `
+    <div class="chat-header">
+      <div class="chat-header-info">
+        <span class="chat-header-avatar" aria-hidden="true">🚌</span>
+        <div>
+          <div class="chat-header-name">Xëtu</div>
+          <div class="chat-header-status">
+            <span class="chat-status-dot" id="chat-status-dot"></span>
+            <span class="chat-status-label" id="chat-status-label">Connexion...</span>
+          </div>
+        </div>
+      </div>
+      <button class="chat-close-btn" id="chat-close-btn" aria-label="Fermer le chat">✕</button>
+    </div>
+
+    <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Messages">
+      <!-- bulles injectées dynamiquement -->
+    </div>
+
+    <div class="chat-suggestions" id="chat-suggestions" aria-label="Suggestions rapides">
+      <!-- chips injectées dynamiquement -->
+    </div>
+
+    <div class="chat-composer">
+      <input
+        class="chat-input"
+        id="chat-input"
+        type="text"
+        placeholder="Bus 15 à Liberté 5…"
+        maxlength="${MAX_INPUT_LENGTH}"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        aria-label="Message"
+      />
+      <button class="chat-send-btn" id="chat-send-btn" aria-label="Envoyer" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+          <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
+        </svg>
+      </button>
+    </div>
+  `;
+
+  document.body.appendChild(win);
+
+  // Références
+  _messagesEl = win.querySelector('#chat-messages');
+  _inputEl    = win.querySelector('#chat-input');
+  _sendBtn    = win.querySelector('#chat-send-btn');
+  _statusDot  = win.querySelector('#chat-status-dot');
+}
+
+// ── EVENTS ────────────────────────────────────────────────
+
+function _attachEvents() {
+  // FAB
+  _fab.addEventListener('click', toggle);
+
+  // Fermer
+  document.getElementById('chat-close-btn')
+    .addEventListener('click', close);
+
+  // Input → activer le bouton
+  _inputEl.addEventListener('input', () => {
+    _sendBtn.disabled = _inputEl.value.trim().length === 0;
+  });
+
+  // Envoi sur Enter (pas Shift+Enter)
+  _inputEl.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      _doSend();
+    }
+  });
+
+  // Envoi sur clic bouton
+  _sendBtn.addEventListener('click', _doSend);
+
+  // Fermer sur Escape
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && _isOpen) close();
+  });
+}
+
+function _doSend() {
+  const text = _inputEl.value.trim();
+  if (!text || text.length > MAX_INPUT_LENGTH) return;
+
+  appendMessage('user', text);
+  _inputEl.value   = '';
+  _sendBtn.disabled = true;
+  _clearSuggestions();
+  showTyping();
+
+  _onSend?.(text);
+}
+
+// ── OPEN / CLOSE / TOGGLE ─────────────────────────────────
+
+export function open() {
+  if (_isOpen) return;
+  _isOpen = true;
+
+  const win = document.getElementById('chat-window');
+  win.hidden = false;
+  win.setAttribute('aria-hidden', 'false');
+  win.classList.add('chat-window--open');
+
+  _fab.setAttribute('aria-label', 'Fermer le chat');
+  _fab.innerHTML = '✕';
+  _fab.classList.add('chat-fab--active');
+
+  _inputEl.focus();
+}
+
+export function close() {
+  if (!_isOpen) return;
+  _isOpen = false;
+
+  const win = document.getElementById('chat-window');
+  win.classList.remove('chat-window--open');
+
+  // Attendre la fin de l'animation avant de cacher
+  win.addEventListener('transitionend', () => {
+    win.hidden = true;
+    win.setAttribute('aria-hidden', 'true');
+  }, { once: true });
+
+  _fab.setAttribute('aria-label', 'Ouvrir le chat Xëtu');
+  _fab.innerHTML = '💬';
+  _fab.classList.remove('chat-fab--active');
+
+  _onClose?.();
+}
+
+export function toggle() {
+  _isOpen ? close() : open();
+}
+
+export function isOpen() {
+  return _isOpen;
+}
+
+// ── MESSAGES ─────────────────────────────────────────────
+
+/**
+ * @param {'user'|'bot'} role
+ * @param {string} text — peut contenir du Markdown minimal (*bold*, _italic_)
+ */
+export function appendMessage(role, text) {
+  hideTyping();
+
+  const wrap = document.createElement('div');
+  wrap.className = `chat-msg chat-msg--${role}`;
+  wrap.setAttribute('role', 'listitem');
+
+  const bubble = document.createElement('div');
+  bubble.className = 'chat-bubble';
+  bubble.innerHTML = _formatText(text);
+
+  wrap.appendChild(bubble);
+  _messagesEl.appendChild(wrap);
+  _scrollToBottom();
+}
+
+// ── TYPING ────────────────────────────────────────────────
+
+export function showTyping() {
+  if (_typingEl) return;
+  hideTyping();
+
+  _typingEl = document.createElement('div');
+  _typingEl.className = 'chat-msg chat-msg--bot chat-typing';
+  _typingEl.setAttribute('aria-label', 'Xëtu est en train d\'écrire');
+  _typingEl.innerHTML = `
+    <div class="chat-bubble chat-bubble--typing">
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+      <span class="typing-dot"></span>
+    </div>
+  `;
+  _messagesEl.appendChild(_typingEl);
+  _scrollToBottom();
+}
+
+export function hideTyping() {
+  if (_typingEl) {
+    _typingEl.remove();
+    _typingEl = null;
+  }
+}
+
+// ── SUGGESTIONS ──────────────────────────────────────────
+
+export function setSuggestions(list = []) {
+  const container = document.getElementById('chat-suggestions');
+  if (!container) return;
+  container.innerHTML = '';
+
+  list.forEach(text => {
+    const chip = document.createElement('button');
+    chip.className = 'chat-suggestion-chip';
+    chip.textContent = text;
+    chip.addEventListener('click', () => {
+      _inputEl.value = text;
+      _sendBtn.disabled = false;
+      _doSend();
+    });
+    container.appendChild(chip);
+  });
+}
+
+function _clearSuggestions() {
+  const container = document.getElementById('chat-suggestions');
+  if (container) container.innerHTML = '';
+}
+
+// ── STATUS WS ─────────────────────────────────────────────
+
+export function setStatus(status) {
+  const label = document.getElementById('chat-status-label');
+  if (!label || !_statusDot) return;
+
+  const map = {
+    connecting: { text: 'Connexion...', cls: 'status--connecting' },
+    open:       { text: 'En ligne',     cls: 'status--open'       },
+    closed:     { text: 'Hors ligne',   cls: 'status--closed'     },
+    failed:     { text: 'Non connecté', cls: 'status--closed'     },
+  };
+
+  const conf = map[status] ?? map.closed;
+  label.textContent = conf.text;
+  _statusDot.className = `chat-status-dot ${conf.cls}`;
+}
+
+// ── HELPERS ───────────────────────────────────────────────
+
+function _scrollToBottom() {
+  requestAnimationFrame(() => {
+    _messagesEl.scrollTop = _messagesEl.scrollHeight;
+  });
+}
+
+/**
+ * Minimal Markdown → HTML :
+ *   *bold*       → <strong>
+ *   _italic_     → <em>
+ *   \n           → <br>
+ *   Liens évités volontairement (contenu non fiable)
+ */
+function _formatText(text) {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\*([^*]+)\*/g, '<strong>$1</strong>')
+    .replace(/_([^_]+)_/g, '<em>$1</em>')
+    .replace(/\n/g, '<br>');
+}
