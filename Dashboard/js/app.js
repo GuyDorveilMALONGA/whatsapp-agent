@@ -5,20 +5,22 @@
  * Cycle de vie :
  *  1. constants + store
  *  2. map (Leaflet)
- *  3. ui (sidebar, stats, filtres)
- *  4. modal (signalement)
- *  5. premier fetchAll
- *  6. polling 30s
- *  7. event listeners globaux
+ *  3. ui (sidebar desktop)
+ *  4. mobile (bottom sheet — uniquement sur mobile)
+ *  5. modal (signalement)
+ *  6. premier fetchAll
+ *  7. polling 30s
+ *  8. event listeners globaux
  */
 
 import * as store      from './store.js';
 import * as Api        from './api.js';
 import * as MapManager from './map.js';
 import * as UI         from './ui.js';
+import * as Mobile     from './mobile.js';
 import * as Modal      from './modal.js';
 import Toast           from './toast.js';
-import { WA_NUMBER, REFRESH_SEC, API_BASE } from './constants.js';
+import { WA_NUMBER, REFRESH_SEC } from './constants.js';
 import { buildWhatsAppUrl } from './utils.js';
 
 // ── DEEP LINK (appliqué avant DOMContentLoaded) ──────────
@@ -35,14 +37,17 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 1. Carte
   MapManager.init('map', _onBusSelect);
 
-  // 2. UI — stats, tabs, filtres, bus list
+  // 2. UI sidebar desktop
   UI.initStats();
   UI.initTabs();
   UI.initFilters(_onFilterChange);
   UI.initBusList(_onBusSelect);
   UI.initLeaderboard();
 
-  // 3. Modal signalement
+  // 3. Bottom sheet mobile
+  Mobile.init(_onBusSelect);
+
+  // 4. Modal signalement
   window.__XETU_WA_NUMBER__ = WA_NUMBER;
   Modal.init({
     onConfirmSuccess: (busId) => {
@@ -51,16 +56,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
   });
 
-  // 4. Callbacks globaux pour les popups Leaflet (vanilla onclick dans map.js)
-  window._onPopupDetails = (busId) => {
-    _onBusSelect(busId);
-  };
-  window._onPopupConfirm = (busId, btnEl) => {
-    Modal.confirmBus(busId, btnEl);
-  };
-  window._resetFilter = () => _onFilterChange(null);
+  // 5. Callbacks globaux pour les popups Leaflet (vanilla onclick dans map.js)
+  window._onPopupDetails = (busId) => _onBusSelect(busId);
+  window._onPopupConfirm = (busId, btnEl) => Modal.confirmBus(busId, btnEl);
+  window._resetFilter    = () => _onFilterChange(null);
 
-  // 5. Boutons "Signaler" — sidebar desktop + bottom sheet mobile
+  // 6. Boutons "Signaler" — sidebar desktop + bottom sheet mobile
   ['btn-signaler', 'btn-signaler-mobile'].forEach(id => {
     const btn = document.getElementById(id);
     if (btn) {
@@ -73,9 +74,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       });
     }
   });
-
-  // 6. Boutons WhatsApp (fallback)
-  _bindWhatsAppButtons();
 
   // 7. Chargement initial
   await _loadAndRender();
@@ -102,6 +100,8 @@ async function _loadAndRender() {
     });
 
     UI.renderLeaderboard(data.leaderboard || []);
+    Mobile.injectLeaderboard(data.leaderboard || []);
+
   } catch (err) {
     Toast.error('Erreur de chargement. Données en cache affichées.');
   }
@@ -135,14 +135,4 @@ function _bumpReportsCount() {
   const stats   = store.get('stats');
   const current = parseInt(stats.reportsToday, 10) || 0;
   store.set('stats', { ...stats, reportsToday: current + 1 });
-}
-
-function _bindWhatsAppButtons() {
-  const msg = 'Bonjour Xëtu ! Je veux signaler un bus 🚌';
-  ['btn-signal-main', 'btn-signal-mobile'].forEach(id => {
-    const btn = document.getElementById(id);
-    if (btn) btn.addEventListener('click', () =>
-      window.open(buildWhatsAppUrl(WA_NUMBER, msg), '_blank')
-    );
-  });
 }

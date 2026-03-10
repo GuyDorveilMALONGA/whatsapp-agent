@@ -2,6 +2,19 @@
    layout.css — Structure générale, header, sidebar, sheet
    ════════════════════════════════════════════════════════ */
 
+/* ── Reset body / html pour que le layout prenne toute la hauteur ── */
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
 /* ── Header ── */
 #app-header {
   display: flex;
@@ -13,6 +26,7 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: var(--z-header);
+  position: relative;
 }
 
 .logo {
@@ -93,6 +107,7 @@
   flex-shrink: 0;
   height: var(--stats-height);
   z-index: var(--z-filters);
+  position: relative;
 }
 
 .stat-item {
@@ -139,6 +154,7 @@
   scroll-snap-type: x mandatory;
   flex-shrink: 0;
   z-index: var(--z-filters);
+  position: relative;
   -webkit-overflow-scrolling: touch;
 }
 
@@ -160,6 +176,7 @@
   background: var(--surface2);
   color: var(--muted);
   min-height: 30px;
+  flex-shrink: 0;
 }
 
 .filter-chip:hover:not(:disabled) {
@@ -184,6 +201,7 @@
   flex: 1;
   overflow: hidden;
   position: relative;
+  min-height: 0; /* important pour flex + overflow */
 }
 
 /* ── Carte ── */
@@ -216,17 +234,18 @@
   padding: var(--space-md) var(--space-sm);
   background: none;
   border: none;
+  border-bottom: 2px solid transparent;
   color: var(--muted);
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  border-bottom: 2px solid transparent;
   transition: all var(--transition-fast);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 5px;
-  min-height: 44px; /* tap target */
+  min-height: 44px;
 }
 
 .tab-btn.active {
@@ -243,6 +262,7 @@
   padding: var(--space-md);
   gap: var(--space-sm);
   flex-direction: column;
+  min-height: 0;
 }
 
 .tab-content.active { display: flex; }
@@ -254,6 +274,10 @@
 }
 
 /* ── Bottom Sheet mobile ── */
+/* IMPORTANT : transition gérée par mobile.js via JS.
+   Le CSS ne met PAS de transition ici pour éviter les conflits
+   pendant le drag. mobile.js active/désactive la transition lui-même. */
+
 .bottom-sheet {
   display: none;
   position: fixed;
@@ -265,9 +289,10 @@
   border-top: 1px solid var(--border);
   z-index: var(--z-sheet);
   will-change: transform;
-  transition: transform var(--transition-spring);
-  max-height: 90vh;
+  /* PAS de transition ici — gérée par mobile.js */
+  max-height: 90dvh;
   flex-direction: column;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
 }
 
 .sheet-handle-wrap {
@@ -279,6 +304,8 @@
   cursor: grab;
   touch-action: none;
   flex-shrink: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .sheet-handle-wrap:active { cursor: grabbing; }
@@ -305,10 +332,14 @@
 .sheet-tab-btn {
   flex: 1;
   padding: var(--space-sm);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  font-family: var(--font-body);
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  border-bottom: 2px solid transparent;
+  cursor: pointer;
   transition: all var(--transition-fast);
   text-align: center;
   min-height: 44px;
@@ -327,15 +358,21 @@
   flex-direction: column;
   gap: var(--space-sm);
   -webkit-overflow-scrolling: touch;
+  min-height: 0;
+  overscroll-behavior: contain;
 }
 
 /* ── Responsive ── */
 @media (max-width: 768px) {
-  .sidebar { display: none; }
+  .sidebar      { display: none; }
   .bottom-sheet { display: flex; }
 
+  /* Stats bar compacte */
   .stats-bar .stat-label { display: none; }
-  .stat-val { font-size: 16px; }
+  .stat-val  { font-size: 16px; }
   .stat-item { padding: 6px 10px; }
   .stat-icon { font-size: 16px; }
+
+  /* Carte prend toute la hauteur disponible */
+  .main { height: 100%; }
 }
