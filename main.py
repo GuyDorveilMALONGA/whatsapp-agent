@@ -501,7 +501,10 @@ async def _handle_session_active(
 
     # ── État : post_signalement ───────────────────────────
     if session.etat == "post_signalement":
+        logger.info(f"[Debug] post_signalement détecté, text='{text}', enrichissement={_is_enrichissement_qualitatif(text)}")
         if _is_enrichissement_qualitatif(text):
+    
+        
             response = await _handle_enrichissement(
                 phone=phone,
                 text=text,
