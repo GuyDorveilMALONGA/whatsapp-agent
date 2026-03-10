@@ -6,7 +6,8 @@ MIGRATIONS V7.3 depuis V7.2 :
   - SESSION 3 : Ajout adaptateur Telegram
     → Import services.telegram
     → Route POST /telegram/webhook
-    → _process_message_telegram() avec monkey-patch send_fn
+    → _process_message_telegram() avec send_fn injecté proprement
+  - FIX : send_fn passé en paramètre à tous les handlers (pas de monkey-patch)
 
 MIGRATIONS V7.2 depuis V7.1 :
   - FIX B9-BIS : après attente_confirmation_signalement + "oui"
@@ -46,7 +47,8 @@ from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
-from services.whatsapp import parse_incoming_message, send_message
+from services.whatsapp import parse_incoming_message
+import services.whatsapp as _whatsapp_service
 from services.language import detect_language
 from services import whisper
 from services import telegram as telegram_service
@@ -174,7 +176,7 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         if audio_id:
             text = await whisper.transcribe(audio_id)
         if not text:
-            await send_message(phone, "🎤 Impossible de transcrire ton message vocal. Écris-moi !")
+            await _whatsapp_service.send_message(phone, "🎤 Impossible de transcrire ton message vocal. Écris-moi !")
             return {"status": "audio_failed"}
 
     if not text:
@@ -193,7 +195,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     """
     Reçoit les updates Telegram.
     Telegram ne signe pas les requêtes par défaut → pas de vérification HMAC ici.
-    (On peut ajouter un secret_token via set_webhook plus tard.)
     """
     try:
         payload = await request.json()
@@ -208,11 +209,10 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     chat_id = msg["chat_id"]   # entier, pour répondre
     text    = msg["text"]
 
-    # Réutilise le rate limiting existant (user_id comme clé)
     if not check_rate_limit(user_id):
         return {"status": "rate_limited"}
 
-    # send_fn spécifique à Telegram : répond sur le bon chat_id
+    # send_fn spécifique à ce chat Telegram
     async def _send_telegram(phone: str, message: str) -> bool:
         return await telegram_service.send_message(chat_id, message)
 
@@ -329,10 +329,13 @@ def _detecter_question_communautaire(text: str) -> bool:
 async def _process_message(phone: str, text: str, background_tasks: BackgroundTasks):
     try:
         async with queue_manager.process(phone):
-            await _process_message_safe(phone, text, background_tasks)
+            await _process_message_safe(
+                phone, text, background_tasks,
+                send_fn=_whatsapp_service.send_message
+            )
     except Exception as e:
         logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
-        await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
+        await _whatsapp_service.send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -347,40 +350,31 @@ async def _process_message_telegram(
 ):
     """
     Pipeline Core Xëtu pour les messages Telegram.
-
-    Le Core est identique à WhatsApp. La seule différence est la
-    fonction d'envoi (send_fn). On monkey-patche temporairement
-    services.whatsapp.send_message pour que toutes les réponses
-    partent via Telegram pendant le traitement de ce message.
-
-    Le finally garantit la restauration : WhatsApp continue de
-    fonctionner normalement après chaque message Telegram.
+    send_fn est injecté directement — pas de monkey-patch, pas d'effet de bord.
     """
-    import services.whatsapp as _wa
-    _original_send = _wa.send_message
-    _wa.send_message = send_fn
-
     try:
         async with queue_manager.process(user_id):
-            await _process_message_safe(user_id, text, background_tasks)
+            await _process_message_safe(user_id, text, background_tasks, send_fn=send_fn)
     except Exception as e:
         logger.error(f"[Telegram] Erreur pipeline [{user_id}]: {e}", exc_info=True)
         await send_fn(user_id, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
-    finally:
-        # Restauration impérative — WhatsApp doit continuer à fonctionner
-        _wa.send_message = _original_send
 
 
 # ═══════════════════════════════════════════════════════════
 # PIPELINE SAFE — PARTAGÉ WHATSAPP + TELEGRAM
 # ═══════════════════════════════════════════════════════════
 
-async def _process_message_safe(phone: str, text: str, background_tasks: BackgroundTasks):
+async def _process_message_safe(
+    phone: str,
+    text: str,
+    background_tasks: BackgroundTasks,
+    send_fn,
+):
     try:
         # ── 0. PRÉ-FILTRES ────────────────────────────────
         error_msg = _check_message(text)
         if error_msg:
-            await send_message(phone, error_msg)
+            await send_fn(phone, error_msg)
             return
 
         # ── 1. NORMALISATION ──────────────────────────────
@@ -413,7 +407,7 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
 
         # ── 5. PREMIER MESSAGE → accueil ──────────────────
         if not history:
-            await send_message(phone, WELCOME_MESSAGE)
+            await send_fn(phone, WELCOME_MESSAGE)
 
         # ── 6. SAUVEGARDE message entrant ─────────────────
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
@@ -424,7 +418,7 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
         if route_result.intent == "abandon" or is_abandon(text):
             reset_context(phone)
             response = _reponse_abandon(langue)
-            await send_message(phone, response)
+            await send_fn(phone, response)
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
@@ -442,9 +436,10 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
                 conv_id=conv_id,
                 history=history,
                 background_tasks=background_tasks,
+                send_fn=send_fn,
             )
             if response is not None:
-                await send_message(phone, response)
+                await send_fn(phone, response)
                 queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
                 return
 
@@ -479,11 +474,11 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
                     conv_id=conv_id,
                     background_tasks=background_tasks,
                 )
-                await send_message(phone, response)
+                await send_fn(phone, response)
                 queries.save_message(conv_id, "assistant", response, langue, "signalement")
 
                 if not est_auteur_signalement:
-                    await _proposer_abonnement_si_nouveau(phone, lignes[0], langue)
+                    await _proposer_abonnement_si_nouveau(phone, lignes[0], langue, send_fn)
                 return
 
         # ══════════════════════════════════════════════════
@@ -500,14 +495,14 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
             background_tasks=background_tasks,
         )
 
-        await send_message(phone, response)
+        await send_fn(phone, response)
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
         # ── PROACTIVITÉ ───────────────────────────────────
         ligne_extraite = route_result.entities.get("ligne")
         if route_result.intent == "signalement" and ligne_extraite:
             if not est_auteur_signalement:
-                await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue)
+                await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue, send_fn)
 
         # ── MÉMOIRE USAGER ────────────────────────────────
         contact["_last_message"] = text
@@ -525,7 +520,7 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
 
     except Exception as e:
         logger.error(f"Erreur pipeline [{phone}]: {e}", exc_info=True)
-        await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
+        await send_fn(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
 # ═══════════════════════════════════════════════════════════
@@ -537,6 +532,7 @@ async def _handle_session_active(
     session, route_result, contact: dict,
     conv_id: str, history: list,
     background_tasks: BackgroundTasks,
+    send_fn,
 ) -> str | None:
     intent   = route_result.intent
     entities = route_result.entities
@@ -589,7 +585,6 @@ async def _handle_session_active(
             )
             reset_context(phone)
             return response
-        # Pas un enrichissement → reset et laisse passer au dispatch normal
         reset_context(phone)
         return None
 
@@ -606,8 +601,6 @@ async def _handle_session_active(
                         reset_context(phone)
                         return f"👍 Bus {ligne_conf} à *{arret_conf}* — déjà signalé. Merci ! 🙏"
 
-                    # FIX B9-BIS : set post_signalement AVANT reset
-                    # pour que "bondé" juste après fonctionne
                     set_session(
                         phone,
                         etat="post_signalement",
@@ -830,7 +823,7 @@ def _reponse_annulation(langue: str) -> str:
 # PROACTIVITÉ
 # ═══════════════════════════════════════════════════════════
 
-async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
+async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str, send_fn):
     """
     Propose un abonnement uniquement si l'usager n'est pas encore abonné.
     N'est JAMAIS appelé si est_auteur_signalement == True.
@@ -849,6 +842,6 @@ async def _proposer_abonnement_si_nouveau(phone: str, ligne: str, langue: str):
                     f"💡 Tu veux être alerté dès que le Bus *{ligne}* est signalé ?\n"
                     f"Envoie : *Préviens-moi pour le Bus {ligne}*"
                 )
-            await send_message(phone, suggestion)
+            await send_fn(phone, suggestion)
     except Exception as e:
         logger.error(f"[Proactivité] Erreur suggestion abonnement: {e}")
