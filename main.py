@@ -1,6 +1,12 @@
 """
-main.py — V7.2
+main.py — V7.3
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
+
+MIGRATIONS V7.3 depuis V7.2 :
+  - SESSION 3 : Ajout adaptateur Telegram
+    → Import services.telegram
+    → Route POST /telegram/webhook
+    → _process_message_telegram() avec monkey-patch send_fn
 
 MIGRATIONS V7.2 depuis V7.1 :
   - FIX B9-BIS : après attente_confirmation_signalement + "oui"
@@ -43,6 +49,7 @@ from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
 from services.whatsapp import parse_incoming_message, send_message
 from services.language import detect_language
 from services import whisper
+from services import telegram as telegram_service
 from db import queries
 from agent.router import route_async
 from agent.normalizer import normalize
@@ -78,9 +85,9 @@ _MIN_MESSAGE_LENGTH = 1
 async def lifespan(app: FastAPI):
     """Startup et shutdown propres."""
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.2 démarré — fix enrichissement qualitatif")
+    logger.info("🚌 Xëtu V7.3 démarré — Telegram + enrichissement qualitatif")
     yield
-    logger.info("🚌 Xëtu V7.2 arrêté proprement")
+    logger.info("🚌 Xëtu V7.3 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -112,11 +119,11 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.2", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "7.3", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
-# WEBHOOK
+# WEBHOOK WHATSAPP
 # ═══════════════════════════════════════════════════════════
 
 @app.get("/webhook")
@@ -174,6 +181,42 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
         return {"status": "no_text"}
 
     await _process_message(phone, text, background_tasks)
+    return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════
+# WEBHOOK TELEGRAM
+# ═══════════════════════════════════════════════════════════
+
+@app.post("/telegram/webhook")
+async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    """
+    Reçoit les updates Telegram.
+    Telegram ne signe pas les requêtes par défaut → pas de vérification HMAC ici.
+    (On peut ajouter un secret_token via set_webhook plus tard.)
+    """
+    try:
+        payload = await request.json()
+    except Exception:
+        return {"status": "invalid_json"}
+
+    msg = telegram_service.parse_incoming_update(payload)
+    if not msg:
+        return {"status": "ignored"}
+
+    user_id = msg["user_id"]   # ex: "tg_123456789"
+    chat_id = msg["chat_id"]   # entier, pour répondre
+    text    = msg["text"]
+
+    # Réutilise le rate limiting existant (user_id comme clé)
+    if not check_rate_limit(user_id):
+        return {"status": "rate_limited"}
+
+    # send_fn spécifique à Telegram : répond sur le bon chat_id
+    async def _send_telegram(phone: str, message: str) -> bool:
+        return await telegram_service.send_message(chat_id, message)
+
+    await _process_message_telegram(user_id, text, background_tasks, _send_telegram)
     return {"status": "ok"}
 
 
@@ -280,7 +323,7 @@ def _detecter_question_communautaire(text: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════════
-# PIPELINE PRINCIPAL
+# PIPELINE PRINCIPAL — WHATSAPP
 # ═══════════════════════════════════════════════════════════
 
 async def _process_message(phone: str, text: str, background_tasks: BackgroundTasks):
@@ -291,6 +334,46 @@ async def _process_message(phone: str, text: str, background_tasks: BackgroundTa
         logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
         await send_message(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
+
+# ═══════════════════════════════════════════════════════════
+# PIPELINE PRINCIPAL — TELEGRAM
+# ═══════════════════════════════════════════════════════════
+
+async def _process_message_telegram(
+    user_id: str,
+    text: str,
+    background_tasks: BackgroundTasks,
+    send_fn,
+):
+    """
+    Pipeline Core Xëtu pour les messages Telegram.
+
+    Le Core est identique à WhatsApp. La seule différence est la
+    fonction d'envoi (send_fn). On monkey-patche temporairement
+    services.whatsapp.send_message pour que toutes les réponses
+    partent via Telegram pendant le traitement de ce message.
+
+    Le finally garantit la restauration : WhatsApp continue de
+    fonctionner normalement après chaque message Telegram.
+    """
+    import services.whatsapp as _wa
+    _original_send = _wa.send_message
+    _wa.send_message = send_fn
+
+    try:
+        async with queue_manager.process(user_id):
+            await _process_message_safe(user_id, text, background_tasks)
+    except Exception as e:
+        logger.error(f"[Telegram] Erreur pipeline [{user_id}]: {e}", exc_info=True)
+        await send_fn(user_id, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
+    finally:
+        # Restauration impérative — WhatsApp doit continuer à fonctionner
+        _wa.send_message = _original_send
+
+
+# ═══════════════════════════════════════════════════════════
+# PIPELINE SAFE — PARTAGÉ WHATSAPP + TELEGRAM
+# ═══════════════════════════════════════════════════════════
 
 async def _process_message_safe(phone: str, text: str, background_tasks: BackgroundTasks):
     try:
