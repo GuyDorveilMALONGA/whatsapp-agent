@@ -1,50 +1,58 @@
 """
-skills/signalement.py — V4.1
+skills/signalement.py — V5.0
 Enregistre un signalement + notifie les abonnés.
 
-V4.1 :
-  + BackgroundTasks FastAPI remplace asyncio.create_task()
-    Garantit l'exécution des notifications même si Railway redémarre.
-    asyncio.create_task() pouvait être garbage-collecté → notifications perdues.
-  + Vérification doublon depuis save_signalement() (retourne None si doublon)
-    Réponse douce à l'usager au lieu d'une erreur.
-  + boost_corroboration() appelé quand un signalement actif existe déjà
-    sur cette ligne/arret → booste le score du signaleur original.
-
-V4 :
-  + entities injectées depuis route_result (main.py)
-  + Suppression de l'import extractor
-  + _VALID_LINES et _NETWORK déclarés ici (découplé de l'extracteur)
-  + Cas ambiguïté conservé (deux lignes avec même numéro)
-  + File d'envoi avec délai entre chaque message (anti-throttling Meta)
+MIGRATIONS V5.0 depuis V4.2 :
+  - FIX B9 : set_session() au lieu de set_context() (qui n'existait pas)
+    La session post_signalement fonctionne ENFIN.
+  - FIX B10 : VALID_LINES importé depuis config.settings (source unique)
+  - FIX : _notify_abonnes renommé en notify_abonnes (public, appelé depuis main.py)
+  - Extraction arrêt inchangée (déjà solide en V4.2)
 """
+import re
 import logging
 from fastapi import BackgroundTasks
 from db import queries
 from services.whatsapp import send_message
+from config.settings import VALID_LINES
+from core.session_manager import set_session  # FIX B9 : import correct
 
 logger = logging.getLogger(__name__)
 
-# Délai entre chaque notification (évite ban Meta)
 _NOTIFICATION_DELAY_SEC = 0.3
-# Taille max de batch (sécurité supplémentaire)
 _BATCH_SIZE = 50
 
-# Référentiel des lignes valides (découplé de l'extracteur)
-_VALID_LINES = {
-    "1", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "15",
-    "16A", "16B", "18", "20", "23", "121", "208", "213", "217", "218", "219",
-    "220", "221", "227", "232", "233", "234", "311", "319", "327",
-    "TO1", "501", "502", "503", "TAF TAF", "RUF-YENNE"
-}
+# Prépositions de localisation
+_LOCALISATION_PREP = r"(?:à|au|niveau|devant|près\s+de|derrière|ci|face\s+à|avant)"
+
+# Pattern : "Bus X à/niveau/devant [arrêt]"
+_ARRET_FROM_TEXT_PATTERN = re.compile(
+    rf"(?:bus|ligne)\s+\w+\s+{_LOCALISATION_PREP}\s+(.+?)(?:\s*[.!?,]|$)",
+    re.IGNORECASE
+)
+
+# Pattern alternatif : "[ligne] [arrêt]" avec préposition
+_ARRET_SHORT_PATTERN = re.compile(
+    rf"\d{{1,3}}[A-Z]?\s+{_LOCALISATION_PREP}\s+(.+?)(?:\s*[.!?,]|$)",
+    re.IGNORECASE
+)
 
 
-async def _notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
+def _extract_arret_from_text(text: str) -> str | None:
+    m = _ARRET_FROM_TEXT_PATTERN.search(text)
+    if m:
+        return m.group(1).strip()
+    m = _ARRET_SHORT_PATTERN.search(text)
+    if m:
+        return m.group(1).strip()
+    return None
+
+
+async def notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
     """
     Notifie les abonnés avec délai entre chaque envoi.
-    Appelé via BackgroundTasks FastAPI — exécution garantie après réponse HTTP.
-
-    ⚠️ À l'échelle (>10k abonnés) : migrer vers Redis Queue / Celery.
+    Appelé via BackgroundTasks.
+    FIX V5.0 : renommé de _notify_abonnes → notify_abonnes (public).
     """
     import asyncio
     try:
@@ -77,20 +85,22 @@ async def handle(
     langue: str,
     entities: dict,
     background_tasks: BackgroundTasks,
+    is_signalement_fort: bool = False,
 ) -> str:
-    """
-    Gère un signalement en utilisant les entités pré-extraites par le LLM.
-
-    background_tasks : injecté depuis main.py pour garantir l'exécution
-    des notifications même si le process redémarre.
-    """
     phone = contact["phone"]
 
-    # ── 1. Extraction depuis les entités LLM ──────────────
+    # ── 1. Extraction ligne ───────────────────────────────
     ligne = entities.get("ligne")
-    arret = entities.get("origin") or entities.get("destination")
 
-    # ── 2. Validation de la ligne ─────────────────────────
+    # ── 2. Extraction arrêt — ordre de priorité strict ───
+    arret = (
+        entities.get("arret")
+        or entities.get("position")
+        or entities.get("origin")
+        or _extract_arret_from_text(message)
+    )
+
+    # ── 3. Validation ligne ───────────────────────────────
     if not ligne:
         if langue == "wolof":
             return "Wax ma numéro bi — 'Bus 15 à Liberté 5' 🙏"
@@ -98,8 +108,8 @@ async def handle(
 
     ligne_upper = str(ligne).upper()
 
-    if ligne_upper not in _VALID_LINES:
-        valides = ", ".join(sorted(_VALID_LINES)[:10]) + "..."
+    if ligne_upper not in VALID_LINES:
+        valides = ", ".join(sorted(VALID_LINES, key=lambda x: (len(x), x))[:10]) + "..."
         if langue == "wolof":
             return (
                 f"Bus bi {ligne} — duma ko xam ci réseau Dem Dikk yi.\n"
@@ -112,20 +122,75 @@ async def handle(
 
     ligne = ligne_upper
 
-    # ── 3. Validation de l'arrêt ──────────────────────────
+    # ── 4. Validation arrêt ───────────────────────────────
     if not arret:
+        # FIX B9 : set_session au lieu de set_context (qui n'existait pas !)
+        try:
+            set_session(phone, etat="attente_arret", ligne=ligne)
+        except Exception as e:
+            logger.warning(f"[Signalement] Impossible de set attente_arret: {e}")
+
         if langue == "wolof":
             return (
                 f"Bus {ligne} — arrêt bi dafa soxor.\n"
                 f"Wax ma ci : 'Bus {ligne} à [arrêt bi]' 🙏"
             )
         return (
-            f"🚌 Bus {ligne} reçu ! Mais quel arrêt exactement ?\n"
+            f"🚌 Bus {ligne} reçu ! À quel arrêt exactement ?\n"
             f"Envoie : *Bus {ligne} à [nom de l'arrêt]* 🙏"
         )
 
-    # ── 4. Boost corroboration si signalement actif existant ─
-    # Un 2ème usager signale le même bus → boost le score du 1er signaleur
+    # Nettoyage minimal
+    arret = arret.strip()
+    if arret:
+        arret = arret[0].upper() + arret[1:]
+
+    # ── 4b. ANTI-FRAUDE (RED TEAM) ────────────────────────
+    from core.anti_fraud import (
+        compute_signalement_confidence, CONFIDENCE_THRESHOLD,
+        check_distance_coherence, is_spam_pattern,
+    )
+
+    # Check spam pattern (>5 signalements en 10 min, ou 4+ lignes en 5 min)
+    if is_spam_pattern(phone, ligne):
+        logger.warning(f"[Signalement] Spam détecté {phone[-4:]}, rejeté")
+        queries.penalise_spam(phone)
+        if langue == "wolof":
+            return f"⚠️ Yaw, boo bëggë wéer nit ñi, signal bu baax. Xaaral tuuti. 🙏"
+        return f"⚠️ Tu signales beaucoup en peu de temps. Attends quelques minutes. 🙏"
+
+    # Check cohérence distance (bus fantôme progressif)
+    if not check_distance_coherence(phone, ligne, arret):
+        logger.warning(f"[Signalement] Distance incohérente {phone[-4:]}, rejeté")
+        queries.penalise_spam(phone)
+        if langue == "wolof":
+            return f"⚠️ Bus {ligne} mënul a nekk ci {arret} léggi. Dinga ko signalé ci kanam. 🙏"
+        return f"⚠️ Le Bus {ligne} ne peut pas être à *{arret}* si vite. Vérifie et réessaie. 🙏"
+
+    # Score de confiance
+    confidence = compute_signalement_confidence(
+        phone=phone, ligne=ligne, arret=arret,
+        source="signalement_fort" if is_signalement_fort else "llm",
+        has_verbe_observation=is_signalement_fort,
+        has_arret_connu=bool(arret),
+    )
+    if confidence < CONFIDENCE_THRESHOLD:
+        logger.info(
+            f"[Signalement] Confiance trop basse {phone[-4:]}: "
+            f"{confidence:.2f} < {CONFIDENCE_THRESHOLD} → demande confirmation"
+        )
+        # Au lieu de rejeter → demander confirmation (Red Team recommandation #4)
+        set_session(
+            phone,
+            etat="attente_confirmation_signalement",
+            ligne=ligne,
+            signalement={"position": arret, "ligne": ligne, "confidence": confidence},
+        )
+        if langue == "wolof":
+            return f"🚌 Dinga signalé Bus {ligne} ci *{arret}* ?\nWax : *oui* wala *non*"
+        return f"🚌 Tu signales le Bus {ligne} à *{arret}* ?\nRéponds *oui* ou *non*"
+
+    # ── 5. Boost corroboration ────────────────────────────
     try:
         sigs_actifs = queries.get_signalements_actifs(ligne)
         corrobore   = any(
@@ -139,43 +204,57 @@ async def handle(
     except Exception as e:
         logger.warning(f"[Signalement] Erreur check corroboration: {e}")
 
-    # ── 5. Enregistrement en base ─────────────────────────
+    # ── 6. Enregistrement en base ─────────────────────────
     try:
         result = queries.save_signalement(ligne, arret, phone)
     except Exception as e:
-        logger.error(f"Erreur save_signalement: {e}")
-        return "❌ Erreur lors de l'enregistrement. Réessaie."
+        logger.error(f"[Signalement] Erreur save_signalement: {e}")
+        return "❌ Erreur lors de l'enregistrement. Réessaie dans quelques secondes."
 
-    # ── 6. Doublon détecté ────────────────────────────────
+    # ── 7. Doublon détecté ────────────────────────────────
     if result is None:
         if langue == "wolof":
             return f"👍 Bus {ligne} ci *{arret}* — déjà signalé récemment. Jërëjëf !"
         return f"👍 Bus {ligne} à *{arret}* — déjà signalé il y a moins de 2 min. Merci quand même ! 🙏"
 
-    # ── 7. Comptage abonnés ───────────────────────────────
+    # ── 8. Session post_signalement — FIX B9 ─────────────
+    try:
+        set_session(
+            phone,
+            etat="post_signalement",
+            ligne=ligne,
+            signalement={"position": arret, "ligne": ligne},
+        )
+    except Exception as e:
+        logger.warning(f"[Signalement] Impossible de set post_signalement: {e}")
+
+    # ── 9. Comptage abonnés ───────────────────────────────
     try:
         abonnes    = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
     except Exception:
         nb_abonnes = 0
 
-    # ── 8. Notifications via BackgroundTasks ──────────────
-    # FIX V4.1 : BackgroundTasks garantit l'exécution après la réponse HTTP.
-    # asyncio.create_task() pouvait être GC'd si le process redémarrait.
-    background_tasks.add_task(_notify_abonnes, ligne, arret, phone)
+    # ── 10. Notifications via BackgroundTasks ─────────────
+    background_tasks.add_task(notify_abonnes, ligne, arret, phone)
 
-    # ── 9. Réponse ────────────────────────────────────────
+    logger.info(
+        f"[Signalement] ligne={ligne} arret={arret} phone={phone} "
+        f"fort={is_signalement_fort} abonnes={nb_abonnes}"
+    )
+
+    # ── 11. Réponse ───────────────────────────────────────
     if nb_abonnes == 0:
         if langue == "wolof":
-            return f"✅ Jërëjëf ! Bus {ligne} ci {arret} — enregistré. 🙏"
+            return f"✅ Jërëjëf ! Bus {ligne} ci *{arret}* — enregistré. 🙏"
         return f"✅ Merci ! Bus {ligne} à *{arret}* enregistré. 🙏"
-    else:
-        if langue == "wolof":
-            return (
-                f"✅ Jërëjëf ! Bus {ligne} ci {arret} — enregistré.\n"
-                f"Danga dém {nb_abonnes} nit 🙏"
-            )
+
+    if langue == "wolof":
         return (
-            f"✅ Merci ! Bus {ligne} à *{arret}* enregistré.\n"
-            f"Tu viens d'aider *{nb_abonnes}* personne(s) 🙏"
+            f"✅ Jërëjëf ! Bus {ligne} ci *{arret}* — enregistré.\n"
+            f"Danga dém {nb_abonnes} nit yi 🙏"
         )
+    return (
+        f"✅ Merci ! Bus {ligne} à *{arret}* enregistré.\n"
+        f"Tu viens d'aider *{nb_abonnes}* personne(s) 🙏"
+    )

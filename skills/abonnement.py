@@ -1,19 +1,17 @@
 """
-skills/abonnement.py — V4
+skills/abonnement.py — V5.0
 Crée un abonnement en utilisant les entités LLM.
-Découplé de extractor.py — architecture V5 complète.
+
+MIGRATIONS V5.0 depuis V4 :
+  - FIX B10 : VALID_LINES importé depuis config.settings (source unique)
+    Plus de set dupliqué qui se désynchronise.
 """
 import re
 import logging
 from db import queries
+from config.settings import VALID_LINES  # FIX B10 : source unique
 
 logger = logging.getLogger(__name__)
-
-_VALID_LINES = {
-    "1", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "15", "16A", "16B",
-    "18", "20", "23", "121", "208", "213", "217", "218", "219", "220", "221", "227",
-    "232", "233", "234", "311", "319", "327", "TO1", "501", "502", "503", "TAF TAF", "RUF-YENNE"
-}
 
 
 def _extract_heure(text: str) -> str | None:
@@ -28,13 +26,12 @@ def _extract_heure(text: str) -> str | None:
 async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
     phone = contact["phone"]
 
-    # Entités depuis le LLM — plus d'extraction regex
     ligne = entities.get("ligne")
     arret = entities.get("origin") or entities.get("destination") or ""
 
-    if not ligne or str(ligne).upper() not in _VALID_LINES:
+    if not ligne or str(ligne).upper() not in VALID_LINES:
         ligne_str = ligne or "?"
-        valides = ", ".join(sorted(_VALID_LINES)[:10]) + "..."
+        valides = ", ".join(sorted(VALID_LINES, key=lambda x: (len(x), x))[:10]) + "..."
         if langue == "wolof":
             return (f"Ligne {ligne_str} — duma ko xam ci réseau Dem Dikk yi. "
                     f"Wax ma numéro bus bi.")

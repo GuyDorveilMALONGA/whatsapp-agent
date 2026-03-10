@@ -1,45 +1,32 @@
 """
-heartbeat/checklist.py — V2
-Ce que fait le heartbeat toutes les 5 minutes :
-1. Purge les signalements expirés
-2. Détecte les lignes silencieuses (anomalies)
-3. Envoie des alertes proactives aux abonnés
+heartbeat/checklist.py — V3.0
 
-FIX V2 :
-  - Source de vérité lignes → JSON (pas Supabase table lignes)
-  - Déduplication alertes : 1 message max par (phone, ligne) par cycle
-  - "Xëtu" corrigé (était "Sëtu")
+MIGRATIONS V3.0 depuis V2 :
+  - FIX B10 : VALID_LINES importé depuis config.settings (source unique)
+    Plus de chargement JSON séparé — le JSON est chargé une seule fois
+    par core.network au démarrage.
+  - FIX H2 : Matching heure avec fenêtre de ±5 min au lieu d'exact
+  - Ajout purge_sessions_expires dans le cycle
 """
-import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from db import queries
 from services.whatsapp import send_message
-from config.settings import ANOMALIE_SEUIL_MINUTES, ALERTE_PROACTIVE_AVANT
+from config.settings import (
+    VALID_LINES,
+    ANOMALIE_SEUIL_MINUTES,
+    ALERTE_PROACTIVE_AVANT,
+)
 
 logger = logging.getLogger(__name__)
-
-# ── Source de vérité : JSON (pas Supabase) ────────────────
-_VALID_LINES: set = set()
-
-try:
-    with open("dem_dikk_lines_gps_final.json", "r", encoding="utf-8") as f:
-        _RAW = json.load(f)
-    for _lines in _RAW.get("categories", {}).values():
-        for _line in _lines:
-            num = str(_line.get("number", "")).upper()
-            if num:
-                _VALID_LINES.add(num)
-    logger.info(f"[Heartbeat] {len(_VALID_LINES)} lignes chargées depuis JSON")
-except Exception as e:
-    logger.error(f"[Heartbeat] Erreur chargement JSON : {e}")
 
 
 async def run_checklist():
     logger.info(f"[Heartbeat] {datetime.now(timezone.utc).strftime('%H:%M')} — démarrage")
 
     await _purge_signalements()
+    await _purge_sessions()
     await _detecter_anomalies()
     await _alertes_proactives()
 
@@ -47,35 +34,35 @@ async def run_checklist():
 
 
 async def _purge_signalements():
-    """Supprime les signalements expirés (> 20 min)."""
     try:
         queries.purge_signalements_expires()
         logger.debug("[Heartbeat] Purge signalements OK")
     except Exception as e:
-        logger.error(f"[Heartbeat] Erreur purge: {e}")
+        logger.error(f"[Heartbeat] Erreur purge signalements: {e}")
+
+
+async def _purge_sessions():
+    """Purge les sessions expirées en DB."""
+    try:
+        queries.purge_sessions_expires()
+        logger.debug("[Heartbeat] Purge sessions OK")
+    except Exception as e:
+        logger.error(f"[Heartbeat] Erreur purge sessions: {e}")
 
 
 async def _detecter_anomalies():
-    """
-    Détecte les lignes sans signalement depuis trop longtemps.
-    Source : JSON uniquement — jamais la table Supabase `lignes`
-    qui peut être désynchronisée.
-    Actif uniquement aux heures de pointe.
-    """
     try:
         heure = datetime.now(timezone.utc).hour
         heure_pointe = (7 <= heure <= 10) or (17 <= heure <= 20)
         if not heure_pointe:
             return
 
-        if not _VALID_LINES:
-            logger.warning("[Heartbeat] _VALID_LINES vide — JSON non chargé, anomalies ignorées")
+        if not VALID_LINES:
+            logger.warning("[Heartbeat] VALID_LINES vide — anomalies ignorées")
             return
 
         silencieuses = queries.get_lignes_silencieuses(ANOMALIE_SEUIL_MINUTES)
-
-        # Filtre : seulement les lignes qui existent dans le JSON
-        silencieuses_valides = [l for l in silencieuses if str(l).upper() in _VALID_LINES]
+        silencieuses_valides = [l for l in silencieuses if str(l).upper() in VALID_LINES]
 
         if silencieuses_valides:
             logger.warning(
@@ -88,47 +75,50 @@ async def _detecter_anomalies():
 
 async def _alertes_proactives():
     """
-    Envoie une alerte aux abonnés dont l'heure habituelle approche dans 15 min
-    ET pour lesquels un signalement récent existe.
-
-    Déduplication : 1 message max par (phone, ligne) par cycle heartbeat.
+    FIX H2 : Fenêtre de ±5 min au lieu de matching exact.
+    Si le heartbeat tourne à 07:03 et l'usager a mis 07:05 → ça matche.
     """
     try:
-        abonnes = queries.get_abonnements_proactifs(ALERTE_PROACTIVE_AVANT)
+        now = datetime.now(timezone.utc)
 
-        # Déduplication : évite double-alerte si même usager abonné 2x même ligne
+        # Générer toutes les minutes dans la fenêtre [now, now+avant+5min]
+        heures_cibles = set()
+        for delta_min in range(ALERTE_PROACTIVE_AVANT - 2, ALERTE_PROACTIVE_AVANT + 3):
+            t = now + timedelta(minutes=delta_min)
+            heures_cibles.add(t.strftime("%H:%M"))
+
         deja_alerte: set = set()
 
-        for abonne in abonnes:
-            ligne = abonne.get("ligne")
-            phone = abonne.get("phone")
+        for heure_cible in heures_cibles:
+            abonnes = queries.get_abonnements_proactifs_heure(heure_cible)
 
-            if not ligne or not phone:
-                continue
+            for abonne in abonnes:
+                ligne = abonne.get("ligne")
+                phone = abonne.get("phone")
 
-            # Filtre : ligne doit exister dans le JSON
-            if str(ligne).upper() not in _VALID_LINES:
-                logger.debug(f"[Heartbeat] Ligne {ligne} inconnue dans JSON — abonnement ignoré")
-                continue
+                if not ligne or not phone:
+                    continue
 
-            cle = (phone, str(ligne).upper())
-            if cle in deja_alerte:
-                logger.debug(f"[Heartbeat] Doublon ignoré : {phone[-4:]} / bus {ligne}")
-                continue
+                if str(ligne).upper() not in VALID_LINES:
+                    continue
 
-            signalements = queries.get_signalements_actifs(ligne)
-            if not signalements:
-                continue
+                cle = (phone, str(ligne).upper())
+                if cle in deja_alerte:
+                    continue
 
-            s = signalements[0]
-            msg = (
-                f"🔔 Bus *{ligne}* signalé à *{s['position']}* "
-                f"il y a quelques instants.\n"
-                f"Ton bus approche ! — *Xëtu* 🚌"
-            )
-            await send_message(phone, msg)
-            deja_alerte.add(cle)
-            logger.info(f"[Heartbeat] Alerte proactive → {phone[-4:]} (bus {ligne})")
+                signalements = queries.get_signalements_actifs(ligne)
+                if not signalements:
+                    continue
+
+                s = signalements[0]
+                msg = (
+                    f"🔔 Bus *{ligne}* signalé à *{s['position']}* "
+                    f"il y a quelques instants.\n"
+                    f"Ton bus approche ! — *Xëtu* 🚌"
+                )
+                await send_message(phone, msg)
+                deja_alerte.add(cle)
+                logger.info(f"[Heartbeat] Alerte proactive → {phone[-4:]} (bus {ligne})")
 
     except Exception as e:
         logger.error(f"[Heartbeat] Erreur alertes proactives: {e}")

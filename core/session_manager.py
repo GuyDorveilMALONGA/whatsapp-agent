@@ -1,20 +1,11 @@
 """
-core/session_manager.py — V4.1
+core/session_manager.py — V5.0
 État conversationnel 100% persisté dans Supabase.
-Zéro état local (Stateless) pour permettre le scale multi-instances.
 
-FIX V4.1 :
-  + set_session() ajouté — setter générique utilisé par
-    skills/itineraire.py V4.2 (_save_itineraire_session et handle_alternatives)
-    pour sauvegarder origin/dest/exclude_lines après chaque itinéraire réussi.
-    Avant : ImportError au démarrage → crash prod immédiat.
-
-POURQUOI V4 :
-  V3.1 avait un _fallback mémoire locale → sur 2 instances Railway,
-  le Serveur B répondait "D'où veux-tu partir ?" alors que l'usager
-  venait de le dire au Serveur A. État désynchronisé = mensonge.
-  Règle d'or : Supabase est la source unique de vérité.
-  Si Supabase tombe → on échoue gracieusement, on ne ment pas.
+MIGRATIONS V5.0 depuis V4.1 :
+  - FIX SE2 : cleanup_inactive_sessions ne crée plus de locks fantômes
+  - FIX SE3 : TTL locks aligné sur TTL DB (10 min)
+  - set_session() inchangé (déjà correct en V4.1)
 """
 import asyncio
 import re
@@ -26,7 +17,8 @@ from db import queries
 
 logger = logging.getLogger(__name__)
 
-SESSION_TTL_SECONDS = 1800  # 30 min → cleanup locks locaux uniquement
+# FIX SE3 : aligné sur SESSION_CONTEXT_TTL_SECONDS de queries.py (600s = 10 min)
+SESSION_TTL_SECONDS = 600
 
 
 # ── Modèle ────────────────────────────────────────────────
@@ -66,7 +58,6 @@ def get_context(phone: str) -> SessionContext:
             )
     except Exception as e:
         logger.error(f"[Session] Supabase KO pour {phone[-4:]}: {e}")
-        # Pas de fallback — on échoue proprement
     return SessionContext()
 
 
@@ -77,12 +68,6 @@ def set_session(phone: str,
                 ligne: str | None = None,
                 destination: str | None = None,
                 signalement: dict | None = None):
-    """
-    FIX V4.1 — Setter générique.
-    Utilisé par skills/itineraire.py pour sauvegarder l'état
-    après un itinéraire réussi (origin, dest, exclude_lines).
-    Délègue à queries.set_session — seul fichier qui touche Supabase.
-    """
     try:
         queries.set_session(
             phone=phone,
@@ -146,19 +131,18 @@ def is_abandon(text: str) -> bool:
     return any(re.search(pattern, t) for pattern in _ABANDON_PATTERNS)
 
 
-# ── Cleanup — locks asyncio uniquement ────────────────────
+# ── Cleanup — FIX SE2 : ne crée plus de locks fantômes ───
 
 def cleanup_inactive_sessions():
-    """
-    Nettoie uniquement les verrous asyncio locaux pour libérer la RAM.
-    Ne touche PAS Supabase — les sessions DB expirent via expires_at.
-    """
     now = datetime.now(timezone.utc)
-    to_delete = [
-        phone for phone, last in _last_seen.items()
-        if (now - last).total_seconds() > SESSION_TTL_SECONDS
-        and not _locks.get(phone, asyncio.Lock()).locked()
-    ]
+    to_delete = []
+    for phone, last in _last_seen.items():
+        if (now - last).total_seconds() > SESSION_TTL_SECONDS:
+            lock = _locks.get(phone)
+            # FIX SE2 : vérifier que le lock EXISTE avant de tester .locked()
+            if lock is not None and not lock.locked():
+                to_delete.append(phone)
+
     for phone in to_delete:
         _locks.pop(phone, None)
         _last_seen.pop(phone, None)
@@ -167,5 +151,4 @@ def cleanup_inactive_sessions():
 
 
 def active_session_count() -> int:
-    """Nombre de verrous actifs en mémoire (monitoring uniquement)."""
     return len(_locks)
