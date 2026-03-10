@@ -1,11 +1,16 @@
 """
-main.py — V7.1
+main.py — V7.2
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
+
+MIGRATIONS V7.2 depuis V7.1 :
+  - FIX B9-BIS : après attente_confirmation_signalement + "oui"
+    → set_session post_signalement AVANT reset pour permettre l'enrichissement qualitatif
+    → le flow "bondé" fonctionne enfin
 
 MIGRATIONS V7.1 depuis V7.0 :
   - RED TEAM : attente_confirmation_signalement → demande "oui/non" si confiance basse
   - RED TEAM : messages hybrides mieux gérés (#14 #15 #18)
-  
+
 MIGRATIONS V7.0 depuis V6.2 :
   - FIX S1 : Vérification HMAC X-Hub-Signature-256 sur webhook POST
   - FIX S2 : Validation phone E.164
@@ -52,7 +57,7 @@ import skills.itineraire as skill_itineraire
 from heartbeat.runner import start_heartbeat
 from memory import user_memory
 from core.session_manager import (
-    get_context, is_abandon, reset_context
+    get_context, is_abandon, reset_context, set_session
 )
 
 logging.basicConfig(
@@ -73,9 +78,9 @@ _MIN_MESSAGE_LENGTH = 1
 async def lifespan(app: FastAPI):
     """Startup et shutdown propres."""
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.1 démarré — Red Team corrigé")
+    logger.info("🚌 Xëtu V7.2 démarré — fix enrichissement qualitatif")
     yield
-    logger.info("🚌 Xëtu V7.0 arrêté proprement")
+    logger.info("🚌 Xëtu V7.2 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -102,13 +107,12 @@ app.include_router(leaderboard_router)
 async def health():
     db_ok = False
     try:
-        # Test simple : lecture session inexistante
         queries.get_session("health_check_probe")
         db_ok = True
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.1", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "7.2", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -202,7 +206,6 @@ def _is_confirmation_implicite(text: str) -> bool:
         r"^\s*(c['']est\s+(bon|là|ça|correct|ok)|voilà|voila)\s*[!.]*\s*$",
         r"^\s*(ok|okay|ça\s+marche|d['']accord)\s*[!.]*\s*$",
         r"^\s*(exactement|exact|c['']est\s+ça)\s*[!.]*\s*$",
-        # FIX V7 : ajout de "parfait", "super", "cool" comme confirmations
         r"^\s*(parfait|super|cool)\s*[!.]*\s*$",
     ]
     return any(re.search(p, t) for p in patterns)
@@ -241,7 +244,6 @@ def _detecter_signalement_dans_message(entities: dict) -> bool:
 def _detecter_multi_ligne(entities: dict) -> list[str]:
     lignes = entities.get("lignes", [])
     if isinstance(lignes, list) and len(lignes) > 1:
-        # FIX B7 : déduplication
         seen = set()
         unique = []
         for l in lignes:
@@ -317,7 +319,6 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
         )
         langue = route_result.lang or detect_language(text)
 
-        # FIX V7 : récupère le flag une seule fois
         est_auteur_signalement = getattr(route_result, "is_signalement_fort", False)
 
         # ── 4. DB — contact/conv définitifs ───────────────
@@ -366,10 +367,6 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
 
         # ══════════════════════════════════════════════════
         # PRIORITÉ 3 : MESSAGE HYBRIDE
-        # FIX B2 : si intent=signalement ET signalement détecté,
-        # on ne fait PAS le silencieux (sinon double enregistrement).
-        # Le silencieux est uniquement pour les messages où le signalement
-        # est un "bonus" d'un autre intent (ex: question + signalement).
         # ══════════════════════════════════════════════════
         if (
             route_result.intent != "signalement"
@@ -382,8 +379,6 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
                 langue=langue,
                 background_tasks=background_tasks,
             )
-            # FIX B2 : PAS de return ici — le dispatch continue pour l'intent principal
-            # Le signalement silencieux est un side-effect, pas la réponse principale.
 
         # ══════════════════════════════════════════════════
         # PRIORITÉ 3b : SIGNALEMENT DOUBLE LIGNE
@@ -402,7 +397,6 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
                     background_tasks=background_tasks,
                 )
                 await send_message(phone, response)
-                # FIX B8 : save_message AVANT proactivité
                 queries.save_message(conv_id, "assistant", response, langue, "signalement")
 
                 if not est_auteur_signalement:
@@ -424,8 +418,6 @@ async def _process_message_safe(phone: str, text: str, background_tasks: Backgro
         )
 
         await send_message(phone, response)
-
-        # FIX B8 : save_message AVANT proactivité
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
 
         # ── PROACTIVITÉ ───────────────────────────────────
@@ -501,10 +493,11 @@ async def _handle_session_active(
 
     # ── État : post_signalement ───────────────────────────
     if session.etat == "post_signalement":
-        logger.info(f"[Debug] post_signalement détecté, text='{text}', enrichissement={_is_enrichissement_qualitatif(text)}")
+        logger.info(
+            f"[Session] post_signalement — text='{text}' "
+            f"enrichissement={_is_enrichissement_qualitatif(text)}"
+        )
         if _is_enrichissement_qualitatif(text):
-    
-        
             response = await _handle_enrichissement(
                 phone=phone,
                 text=text,
@@ -520,39 +513,57 @@ async def _handle_session_active(
     # ── État : attente_confirmation_signalement (RED TEAM) ─
     if session.etat == "attente_confirmation_signalement":
         if _is_confirmation_implicite(text):
-            # L'usager confirme → on enregistre avec les données de la session
             ligne_conf = session.ligne
             arret_conf = session.signalement.get("position", "") if session.signalement else ""
-            reset_context(phone)
+
             if ligne_conf and arret_conf:
                 try:
                     result = queries.save_signalement(ligne_conf, arret_conf, phone)
                     if result is None:
+                        reset_context(phone)
                         return f"👍 Bus {ligne_conf} à *{arret_conf}* — déjà signalé. Merci ! 🙏"
+
+                    # FIX B9-BIS : set post_signalement AVANT reset
+                    # pour que "bondé" juste après fonctionne
+                    set_session(
+                        phone,
+                        etat="post_signalement",
+                        ligne=ligne_conf,
+                        signalement={"position": arret_conf, "ligne": ligne_conf},
+                    )
+
                     background_tasks.add_task(
                         skill_signalement.notify_abonnes, ligne_conf, arret_conf, phone
                     )
+
+                    logger.info(
+                        f"[Confirmation] Signalement enregistré + session post_signalement "
+                        f"ligne={ligne_conf} arret={arret_conf}"
+                    )
+
                     if langue == "wolof":
-                        return f"✅ Jërëjëf ! Bus {ligne_conf} ci *{arret_conf}* — enregistré. 🙏"
-                    return f"✅ Merci ! Bus {ligne_conf} à *{arret_conf}* enregistré. 🙏"
+                        return f"✅ Jërëjëf ! Bus {ligne_conf} ci *{arret_conf}* enregistré.\nTu veux ajouter une info ? (bondé, vide, en retard…) 🙏"
+                    return f"✅ Merci ! Bus {ligne_conf} à *{arret_conf}* enregistré.\nTu peux ajouter : *bondé*, *vide*, *en retard*… 🙏"
+
                 except Exception as e:
                     logger.error(f"[Confirmation] Erreur save: {e}")
+                    reset_context(phone)
                     return "❌ Erreur lors de l'enregistrement. Réessaie."
+
+            reset_context(phone)
             return "❌ Données perdues. Réessaie ton signalement. 🙏"
+
         elif _is_annulation(text) or text.strip().lower() in ("non", "nan", "nope"):
             reset_context(phone)
             if langue == "wolof":
                 return "👍 OK, signal bi annulé."
             return "👍 OK, signalement annulé."
         else:
-            # Ni oui ni non → on reset et on laisse le dispatch normal gérer
             reset_context(phone)
             return None
 
     # ── État : itineraire_actif → laisser passer ──────────
     if session.etat == "itineraire_actif":
-        # La session itinéraire est juste un contexte pour alternatives
-        # On laisse le dispatch normal gérer
         return None
 
     # ── État inconnu ──────────────────────────────────────
@@ -650,6 +661,7 @@ async def _handle_enrichissement(
         queries.enrichir_signalement(
             ligne=ligne.upper(), arret=position, qualite=qualite, phone=phone
         )
+        logger.info(f"[Enrichissement] ligne={ligne} arret={position} qualite={qualite}")
     except Exception as e:
         logger.error(f"[Enrichissement] Erreur: {e}")
 
@@ -659,7 +671,7 @@ async def _handle_enrichissement(
         return f"👍 Noté — Bus *{ligne}* déjà parti de *{position}*. Info utile pour la communauté !"
     if qualite == "bondé":
         if langue == "wolof":
-            return f"👍 Bus *{ligne}* ci *{position}* — dëkk na ! Signalé."
+            return f"👍 Bus *{ligne}* ci *{position}* — dëkk na ! Signalé. 🚌"
         return f"👍 Bus *{ligne}* à *{position}* — bondé ! Info enregistrée. 🚌"
     if qualite == "vide":
         return f"👍 Bus *{ligne}* à *{position}* — peu de monde. Noté !"
