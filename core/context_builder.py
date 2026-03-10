@@ -1,6 +1,11 @@
 """
-core/context_builder.py — V6.0 (LLM-Native)
+core/context_builder.py — V6.1
 L'innovation principale de Xëtu.
+
+MIGRATIONS V6.1 depuis V6.0 :
+  - FIX : ne pas injecter la ligne historique si intent = out_of_scope
+    Le LLM ne mentionne plus "la ligne 15 était mentionnée précédemment"
+    quand l'usager envoie une insulte ou un message hors-sujet.
 
 MIGRATIONS V6.0 depuis V5 :
   - FIX A6 : _extract_ligne_from_history() exige "bus" ou "ligne" avant le chiffre
@@ -36,7 +41,10 @@ def build_context(
     blocks.append(f"[INTENTION DÉTECTÉE] {intent}")
     blocks.append(f"[MESSAGE USAGER] {message}")
 
-    if not ligne and history:
+    # FIX V6.1 : ne pas injecter la ligne historique si out_of_scope
+    # Sinon le LLM hallucine "la ligne 15 était mentionnée précédemment"
+    # quand l'usager envoie une insulte ou un message hors-sujet.
+    if not ligne and history and intent != "out_of_scope":
         ligne_historique = _extract_ligne_from_history(history)
         if ligne_historique:
             ligne = ligne_historique
@@ -62,7 +70,7 @@ def build_context(
 
     if signalements is not None:
         if signalements:
-            now      = datetime.now(timezone.utc)
+            now       = datetime.now(timezone.utc)
             sig_lines = []
             for s in signalements[:3]:
                 try:
@@ -82,8 +90,8 @@ def build_context(
     if arret:
         blocks.append(f"[ARRÊT MENTIONNÉ] {arret}")
 
-    langue        = contact.get("langue", "fr")
-    fiabilite     = contact.get("fiabilite_score", 0.5)
+    langue         = contact.get("langue", "fr")
+    fiabilite      = contact.get("fiabilite_score", 0.5)
     profil_summary = user_memory.get_profil_summary(contact)
     blocks.append(
         f"[USAGER] Langue: {langue} | Fiabilité: {fiabilite:.0%}"
@@ -110,7 +118,6 @@ def _extract_ligne_from_history(history: list) -> str | None:
     """
     for msg in reversed(history):
         content = msg.get("content", "")
-        # FIX A6 : préfixe "bus" ou "ligne" OBLIGATOIRE
         match = re.search(
             r'\b(?:bus|ligne)\s+(\d{1,3}[A-Z]?|TO1|TAF\s*TAF)\b',
             content, re.IGNORECASE
