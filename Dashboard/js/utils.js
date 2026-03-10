@@ -4,91 +4,129 @@
  * Pas de DOM, pas d'API, pas de Leaflet ici.
  */
 
-const Utils = (() => {
+// ── AGE / COULEUR ─────────────────────────────────────────
 
-  /**
-   * Retourne la classe CSS selon l'âge du signalement.
-   * @param {number} minutesAgo
-   * @returns {'age-fresh'|'age-ok'|'age-old'}
-   */
-  function getAgeClass(minutesAgo) {
-    if (minutesAgo <= 5)  return 'age-fresh';
-    if (minutesAgo <= 15) return 'age-ok';
-    return 'age-old';
+export function getAgeClass(minutesAgo) {
+  if (minutesAgo <= 5)  return 'age-fresh';
+  if (minutesAgo <= 15) return 'age-ok';
+  return 'age-old';
+}
+
+export function getAgeColor(minutesAgo) {
+  if (minutesAgo <= 5)  return '#00D67F';
+  if (minutesAgo <= 15) return '#FFD166';
+  return '#FF4757';
+}
+
+export function formatAge(minutesAgo) {
+  if (minutesAgo < 1)  return "À l'instant · Récent";
+  if (minutesAgo <= 5) return `${minutesAgo} min · Récent`;
+  if (minutesAgo <= 15) return `${minutesAgo} min`;
+  return `${minutesAgo} min · Ancien`;
+}
+
+export function formatAgeShort(minutesAgo) {
+  if (minutesAgo < 1)  return "à l'instant";
+  return `il y a ${minutesAgo} min`;
+}
+
+// ── LEADERBOARD ───────────────────────────────────────────
+
+export function getRankClass(rank) {
+  if (rank === 1) return 'gold';
+  if (rank === 2) return 'silver';
+  if (rank === 3) return 'bronze';
+  return 'other';
+}
+
+export function getRankSymbol(rank) {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return String(rank);
+}
+
+export function getBadgeClass(index) {
+  return ['badge-orange', 'badge-green', 'badge-yellow'][index % 3];
+}
+
+// ── WHATSAPP / TELEGRAM ───────────────────────────────────
+
+export function buildWhatsAppUrl(phoneNumber, message) {
+  return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
+}
+
+export function buildTelegramUrl(botUsername, message) {
+  return `https://t.me/${botUsername}?text=${encodeURIComponent(message)}`;
+}
+
+// ── safeFetch ─────────────────────────────────────────────
+
+export async function safeFetch(url, options = {}, retries = 3) {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 8000);
+    try {
+      const res = await fetch(url, { ...options, signal: ctrl.signal });
+      clearTimeout(timer);
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        throw { code: 'rate_limited', message: 'Trop de requêtes', retryAfter: data.retry_after };
+      }
+      if (!res.ok) throw { code: `http_${res.status}`, message: `Erreur serveur (${res.status})`, status: res.status };
+      return await res.json();
+    } catch (err) {
+      clearTimeout(timer);
+      const isLast = attempt === retries - 1;
+      if (isLast) {
+        if (err.name === 'AbortError') throw { code: 'timeout', message: 'Délai dépassé. Vérifiez votre connexion.' };
+        throw err.code ? err : { code: 'network', message: 'Erreur réseau. Vérifiez votre connexion.' };
+      }
+      await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt)));
+    }
   }
+}
 
-  /**
-   * Retourne la couleur hex selon l'âge.
-   * @param {number} minutesAgo
-   * @returns {string} couleur hex
-   */
-  function getAgeColor(minutesAgo) {
-    if (minutesAgo <= 5)  return '#00D67F';
-    if (minutesAgo <= 15) return '#FFD166';
-    return '#FF4757';
-  }
+// ── TEXTE ─────────────────────────────────────────────────
 
-  /**
-   * Formate l'âge en texte lisible.
-   * @param {number} minutesAgo
-   * @returns {string}
-   */
-  function formatAge(minutesAgo) {
-    if (minutesAgo < 1) return "à l'instant";
-    if (minutesAgo === 1) return '1 min';
-    return `${minutesAgo} min`;
-  }
+export function normalizeText(str) {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['']/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
 
-  /**
-   * Classe CSS du rang leaderboard.
-   * @param {number} rank
-   * @returns {string}
-   */
-  function getRankClass(rank) {
-    if (rank === 1) return 'gold';
-    if (rank === 2) return 'silver';
-    if (rank === 3) return 'bronze';
-    return 'other';
-  }
-
-  /**
-   * Symbole emoji du rang.
-   * @param {number} rank
-   * @returns {string}
-   */
-  function getRankSymbol(rank) {
-    if (rank === 1) return '🥇';
-    if (rank === 2) return '🥈';
-    if (rank === 3) return '🥉';
-    return String(rank);
-  }
-
-  /**
-   * Génère une classe badge cyclique.
-   * @param {number} index
-   * @returns {string}
-   */
-  function getBadgeClass(index) {
-    return ['badge-orange', 'badge-green', 'badge-yellow'][index % 3];
-  }
-
-  /**
-   * Encode un message pour une URL WhatsApp.
-   * @param {string} message
-   * @returns {string} URL wa.me
-   */
-  function buildWhatsAppUrl(phoneNumber, message) {
-    return `https://wa.me/${phoneNumber}?text=${encodeURIComponent(message)}`;
-  }
-
-  return {
-    getAgeClass,
-    getAgeColor,
-    formatAge,
-    getRankClass,
-    getRankSymbol,
-    getBadgeClass,
-    buildWhatsAppUrl,
+export function debounce(fn, delay) {
+  let timer;
+  return (...args) => {
+    clearTimeout(timer);
+    timer = setTimeout(() => fn(...args), delay);
   };
+}
 
-})();
+// ── UUID ──────────────────────────────────────────────────
+
+export function generateUUID() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+export function formatTimestamp(isoStr) {
+  const diff = Math.floor((Date.now() - new Date(isoStr).getTime()) / 60000);
+  if (diff < 1)   return "à l'instant";
+  if (diff === 1) return 'il y a 1 min';
+  if (diff < 60)  return `il y a ${diff} min`;
+  return `il y a ${Math.floor(diff / 60)}h`;
+}
+
+export function buildWhatsAppSignalUrl(waNumber, ligne, arret) {
+  return buildWhatsAppUrl(waNumber, `Bus ${ligne} à ${arret}`);
+}

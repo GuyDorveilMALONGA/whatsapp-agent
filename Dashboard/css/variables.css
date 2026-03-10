@@ -1,0 +1,78 @@
+/* ════════════════════════════════════════════════════════
+   variables.css — Design tokens Xëtu
+   Source unique de vérité pour couleurs, spacing, z-index
+   ════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Couleurs de fond ── */
+  --bg:        #0A0F1E;
+  --surface:   #111827;
+  --surface2:  #1a2235;
+  --surface3:  #212d42;
+
+  /* ── Couleurs accent ── */
+  --orange:    #FF6B35;
+  --orange-dim: rgba(255, 107, 53, 0.15);
+  --green:     #00D67F;
+  --green-dim: rgba(0, 214, 127, 0.12);
+  --yellow:    #FFD166;
+  --yellow-dim: rgba(255, 209, 102, 0.12);
+  --red:       #FF4757;
+  --red-dim:   rgba(255, 71, 87, 0.12);
+
+  /* ── Texte ── */
+  --text:      #F0F4FF;
+  --text-dim:  #c4cde0;
+  --muted:     #6B7A99;
+
+  /* ── Bordures ── */
+  --border:    rgba(255, 255, 255, 0.07);
+  --border-hover: rgba(255, 107, 53, 0.3);
+
+  /* ── Typographie ── */
+  --font-head: 'Syne', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+
+  /* ── Espacements ── */
+  --space-xs:  4px;
+  --space-sm:  8px;
+  --space-md:  12px;
+  --space-lg:  16px;
+  --space-xl:  24px;
+  --space-2xl: 32px;
+
+  /* ── Rayons ── */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 9999px;
+
+  /* ── Ombres ── */
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.4);
+  --shadow-lg: 0 8px 32px rgba(0, 0, 0, 0.5);
+  --shadow-orange: 0 4px 16px rgba(255, 107, 53, 0.3);
+  --shadow-green:  0 4px 16px rgba(37, 211, 102, 0.3);
+
+  /* ── Z-index ── */
+  --z-map:     1;
+  --z-sidebar: 10;
+  --z-filters: 20;
+  --z-sheet:   100;
+  --z-header:  200;
+  --z-modal:   300;
+  --z-toast:   400;
+
+  /* ── Transitions ── */
+  --transition-fast:   0.15s ease;
+  --transition-normal: 0.25s ease;
+  --transition-spring: 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* ── Layout ── */
+  --header-height: 56px;
+  --stats-height:  52px;
+  --filters-height: 44px;
+  --sidebar-width: 300px;
+  --sheet-peek:    64px;
+}

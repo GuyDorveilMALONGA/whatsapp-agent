@@ -1,214 +1,263 @@
 /**
  * js/ui.js
- * Rendu DOM — sidebar buses, leaderboard, stats, tabs.
- * Dépend de : utils.js
- * Ne touche pas à la carte (map.js) ni aux données (api.js).
+ * Rendu DOM sidebar desktop : bus list, leaderboard, stats, tabs, filtres.
+ * Dépend de : store.js, utils.js, constants.js
+ * Ne touche PAS à la carte ni au chat.
  */
 
-const UI = (() => {
+import * as store from './store.js';
+import { getAgeClass, formatAge, getRankClass, getRankSymbol, getBadgeClass } from './utils.js';
 
-  // ── STATS ────────────────────────────────────────────────
+// ── STATS BAR ─────────────────────────────────────────────
 
-  /**
-   * Met à jour les 3 compteurs du stats bar.
-   * @param {number} busCount
-   * @param {object} stats - {signalements_today, contributors}
-   */
-  function updateStats(busCount, stats) {
-    _setText('stat-bus',     busCount);
-    _setText('stat-sig',     stats.signalements_today || '—');
-    _setText('stat-contrib', stats.contributors || '—');
-  }
+export function initStats() {
+  store.subscribe('stats', (stats) => {
+    _setStatAnimated('stat-bus',     stats.activeBuses);
+    _setStatAnimated('stat-sig',     stats.reportsToday);
+    _setStatAnimated('stat-contrib', stats.contributors);
+  });
+}
 
-  // ── TIMER ────────────────────────────────────────────────
+function _setStatAnimated(id, value) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const prev = el.textContent;
+  if (String(prev) === String(value)) return;
+  el.textContent = value;
+  el.classList.remove('updated');
+  void el.offsetWidth;
+  el.classList.add('updated');
+}
 
-  let _timerInterval = null;
+// ── TIMER ─────────────────────────────────────────────────
 
-  /**
-   * Démarre le countdown visible dans le header.
-   * Appelle onComplete quand il atteint 0.
-   * @param {number} seconds
-   * @param {Function} onComplete
-   */
-  function startTimer(seconds, onComplete) {
-    if (_timerInterval) clearInterval(_timerInterval);
-    let count = seconds;
-    const el = document.getElementById('timer');
+let _timerInterval = null;
+
+export function startTimer(seconds, onComplete) {
+  if (_timerInterval) clearInterval(_timerInterval);
+  let count = seconds;
+  const el = document.getElementById('timer');
+  if (el) el.textContent = `${count}s`;
+
+  _timerInterval = setInterval(() => {
+    count--;
     if (el) el.textContent = `${count}s`;
+    if (count <= 0) {
+      clearInterval(_timerInterval);
+      _timerInterval = null;
+      onComplete();
+    }
+  }, 1000);
+}
 
-    _timerInterval = setInterval(() => {
-      count--;
-      if (el) el.textContent = `${count}s`;
-      if (count <= 0) {
-        clearInterval(_timerInterval);
-        _timerInterval = null;
-        onComplete();
-      }
-    }, 1000);
-  }
+// ── TABS ─────────────────────────────────────────────────
 
-  // ── TABS ────────────────────────────────────────────────
-
-  /**
-   * Initialise les onglets sidebar.
-   */
-  function initTabs() {
-    document.querySelectorAll('.tab-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        const tab = btn.dataset.tab;
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-        btn.classList.add('active');
-        const content = document.getElementById(`tab-${tab}`);
-        if (content) content.classList.add('active');
+export function initTabs() {
+  document.querySelectorAll('.tab-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('.tab-btn').forEach(b => {
+        b.classList.remove('active');
+        b.setAttribute('aria-selected', 'false');
       });
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      btn.classList.add('active');
+      btn.setAttribute('aria-selected', 'true');
+      const content = document.getElementById(`tab-${tab}`);
+      if (content) content.classList.add('active');
     });
+  });
+}
+
+// ── FILTRES PAR LIGNE ─────────────────────────────────────
+
+export function initFilters(onFilterChange) {
+  store.subscribe('buses', (buses) => _renderFilters(buses, onFilterChange));
+  store.subscribe('filteredLine', (line) => _updateFilterChips(line));
+}
+
+function _renderFilters(buses, onFilterChange) {
+  const bar = document.getElementById('filter-bar');
+  if (!bar) return;
+
+  // Lignes actives extraites dynamiquement
+  const activeLines = [...new Set(buses.map(b => b.ligne))].sort((a, b) =>
+    isNaN(a) || isNaN(b) ? a.localeCompare(b) : Number(a) - Number(b)
+  );
+
+  bar.innerHTML = '';
+
+  // Chip "Toutes"
+  const allChip = _createChip('Toutes', null, store.get('filteredLine') === null, onFilterChange);
+  bar.appendChild(allChip);
+
+  activeLines.forEach(ligne => {
+    const chip = _createChip(ligne, ligne, store.get('filteredLine') === ligne, onFilterChange);
+    bar.appendChild(chip);
+  });
+
+  // Navigation clavier flèches
+  _initChipsKeyboard(bar);
+}
+
+function _createChip(label, value, isActive, onClick) {
+  const btn = document.createElement('button');
+  btn.className = `filter-chip${isActive ? ' active' : ''}`;
+  btn.textContent = label;
+  btn.dataset.line = value ?? 'all';
+  btn.setAttribute('role', 'tab');
+  btn.setAttribute('aria-selected', String(isActive));
+  btn.addEventListener('click', () => onClick(value));
+  return btn;
+}
+
+function _updateFilterChips(activeLine) {
+  document.querySelectorAll('.filter-chip').forEach(chip => {
+    const val = chip.dataset.line === 'all' ? null : chip.dataset.line;
+    const isActive = val === activeLine;
+    chip.classList.toggle('active', isActive);
+    chip.setAttribute('aria-selected', String(isActive));
+  });
+}
+
+function _initChipsKeyboard(bar) {
+  bar.setAttribute('role', 'tablist');
+  bar.addEventListener('keydown', (e) => {
+    const chips = [...bar.querySelectorAll('.filter-chip:not(:disabled)')];
+    const idx = chips.indexOf(document.activeElement);
+    if (e.key === 'ArrowRight' && idx < chips.length - 1) chips[idx + 1].focus();
+    if (e.key === 'ArrowLeft'  && idx > 0)                chips[idx - 1].focus();
+  });
+}
+
+// ── BUS LIST ─────────────────────────────────────────────
+
+export function initBusList(onSelect) {
+  store.subscribe('buses', (buses) => {
+    const filtered = _applyLineFilter(buses, store.get('filteredLine'));
+    _renderBusList(filtered, store.get('selectedBus')?.id, onSelect);
+  });
+
+  store.subscribe('filteredLine', (line) => {
+    const filtered = _applyLineFilter(store.get('buses'), line);
+    _renderBusList(filtered, store.get('selectedBus')?.id, onSelect);
+  });
+
+  store.subscribe('selectedBus', (bus) => {
+    if (bus) selectBusCard(bus.id);
+  });
+}
+
+function _applyLineFilter(buses, line) {
+  return line ? buses.filter(b => b.ligne === line) : buses;
+}
+
+function _renderBusList(buses, selectedId, onSelect) {
+  const container = document.getElementById('tab-buses');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!buses || buses.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <div class="empty-text">Aucun bus actif sur cette ligne.<br>Essayez une autre ligne.</div>
+        <button class="empty-action" onclick="window._resetFilter()">Voir toutes les lignes</button>
+      </div>`;
+    return;
   }
 
-  // ── BUS LIST ─────────────────────────────────────────────
+  buses.forEach(bus => {
+    const card = _buildBusCard(bus, selectedId === bus.id);
+    card.addEventListener('click', () => onSelect(bus.id));
+    container.appendChild(card);
+  });
+}
 
-  /**
-   * Rendu de la liste des bus dans la sidebar.
-   * @param {Array} buses
-   * @param {number|null} selectedId
-   * @param {Function} onSelect - callback(busId)
-   */
-  function renderBusList(buses, selectedId, onSelect) {
-    const container = document.getElementById('tab-buses');
-    if (!container) return;
-    container.innerHTML = '';
+export function selectBusCard(busId) {
+  document.querySelectorAll('.bus-card').forEach(c => c.classList.remove('selected'));
+  const card = document.getElementById(`bus-card-${busId}`);
+  if (card) {
+    card.classList.add('selected');
+    card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+}
 
-    if (!buses || buses.length === 0) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🔍</div>
-          <div class="empty-text">Aucun bus signalé pour l'instant.<br>Sois le premier !</div>
-        </div>`;
-      return;
-    }
+function _buildBusCard(bus, isSelected) {
+  const div = document.createElement('div');
+  div.className = `bus-card${isSelected ? ' selected' : ''}`;
+  div.id = `bus-card-${bus.id}`;
+  div.setAttribute('role', 'button');
+  div.setAttribute('tabindex', '0');
+  div.setAttribute('aria-label', `Bus ${bus.ligne} à ${bus.position}, ${formatAge(bus.minutes_ago)}`);
 
-    buses.forEach(bus => {
-      const card = _buildBusCard(bus, selectedId === bus.id);
-      card.addEventListener('click', () => onSelect(bus.id));
-      container.appendChild(card);
-    });
+  const ageClass = getAgeClass(bus.minutes_ago);
+  const ageLabel = formatAge(bus.minutes_ago);
+
+  div.innerHTML = `
+    <div class="bus-card-header">
+      <div class="bus-badge">${bus.ligne}</div>
+      <div class="bus-name">${bus.name}</div>
+      <div class="bus-age ${ageClass}">${ageLabel}</div>
+    </div>
+    <div class="bus-position">📍 ${bus.position}</div>
+    <div class="bus-reporter">Signalé par ${bus.reporter}</div>
+  `;
+
+  // Navigation clavier
+  div.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); div.click(); }
+  });
+
+  return div;
+}
+
+// ── LEADERBOARD ───────────────────────────────────────────
+
+export function initLeaderboard() {
+  // Le leaderboard est chargé une fois via app.js
+}
+
+export function renderLeaderboard(users) {
+  const container = document.getElementById('tab-leaderboard');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (!users || users.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">🏆</div>
+        <div class="empty-text">Aucun contributeur pour l'instant.</div>
+      </div>`;
+    return;
   }
 
-  /**
-   * Met en surbrillance une carte bus et scroll dessus.
-   * @param {number} busId
-   */
-  function selectBusCard(busId) {
-    document.querySelectorAll('.bus-card').forEach(c => c.classList.remove('selected'));
-    const card = document.getElementById(`bus-card-${busId}`);
-    if (card) {
-      card.classList.add('selected');
-      card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }
+  users.forEach((user, i) => container.appendChild(_buildLeaderboardItem(user, i)));
+}
 
-  /**
-   * Construit l'élément DOM d'une carte bus.
-   * @param {object} bus
-   * @param {boolean} isSelected
-   * @returns {HTMLElement}
-   */
-  function _buildBusCard(bus, isSelected) {
-    const div = document.createElement('div');
-    div.className = `bus-card${isSelected ? ' selected' : ''}`;
-    div.id = `bus-card-${bus.id}`;
+function _buildLeaderboardItem(user, index) {
+  const div = document.createElement('div');
+  div.className = 'lb-item';
 
-    const ageClass = Utils.getAgeClass(bus.minutes_ago);
-    const ageLabel = Utils.formatAge(bus.minutes_ago);
+  const rankClass  = getRankClass(index + 1);
+  const rankSymbol = getRankSymbol(index + 1);
+  const badgesHtml = (user.badges || []).slice(0, 2).map((badge, j) =>
+    `<span class="badge ${getBadgeClass(j)}">${badge}</span>`
+  ).join('');
 
-    div.innerHTML = `
-      <div class="bus-card-header">
-        <div class="bus-badge">${bus.ligne}</div>
-        <div class="bus-name">${bus.name}</div>
-        <div class="bus-age ${ageClass}">${ageLabel}</div>
-      </div>
-      <div class="bus-position">📍 ${bus.position}</div>
-      <div class="bus-reporter">Signalé par ${bus.reporter}</div>
-    `;
+  div.innerHTML = `
+    <div class="lb-rank ${rankClass}" aria-label="Rang ${index + 1}">${rankSymbol}</div>
+    <div class="lb-avatar" aria-hidden="true">${user.avatar}</div>
+    <div class="lb-info">
+      <div class="lb-name">${user.name}</div>
+      <div class="lb-zone">📍 ${user.zone}</div>
+      <div class="badge-row">${badgesHtml}</div>
+    </div>
+    <div class="lb-score" aria-label="${user.count} signalements">
+      <div class="lb-count">${user.count}</div>
+      <div class="lb-unit">signalements</div>
+    </div>
+  `;
 
-    return div;
-  }
-
-  // ── LEADERBOARD ──────────────────────────────────────────
-
-  /**
-   * Rendu du leaderboard dans la sidebar.
-   * @param {Array} users
-   */
-  function renderLeaderboard(users) {
-    const container = document.getElementById('tab-leaderboard');
-    if (!container) return;
-    container.innerHTML = '';
-
-    if (!users || users.length === 0) {
-      container.innerHTML = `
-        <div class="empty-state">
-          <div class="empty-icon">🏆</div>
-          <div class="empty-text">Aucun contributeur pour l'instant.</div>
-        </div>`;
-      return;
-    }
-
-    users.forEach((user, i) => {
-      container.appendChild(_buildLeaderboardItem(user, i));
-    });
-  }
-
-  /**
-   * Construit un élément leaderboard.
-   * @param {object} user
-   * @param {number} index - 0-based
-   * @returns {HTMLElement}
-   */
-  function _buildLeaderboardItem(user, index) {
-    const div = document.createElement('div');
-    div.className = 'lb-item';
-
-    const rankClass  = Utils.getRankClass(index + 1);
-    const rankSymbol = Utils.getRankSymbol(index + 1);
-
-    const badgesHtml = (user.badges || []).slice(0, 2).map((badge, j) =>
-      `<span class="badge ${Utils.getBadgeClass(j)}">${badge}</span>`
-    ).join('');
-
-    div.innerHTML = `
-      <div class="lb-rank ${rankClass}">${rankSymbol}</div>
-      <div class="lb-avatar">${user.avatar}</div>
-      <div class="lb-info">
-        <div class="lb-name">${user.name}</div>
-        <div class="lb-zone">📍 ${user.zone}</div>
-        <div class="badge-row">${badgesHtml}</div>
-      </div>
-      <div class="lb-score">
-        <div class="lb-count">${user.count}</div>
-        <div class="lb-unit">signalements</div>
-      </div>
-    `;
-
-    return div;
-  }
-
-  // ── HELPERS ──────────────────────────────────────────────
-
-  function _setText(id, value) {
-    const el = document.getElementById(id);
-    if (el) el.textContent = value;
-  }
-
-  // ── PUBLIC API ───────────────────────────────────────────
-
-  return {
-    updateStats,
-    startTimer,
-    initTabs,
-    renderBusList,
-    renderLeaderboard,
-    selectBusCard,
-  };
-
-})();
+  return div;
+}

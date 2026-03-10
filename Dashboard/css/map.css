@@ -1,0 +1,198 @@
+/* ════════════════════════════════════════════════════════
+   map.css — Styles Leaflet + popups bus
+   ════════════════════════════════════════════════════════ */
+
+/* ── Container Leaflet ── */
+.leaflet-container {
+  background: #0d1829 !important;
+  font-family: var(--font-body) !important;
+}
+
+/* ── Popup wrapper ── */
+.leaflet-popup-content-wrapper {
+  background: var(--surface2) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  box-shadow: var(--shadow-lg) !important;
+  color: var(--text) !important;
+  font-family: var(--font-body) !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  width: auto !important;
+}
+
+.leaflet-popup-tip { background: var(--surface2) !important; }
+.leaflet-popup-close-button {
+  color: var(--muted) !important;
+  top: 8px !important;
+  right: 8px !important;
+  font-size: 18px !important;
+  width: 24px !important;
+  height: 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* ── Popup contenu compact ── */
+.popup-content {
+  padding: var(--space-md);
+  min-width: 200px;
+  max-width: 240px;
+}
+
+.popup-header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-sm);
+  margin-bottom: 6px;
+}
+
+.popup-ligne {
+  font-family: var(--font-head);
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--orange);
+  line-height: 1;
+}
+
+.popup-name {
+  font-size: 11px;
+  color: var(--muted);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popup-pos {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.popup-meta {
+  font-size: 11px;
+  color: var(--muted);
+  margin-bottom: var(--space-md);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.popup-age {
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.popup-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.popup-btn-details {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--surface3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.popup-btn-details:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+
+.popup-btn-confirm {
+  flex: 1;
+  padding: 7px 10px;
+  background: var(--green-dim);
+  border: 1px solid rgba(0, 214, 127, 0.3);
+  border-radius: var(--radius-md);
+  color: var(--green);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: center;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.popup-btn-confirm:hover {
+  background: rgba(0, 214, 127, 0.2);
+}
+
+.popup-btn-confirm.loading {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+/* ── Marker bus ── */
+.bus-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-family: var(--font-head);
+  font-weight: 800;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  transition: transform var(--transition-fast);
+}
+
+.bus-marker:hover {
+  transform: scale(1.1);
+}
+
+.bus-marker.pulse {
+  animation: markerPulse 1s ease-out 3;
+}
+
+/* ── Contrôles Leaflet ── */
+.leaflet-control-zoom {
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
+.leaflet-control-zoom a {
+  background: var(--surface2) !important;
+  color: var(--text) !important;
+  border-bottom-color: var(--border) !important;
+  width: 30px !important;
+  height: 30px !important;
+  line-height: 30px !important;
+  font-size: 16px !important;
+}
+
+.leaflet-control-zoom a:hover {
+  background: var(--surface3) !important;
+}
+
+.leaflet-attribution-flag { display: none !important; }
