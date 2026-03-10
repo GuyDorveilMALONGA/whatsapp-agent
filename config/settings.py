@@ -79,8 +79,7 @@ ALERTE_PROACTIVE_AVANT  = 15
 HISTORIQUE_MESSAGES      = 10
 
 # ── Sécurité ──────────────────────────────────────────────
-# FIX V7 : validation du phone, rate limiting
-PHONE_REGEX = re.compile(r"^\+\d{7,15}$")
+
 
 # Rate limiting : max messages par phone par minute
 RATE_LIMIT_PER_PHONE_PER_MIN = 10
