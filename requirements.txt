@@ -10,3 +10,4 @@ apscheduler==3.10.4
 # V2
 vecs==0.4.3
 rapidfuzz>=3.0.0
+rapidfuzz 
