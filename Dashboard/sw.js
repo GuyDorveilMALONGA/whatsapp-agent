@@ -7,7 +7,7 @@
  *   - Navigation      → index.html depuis cache
  */
 
-const CACHE_VERSION   = 'xetu-v1';
+const CACHE_VERSION   = 'xetu-v2';
 const CACHE_STATIC    = `${CACHE_VERSION}-static`;
 const CACHE_TILES     = `${CACHE_VERSION}-tiles`;
 const CACHE_API       = `${CACHE_VERSION}-api`;
