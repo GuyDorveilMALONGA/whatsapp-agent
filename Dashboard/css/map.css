@@ -4,8 +4,13 @@
 
 /* ── Container Leaflet ── */
 .leaflet-container {
-  background: #0d1829 !important;
+  background: #1a2332 !important;
   font-family: var(--font-body) !important;
+}
+
+/* Fallback si les tuiles ne chargent pas */
+.leaflet-tile-pane {
+  opacity: 1 !important;
 }
 
 /* ── Popup wrapper ── */

@@ -23,11 +23,27 @@ export function init(containerId, onBusSelect) {
     attributionControl: true,
   });
 
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  // Tuiles OSM (universel, marche partout)
+  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19,
+  });
+
+  // CartoCDN dark (si disponible)
+  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap © CARTO',
     subdomains: 'abcd',
     maxZoom: 19,
-  }).addTo(_map);
+  });
+
+  // Bascule sur OSM si CartoCDN échoue
+  cartoLayer.on('tileerror', () => {
+    if (_map.hasLayer(cartoLayer)) {
+      _map.removeLayer(cartoLayer);
+      osmLayer.addTo(_map);
+    }
+  });
+  cartoLayer.addTo(_map);
 
   // Abonnements store
   store.subscribe('buses', (buses) => {
