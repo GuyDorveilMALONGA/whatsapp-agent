@@ -465,17 +465,17 @@ async function _handleSubmit(e) {
     Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
 
+    // Ferme et vide le formulaire immédiatement
+    closeModal();
+
     // FIX : callback vers app.js pour recharger stats + carte
     if (_onReportSuccess) _onReportSuccess();
 
-    // Ferme après 1.2s — closeModal() reset le formulaire
-    setTimeout(closeModal, 1200);
-
   } catch (err) {
     _handlePostError(err, _elSubmitBtn, ligne, arret);
-    // FIX : réactiver le bouton en cas d'erreur (setSubmitting(false) dans finally)
   } finally {
-    _setSubmitting(false);
+    // Ne réactiver le bouton qu'en cas d'erreur (le succès ferme le modal via closeModal)
+    if (!_elModal.hidden) _setSubmitting(false);
   }
 }
 
