@@ -181,7 +181,7 @@ function _onSheetTouchMove(e) {
 
   e.preventDefault();
 
-  const maxTranslate = window.innerHeight - PEEK_HEIGHT; // ne jamais descendre sous le peek
+  const maxTranslate = _sheet.offsetHeight - PEEK_HEIGHT; // ne jamais descendre sous le peek
   const newTranslate = Math.min(maxTranslate, Math.max(0, _startTranslate + deltaY));
 
   if (_rafId) cancelAnimationFrame(_rafId);
@@ -196,12 +196,13 @@ function _onSheetTouchEnd() {
   if (_rafId) cancelAnimationFrame(_rafId);
 
   const currentTranslate = _getCurrentTranslate();
+  const sheetH           = _sheet.offsetHeight;
   const windowH          = window.innerHeight;
 
-  // Positions absolues des snaps (translateY depuis le bas)
-  const snapPeek = windowH - PEEK_HEIGHT;
-  const snapHalf = windowH - windowH * HALF_HEIGHT;
-  const snapFull = windowH - windowH * FULL_HEIGHT;
+  // Positions des snaps (translateY)
+  const snapPeek = sheetH - PEEK_HEIGHT;
+  const snapHalf = sheetH - windowH * HALF_HEIGHT;
+  const snapFull = sheetH - windowH * FULL_HEIGHT;
 
   let target;
 
@@ -234,16 +235,18 @@ function _snapTo(state, animate = true) {
   _currentState = state;
   store.set('mobileSheetState', state);
 
-  const windowH   = window.innerHeight;
+  const sheetH = _sheet.offsetHeight; // hauteur réelle du sheet (90dvh en px)
   let translateY;
 
   if (state === 'peek') {
-    translateY = windowH - PEEK_HEIGHT;
+    translateY = sheetH - PEEK_HEIGHT;          // montre seulement PEEK_HEIGHT px
   } else if (state === 'half') {
-    translateY = windowH - windowH * HALF_HEIGHT;
+    translateY = sheetH - window.innerHeight * HALF_HEIGHT;
   } else {
-    translateY = windowH - windowH * FULL_HEIGHT;
+    translateY = sheetH - window.innerHeight * FULL_HEIGHT;
   }
+
+  translateY = Math.max(0, translateY); // jamais négatif
 
   if (animate) {
     _sheet.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1)';

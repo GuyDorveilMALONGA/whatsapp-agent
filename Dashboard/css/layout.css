@@ -317,13 +317,12 @@ html, body {
   bottom: 0;
   left: 0;
   right: 0;
+  height: 90dvh;           /* hauteur fixe — translateY la déplace vers le bas */
   background: var(--surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   border-top: 1px solid var(--border);
   z-index: var(--z-sheet);
   will-change: transform;
-  /* PAS de transition ici — gérée par mobile.js */
-  max-height: 90dvh;
   flex-direction: column;
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.4);
 }
