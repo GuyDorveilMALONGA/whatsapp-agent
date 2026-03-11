@@ -92,7 +92,8 @@ export async function safeFetch(url, options = {}, retries = 3) {
 // ── TEXTE ─────────────────────────────────────────────────
 
 export function normalizeText(str) {
-  return str
+  if (str == null) return '';
+  return String(str)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')

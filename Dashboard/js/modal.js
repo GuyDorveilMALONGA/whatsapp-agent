@@ -17,7 +17,7 @@
 import * as store from './store.js';
 import { ARRETS_CONNUS, LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constants.js';
 import { normalizeText, safeFetch, generateUUID } from './utils.js';
-import * as Toast from './toast.js';
+import Toast from './toast.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
 let _onConfirmSuccess = null;
