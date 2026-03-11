@@ -4,16 +4,16 @@ Détection de langue SANS LLM.
 langdetect + liste de mots-clés wolof/pulaar pour les cas ratés.
 
 FIX V2.1 :
-  1. Nettoyage ponctuation : re.sub(r'[^\w\s]', ' ', text) avant split()
-     → "waaw!" / "dafa?" / "xam-xam" correctement isolés
-     → V2 ratait ces cas car la ponctuation restait collée au mot
+  1. Nettoyage ponctuation : re.sub(r'[^\\w\\s]', ' ', text) avant split()
+     -> "waaw!" / "dafa?" / "xam-xam" correctement isolés
+     -> V2 ratait ces cas car la ponctuation restait collée au mot
   2. WOLOF_STRONG complétée : "amul" et "nit" ajoutés
-     → couvre la liste exacte prévue dans la feuille de route
-     → "amul bus bi" → wolof (était raté en V2)
+     -> couvre la liste exacte prévue dans la feuille de route
+     -> "amul bus bi" -> wolof (était raté en V2)
 
 FIX V2 :
   Seuil wolof/pulaar abaissé à 1 mot fort.
-  "waaw" seul → wolof. "dafa" seul → wolof.
+  "waaw" seul -> wolof. "dafa" seul -> wolof.
   Liste de mots FORTS séparée de la liste générale.
 """
 import re
@@ -51,17 +51,17 @@ def detect_language(text: str) -> str:
     Retourne : 'fr', 'en', 'wolof', 'pulaar', 'unknown'
 
     Priorité :
-    1. 1 mot fort wolof → wolof
-    2. 2+ mots courants wolof → wolof
-    3. 1 mot fort pulaar → pulaar
-    4. 2+ mots courants pulaar → pulaar
+    1. 1 mot fort wolof -> wolof
+    2. 2+ mots courants wolof -> wolof
+    3. 1 mot fort pulaar -> pulaar
+    4. 2+ mots courants pulaar -> pulaar
     5. langdetect fallback
     """
     if not text or len(text.strip()) < 2:
         return "unknown"
 
     # FIX V2.1 : nettoyage ponctuation avant split
-    # "waaw!" → {"waaw"}, "xam-xam" → {"xam", "xam"}
+    # "waaw!" -> {"waaw"}, "xam-xam" -> {"xam", "xam"}
     clean_text = re.sub(r'[^\w\s]', ' ', text)
     words = set(clean_text.lower().split())
 

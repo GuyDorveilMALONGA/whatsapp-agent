@@ -1,0 +1,22 @@
+[deploy]
+healthcheckPath = "/health"
+
+[[deploy.responseHeaders]]
+path = "/api/*"
+name = "Access-Control-Allow-Origin"
+value = "https://xetudashbord.pages.dev"
+
+[[deploy.responseHeaders]]
+path = "/api/*"
+name = "Access-Control-Allow-Methods"
+value = "GET, POST, OPTIONS"
+
+[[deploy.responseHeaders]]
+path = "/api/*"
+name = "Access-Control-Allow-Headers"
+value = "*"
+
+[[deploy.responseHeaders]]
+path = "/api/*"
+name = "Vary"
+value = "Origin"
