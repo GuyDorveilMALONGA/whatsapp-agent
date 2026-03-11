@@ -1,8 +1,20 @@
 """
-agent/llm_brain.py — V6.0
+agent/llm_brain.py — V6.1
 Deux responsabilités strictement séparées :
 1. classify_intent() — LLM classifier (niveau 3 du router)
 2. generate_response() — NLG (réponse finale)
+
+MIGRATIONS V6.1 depuis V6.0 :
+  - FIX CRITIQUE : Initialisation lazy des clients LLM.
+    Avant : _groq_client et genai.configure() s'exécutaient à l'import
+    du module → si GROQ_API_KEY ou GEMINI_API_KEY est None/absente dans
+    Railway, le module entier crashait silencieusement à l'import.
+    router.py faisait ensuite `from agent.llm_brain import classify_intent`
+    dans route_async() → ImportError → exception non catchée → message
+    "Une erreur s'est produite" dans le widget web.
+    Solution : les clients sont créés à la première utilisation via
+    _get_groq_client() et _get_gemini_model(), avec un message d'erreur
+    clair si la clé est absente.
 
 MIGRATIONS V6.0 depuis V5.5 :
   - FIX L2 : Timeout sur TOUS les appels LLM (Groq + Gemini)
@@ -16,8 +28,6 @@ import logging
 import asyncio
 import time
 import re
-import google.generativeai as genai
-from groq import AsyncGroq
 
 from config.settings import (
     GROQ_API_KEY, GEMINI_API_KEY,
@@ -28,8 +38,43 @@ from config.settings import (
 
 logger = logging.getLogger(__name__)
 
-_groq_client = AsyncGroq(api_key=GROQ_API_KEY)
-genai.configure(api_key=GEMINI_API_KEY)
+# ── Clients LLM — initialisés lazily ─────────────────────
+# NE PAS créer les clients ici : si la clé est absente dans Railway,
+# le module crashe à l'import et toutes les requêtes échouent.
+
+_groq_client  = None
+_gemini_ready = False
+
+
+def _get_groq_client():
+    global _groq_client
+    if _groq_client is None:
+        if not GROQ_API_KEY:
+            raise RuntimeError(
+                "GROQ_API_KEY manquante — ajoute-la dans Railway → Variables"
+            )
+        from groq import AsyncGroq
+        _groq_client = AsyncGroq(api_key=GROQ_API_KEY)
+        logger.info("[LLM] Groq client initialisé")
+    return _groq_client
+
+
+def _get_gemini_model(system_instruction: str):
+    global _gemini_ready
+    if not GEMINI_API_KEY:
+        raise RuntimeError(
+            "GEMINI_API_KEY manquante — ajoute-la dans Railway → Variables"
+        )
+    if not _gemini_ready:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        _gemini_ready = True
+        logger.info("[LLM] Gemini configuré")
+    import google.generativeai as genai
+    return genai.GenerativeModel(GEMINI_MODEL, system_instruction=system_instruction)
+
+
+# ─────────────────────────────────────────────────────────
 
 _VALID_INTENTS = {
     "abandon",
@@ -38,7 +83,6 @@ _VALID_INTENTS = {
     "out_of_scope", "alternatives_itineraire",
 }
 
-# Prompt classifier inchangé (déjà solide)
 _CLASSIFY_SYSTEM = """Tu es l'intelligence NLP centrale de Xëtu, l'assistant transport Dem Dikk de Dakar.
 
 RÉSEAU DEM DIKK (SEULES CES LIGNES EXISTENT) :
@@ -116,19 +160,16 @@ def _safe_parse_json(content: str) -> dict | None:
     FIX L3 : Parse JSON de manière défensive.
     Gère : markdown backticks, texte autour, JSON mal formé.
     """
-    # Étape 1 : strip markdown
     cleaned = content.strip()
     cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
     cleaned = re.sub(r"\s*```$", "", cleaned)
     cleaned = cleaned.strip()
 
-    # Étape 2 : essai direct
     try:
         return json.loads(cleaned)
     except json.JSONDecodeError:
         pass
 
-    # Étape 3 : chercher le premier { ... } dans le texte
     match = re.search(r"\{.*\}", cleaned, re.DOTALL)
     if match:
         try:
@@ -146,7 +187,6 @@ async def classify_intent(
     messages = [{"role": "system", "content": _CLASSIFY_SYSTEM}]
 
     if history:
-        # FIX L4 : 5 messages au lieu de 3
         recent = history[-5:]
         ctx    = "\n".join([f"{m['role']}: {m['content']}" for m in recent])
         messages.append({
@@ -159,9 +199,9 @@ async def classify_intent(
     start_time = time.monotonic()
 
     try:
-        # FIX L2 : timeout
+        client = _get_groq_client()
         response = await asyncio.wait_for(
-            _groq_client.chat.completions.create(
+            client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=messages,
                 max_tokens=300,
@@ -173,7 +213,6 @@ async def classify_intent(
         elapsed = time.monotonic() - start_time
         content = response.choices[0].message.content.strip()
 
-        # FIX L3 : parsing défensif
         data = _safe_parse_json(content)
         if not data:
             logger.warning(f"[LLM Classify] JSON invalide après {elapsed:.1f}s: {content[:100]}")
@@ -199,7 +238,7 @@ async def classify_intent(
         return None
     except Exception as e:
         elapsed = time.monotonic() - start_time
-        logger.error(f"[LLM Classify] Erreur après {elapsed:.1f}s: {e}")
+        logger.error(f"[LLM Classify] Erreur après {elapsed:.1f}s: {type(e).__name__}: {e}")
         return None
 
 
@@ -267,9 +306,9 @@ Rédige la réponse finale. 1 à 3 phrases MAX. Naturel et direct."""
 async def _call_groq(prompt: str, langue: str) -> str:
     start_time = time.monotonic()
     try:
-        # FIX L2 : timeout
+        client   = _get_groq_client()
         response = await asyncio.wait_for(
-            _groq_client.chat.completions.create(
+            client.chat.completions.create(
                 model=GROQ_MODEL,
                 messages=[{"role": "user", "content": prompt}],
                 max_tokens=200,
@@ -284,19 +323,14 @@ async def _call_groq(prompt: str, langue: str) -> str:
         logger.error(f"[Groq] TIMEOUT après {LLM_TIMEOUT_SECONDS}s")
         return _get_fallback_message(langue)
     except Exception as e:
-        logger.error(f"[Groq] Erreur generate: {e}")
+        logger.error(f"[Groq] Erreur generate: {type(e).__name__}: {e}")
         return _get_fallback_message(langue)
 
 
 async def _call_gemini(prompt: str, langue: str) -> str:
     start_time = time.monotonic()
     try:
-        # FIX L7 : system_instruction séparé pour Gemini
-        model = genai.GenerativeModel(
-            GEMINI_MODEL,
-            system_instruction=SETU_SOUL,
-        )
-        # FIX L2 : timeout
+        model    = _get_gemini_model(SETU_SOUL)
         response = await asyncio.wait_for(
             model.generate_content_async(prompt),
             timeout=LLM_TIMEOUT_SECONDS
@@ -311,7 +345,7 @@ async def _call_gemini(prompt: str, langue: str) -> str:
         logger.error(f"[Gemini] TIMEOUT après {LLM_TIMEOUT_SECONDS}s")
         return _get_fallback_message(langue)
     except Exception as e:
-        logger.error(f"[Gemini] Erreur generate: {e}")
+        logger.error(f"[Gemini] Erreur generate: {type(e).__name__}: {e}")
         return _get_fallback_message(langue)
 
 
