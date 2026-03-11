@@ -2,7 +2,6 @@
  * js/map.js
  * Gestion carte Leaflet — markers, popups compacts, interactions.
  * Dépend de : store.js, utils.js, constants.js
- * NE touche PAS à la sidebar, au chat, ni à l'API.
  */
 
 import * as store from './store.js';
@@ -12,6 +11,40 @@ import { LIGNE_NAMES, WA_NUMBER } from './constants.js';
 let _map = null;
 let _markers = {};
 let _onBusSelect = null;
+
+// Fournisseurs de tuiles par ordre de priorité
+const TILE_PROVIDERS = [
+  {
+    url: 'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
+    opts: { attribution: '© Stadia Maps © OpenMapTiles © OpenStreetMap', maxZoom: 20 },
+  },
+  {
+    url: 'https://{s}.tile.openstreetmap.fr/osmfr/{z}/{x}/{y}.png',
+    opts: { attribution: '© OpenStreetMap France', maxZoom: 20, subdomains: 'abc' },
+  },
+  {
+    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    opts: { attribution: '© OpenStreetMap contributors', maxZoom: 19 },
+  },
+];
+
+let _tileLayer = null;
+
+function _loadTileProvider(index) {
+  if (index >= TILE_PROVIDERS.length) {
+    console.error('[Map] Aucun fournisseur de tuiles disponible.');
+    return;
+  }
+  if (_tileLayer) _map.removeLayer(_tileLayer);
+
+  const p = TILE_PROVIDERS[index];
+  _tileLayer = L.tileLayer(p.url, p.opts);
+  _tileLayer.on('tileerror', () => {
+    console.warn(`[Map] Fournisseur ${index} échoue, essai suivant...`);
+    _loadTileProvider(index + 1);
+  });
+  _tileLayer.addTo(_map);
+}
 
 export function init(containerId, onBusSelect) {
   _onBusSelect = onBusSelect;
@@ -23,36 +56,8 @@ export function init(containerId, onBusSelect) {
     attributionControl: true,
   });
 
-  // OSM par défaut — marche partout sans restriction
-  const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19,
-  });
+  _loadTileProvider(0);
 
-  osmLayer.addTo(_map);
-
-  // Tente CartoCDN dark en remplacement si ça marche
-  const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-    attribution: '© OpenStreetMap © CARTO',
-    subdomains: 'abcd',
-    maxZoom: 19,
-  });
-
-  // On essaie de charger une seule tuile CartoCDN pour tester
-  const testUrl = 'https://a.basemaps.cartocdn.com/dark_all/13/4040/3748.png';
-  const img = new Image();
-  img.onload = () => {
-    // CartoCDN accessible — on bascule sur le thème sombre
-    osmLayer.remove();
-    cartoLayer.addTo(_map);
-  };
-  img.onerror = () => {
-    // CartoCDN bloqué — on garde OSM, rien à faire
-    console.log('[Map] CartoCDN inaccessible, OSM actif.');
-  };
-  img.src = testUrl;
-
-  // Abonnements store
   store.subscribe('buses', (buses) => {
     const filtered = _applyFilter(buses, store.get('filteredLine'));
     _syncMarkers(filtered, store.get('selectedBus')?.id ?? null);
@@ -77,14 +82,12 @@ function _applyFilter(buses, line) {
 
 function _syncMarkers(buses, selectedId) {
   const newIds = new Set(buses.map(b => b.id));
-
   Object.keys(_markers).forEach(id => {
     if (!newIds.has(Number(id))) {
       _map.removeLayer(_markers[id]);
       delete _markers[id];
     }
   });
-
   buses.forEach(bus => {
     if (_markers[bus.id]) _map.removeLayer(_markers[bus.id]);
     _markers[bus.id] = _createMarker(bus, selectedId === bus.id);
