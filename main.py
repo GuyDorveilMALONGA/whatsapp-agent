@@ -18,6 +18,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, WebSocket
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
 from services.whatsapp import parse_incoming_message
@@ -84,6 +85,18 @@ app.add_middleware(
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Force CORS headers — Railway proxy écrase parfois Access-Control-Allow-Origin
+class ForceCORSMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        origin = request.headers.get("origin", "")
+        response = await call_next(request)
+        if origin in ALLOWED_ORIGINS:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+        return response
+
+app.add_middleware(ForceCORSMiddleware)
 
 
 # Handler OPTIONS explicite pour forcer les bons headers CORS
