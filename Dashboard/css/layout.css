@@ -434,4 +434,10 @@ html, body {
   .sidebar      { display: none; }
   .bottom-sheet { display: flex; }
   .main         { height: 100%; }
+
+  /* Stats bar compacte */
+  .stats-bar .stat-label { display: none; }
+  .stat-val  { font-size: 16px; }
+  .stat-item { padding: 6px 10px; }
+  .stat-icon { font-size: 16px; }
 }
