@@ -121,6 +121,12 @@ function _onTouchStart(e) {
 }
 
 function _onSheetTouchStart(e) {
+  // Ignorer les touches venant du chat ou des boutons interactifs
+  const tag = e.target.tagName;
+  if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'A') return;
+  const chatWindow = document.getElementById('chat-window');
+  if (chatWindow && chatWindow.contains(e.target)) return;
+
   _startDrag(e.touches[0].clientY);
 }
 
@@ -155,20 +161,22 @@ function _onSheetTouchMove(e) {
   // Déterminer si on doit drag ou scroller
   const scrollTop = _content?.scrollTop ?? 0;
 
-  if (_currentState === 'full') {
-    // Si contenu scrollé → laisser le scroll natif
-    if (scrollTop > 0 && deltaY > 0) {
-      // En train de scroller vers le haut du contenu → drag
-      // scrollTop > 0 et deltaY > 0 (glisse vers le bas) → pas encore au top
-      _isDragging = false;
-      return;
+  if (_currentState === 'full' || _currentState === 'half') {
+    const isInsideContent = _content && _content.contains(e.target);
+
+    if (isInsideContent) {
+      if (deltaY < 0) {
+        // Scroll vers le bas du contenu → jamais un drag
+        _isDragging = false;
+        return;
+      }
+      if (deltaY > 0 && scrollTop > 0) {
+        // Glisse vers le bas mais contenu pas encore en haut → scroll natif
+        _isDragging = false;
+        return;
+      }
+      // deltaY > 0 et scrollTop === 0 → drag vers le bas autorisé (fermer le sheet)
     }
-    if (scrollTop > 0 && deltaY < 0) {
-      // Scroll vers le bas (contenu) → pas de drag
-      _isDragging = false;
-      return;
-    }
-    // scrollTop === 0 → drag autorisé
   }
 
   e.preventDefault();
