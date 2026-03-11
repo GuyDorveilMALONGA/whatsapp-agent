@@ -17,7 +17,7 @@ import { getAgeClass, formatAge } from './utils.js';
 
 // ── Constantes ────────────────────────────────────────────
 
-const PEEK_HEIGHT  = 80;    // px — handle + résumé + bouton signaler
+const PEEK_HEIGHT  = 88;    // px — handle + résumé + bouton signaler
 const HALF_HEIGHT  = 0.45;  // % de la fenêtre
 const FULL_HEIGHT  = 0.90;  // % de la fenêtre
 
