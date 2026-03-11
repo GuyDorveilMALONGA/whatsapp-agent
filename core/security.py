@@ -1,14 +1,21 @@
 """
-core/security.py — V7.0 (NOUVEAU)
+core/security.py — V7.1
 Trois responsabilités :
   1. Vérification HMAC des webhooks Meta
   2. Validation du numéro de téléphone
   3. Rate limiting par phone + global
 
-Tous les modules de sécurité sont ici — zéro logique dans main.py.
+MIGRATIONS V7.1 depuis V7.0 :
+  - validate_phone() accepte les session_id web "web_uuid4"
+    Sans ce fix, le chat WebSocket du dashboard retournait
+    "Une erreur s'est produite" sur chaque message — le session_id
+    "web_uuid4..." ne passait pas la regex E.164 → crash silencieux
+    dans _process_message_safe. WhatsApp n'était pas affecté car
+    la validation se fait avant d'entrer dans le pipeline partagé.
 """
 import hashlib
 import hmac
+import re
 import time
 import logging
 from collections import defaultdict
@@ -21,6 +28,12 @@ from config.settings import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Format session_id web dashboard : "web_<uuid4>"
+_WEB_SESSION_RE = re.compile(
+    r"^web_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    re.IGNORECASE
+)
 
 
 # ══════════════════════════════════════════════════════════
@@ -64,11 +77,24 @@ def verify_webhook_signature(payload_bytes: bytes, signature_header: str | None)
 
 def validate_phone(phone: str | None) -> bool:
     """
-    Vérifie que le phone est au format E.164 : +XXXXXXXXXXXX
-    Entre 7 et 15 chiffres après le +.
+    Vérifie que l'identifiant est valide.
+
+    Accepte :
+      - Numéros E.164 WhatsApp/Telegram : +XXXXXXXXXXXX (7–15 chiffres)
+      - Session ID web dashboard : web_<uuid4>
+
+    FIX V7.1 : les sessions WebSocket ont le format "web_uuid4".
+    Sans ce fix, _process_message_safe crashait silencieusement
+    pour toutes les requêtes chat web.
     """
     if not phone:
         return False
+
+    # Sessions web dashboard — toujours valides
+    if _WEB_SESSION_RE.match(phone):
+        return True
+
+    # Numéros téléphone E.164
     return bool(PHONE_REGEX.match(phone))
 
 

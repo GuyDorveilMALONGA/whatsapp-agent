@@ -8,6 +8,8 @@
  * MODE SIGNALEMENT (depuis sidebar "Signaler") :
  *   → Modal complet : ligne (dropdown) + arrêt (autocomplete) + observation
  *
+ * FIX : closeModal() reset le formulaire + réactive le bouton submit
+ *
  * Dépend de : store.js, constants.js, utils.js, toast.js
  * RÈGLE : ne touche jamais map.js ou ui.js directement — passe par store ou callbacks.
  */
@@ -18,18 +20,18 @@ import { normalizeText, safeFetch, generateUUID } from './utils.js';
 import * as Toast from './toast.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
-let _onConfirmSuccess = null; // (busId) → pulseMarker + update stats
+let _onConfirmSuccess = null;
+let _onReportSuccess  = null;
 
 // ── Session ID (mémoire uniquement, jamais localStorage) ──
 const SESSION_ID = `web_${generateUUID()}`;
 
 // ── État interne du modal ─────────────────────────────────
-let _modal        = null;
 let _isSubmitting = false;
-let _focusTrigger = null; // élément qui a ouvert le modal → focus au close
+let _focusTrigger = null;
 let _autocompleteTimeout = null;
 
-// ── Éléments DOM (cachés après init) ─────────────────────
+// ── Éléments DOM ─────────────────────────────────────────
 let _elModal, _elOverlay, _elForm;
 let _elLigne, _elArret, _elObservation;
 let _elSuggestions, _elSubmitBtn, _elSubmitLabel;
@@ -41,6 +43,7 @@ let _elWaLink, _elTgLink;
 
 export function init(callbacks = {}) {
   _onConfirmSuccess = callbacks.onConfirmSuccess || null;
+  _onReportSuccess  = callbacks.onReportSuccess  || null;
   _buildDOM();
   _attachEvents();
 }
@@ -49,38 +52,28 @@ export function init(callbacks = {}) {
 // API PUBLIQUE
 // ═══════════════════════════════════════════════════════════
 
-/**
- * Confirmation rapide depuis le popup carte.
- * Aucun modal — POST direct + toast + pulse.
- *
- * @param {number} busId
- * @param {HTMLElement} triggerEl — bouton qui a déclenché (pour le désactiver)
- */
 export async function confirmBus(busId, triggerEl = null) {
-  const bus = store.get('buses').find(b => b.id === busId);
+  const bus = store.get('buses').find(b => String(b.id) === String(busId));
   if (!bus) {
     Toast.error('Bus introuvable. Actualise la carte.');
     return;
   }
 
   if (triggerEl) {
-    triggerEl.disabled  = true;
+    triggerEl.disabled    = true;
     triggerEl.textContent = '⏳';
   }
 
   try {
     await _postReport({
-      ligne:      bus.ligne,
-      arret:      bus.position,
+      ligne:       bus.ligne,
+      arret:       bus.position,
       observation: 'confirmation',
-      source:     'web_popup_confirm',
+      source:      'web_popup_confirm',
     });
 
     Toast.success(`✅ Bus ${bus.ligne} confirmé à ${bus.position} !`);
-
     if (_onConfirmSuccess) _onConfirmSuccess(busId);
-
-    // Incrémenter le compteur stats visuellement
     _bumpReportsCount();
 
   } catch (err) {
@@ -93,12 +86,6 @@ export async function confirmBus(busId, triggerEl = null) {
   }
 }
 
-/**
- * Ouvre le modal de signalement complet.
- *
- * @param {Object} prefill — { ligne?, arret? } pour pré-remplir
- * @param {HTMLElement} triggerEl — pour restaurer le focus à la fermeture
- */
 export function openModal(prefill = {}, triggerEl = null) {
   _focusTrigger = triggerEl;
   _resetForm();
@@ -111,25 +98,24 @@ export function openModal(prefill = {}, triggerEl = null) {
     _elArret.value = prefill.arret;
   }
 
-  _elModal.hidden = false;
+  _elModal.hidden   = false;
   _elOverlay.hidden = false;
   _elModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
 
-  // Focus sur le premier champ vide
   requestAnimationFrame(() => {
-    if (!_elLigne.value) {
-      _elLigne.focus();
-    } else if (!_elArret.value) {
-      _elArret.focus();
-    } else {
-      _elSubmitBtn.focus();
-    }
+    if (!_elLigne.value)       _elLigne.focus();
+    else if (!_elArret.value)  _elArret.focus();
+    else                       _elSubmitBtn.focus();
   });
 }
 
 export function closeModal() {
-  _elModal.hidden = true;
+  // FIX : reset immédiat à la fermeture — formulaire propre pour la prochaine ouverture
+  // et bouton "Envoyer" réactivé si on ferme pendant un envoi
+  _resetForm();
+
+  _elModal.hidden   = true;
   _elOverlay.hidden = true;
   _elModal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
@@ -146,15 +132,14 @@ export function closeModal() {
 // ═══════════════════════════════════════════════════════════
 
 function _buildDOM() {
-  // Overlay + conteneur
   _elOverlay = document.createElement('div');
   _elOverlay.className = 'modal-overlay';
   _elOverlay.setAttribute('aria-hidden', 'true');
   _elOverlay.hidden = true;
 
   _elModal = document.createElement('div');
-  _elModal.id               = 'report-modal';
-  _elModal.className        = 'modal';
+  _elModal.id        = 'report-modal';
+  _elModal.className = 'modal';
   _elModal.setAttribute('role', 'dialog');
   _elModal.setAttribute('aria-modal', 'true');
   _elModal.setAttribute('aria-labelledby', 'modal-title');
@@ -168,7 +153,6 @@ function _buildDOM() {
 
     <form class="modal-form" id="report-form" novalidate>
 
-      <!-- Ligne -->
       <div class="form-group">
         <label for="modal-ligne" class="form-label">
           Ligne <span class="required" aria-hidden="true">*</span>
@@ -181,7 +165,6 @@ function _buildDOM() {
         <span id="ligne-error" class="form-error" role="alert" aria-live="polite"></span>
       </div>
 
-      <!-- Arrêt avec autocomplete -->
       <div class="form-group">
         <label for="modal-arret" class="form-label">
           Arrêt <span class="required" aria-hidden="true">*</span>
@@ -206,7 +189,6 @@ function _buildDOM() {
         <span id="arret-error" class="form-error" role="alert" aria-live="polite"></span>
       </div>
 
-      <!-- Observation (optionnel) -->
       <div class="form-group">
         <label for="modal-observation" class="form-label">
           Observation <span class="form-optional">(optionnel)</span>
@@ -221,18 +203,16 @@ function _buildDOM() {
         </select>
       </div>
 
-      <!-- Honeypot (anti-bot) -->
+      <!-- Honeypot anti-bot -->
       <input type="text" name="website" tabindex="-1"
              aria-hidden="true" style="display:none" autocomplete="off" />
 
-      <!-- Submit -->
       <button type="submit" id="modal-submit" class="modal-submit-btn" aria-live="polite">
         <span id="modal-submit-label">📡 Envoyer le signalement</span>
       </button>
 
     </form>
 
-    <!-- Lien discret WA / TG -->
     <div class="modal-footer-links">
       <span class="modal-footer-text">Préférez WhatsApp ou Telegram ?</span>
       <a id="modal-wa-link" href="#" target="_blank" rel="noopener" class="modal-channel-link">
@@ -249,7 +229,6 @@ function _buildDOM() {
   document.body.appendChild(_elOverlay);
   document.body.appendChild(_elModal);
 
-  // Références DOM
   _elForm        = _elModal.querySelector('#report-form');
   _elLigne       = _elModal.querySelector('#modal-ligne');
   _elArret       = _elModal.querySelector('#modal-arret');
@@ -280,44 +259,24 @@ function _buildLigneOptions() {
 // ═══════════════════════════════════════════════════════════
 
 function _attachEvents() {
-  // Fermeture
   _elModal.querySelector('#modal-close-btn').addEventListener('click', closeModal);
   _elOverlay.addEventListener('click', closeModal);
-
-  // Escape + focus trap
   _elModal.addEventListener('keydown', _handleKeydown);
-
-  // Submit
   _elForm.addEventListener('submit', _handleSubmit);
 
-  // Autocomplete arrêt
-  _elArret.addEventListener('input', _handleArretInput);
+  _elArret.addEventListener('input',   _handleArretInput);
   _elArret.addEventListener('keydown', _handleArretKeydown);
-  _elArret.addEventListener('blur', () => {
-    // Léger délai pour laisser le clic sur suggestion se déclencher
-    setTimeout(_hideSuggestions, 150);
-  });
+  _elArret.addEventListener('blur', () => setTimeout(_hideSuggestions, 150));
 
-  // Mise à jour lien WA quand ligne ou arrêt change
-  _elLigne.addEventListener('change', () =>
-    _updateWaLink(_elLigne.value, _elArret.value)
-  );
-  _elArret.addEventListener('input', () =>
-    _updateWaLink(_elLigne.value, _elArret.value)
-  );
+  _elLigne.addEventListener('change', () => _updateWaLink(_elLigne.value, _elArret.value));
+  _elArret.addEventListener('input',  () => _updateWaLink(_elLigne.value, _elArret.value));
 
-  // Nettoyage erreurs à la saisie
   _elLigne.addEventListener('change', () => _clearError('ligne-error'));
   _elArret.addEventListener('input',  () => _clearError('arret-error'));
 }
 
-// ── Focus trap ────────────────────────────────────────────
-
 function _handleKeydown(e) {
-  if (e.key === 'Escape') {
-    closeModal();
-    return;
-  }
+  if (e.key === 'Escape') { closeModal(); return; }
   if (e.key !== 'Tab') return;
 
   const focusables = Array.from(
@@ -327,16 +286,13 @@ function _handleKeydown(e) {
   ).filter(el => !el.closest('[aria-hidden="true"]'));
 
   if (!focusables.length) return;
-
   const first = focusables[0];
   const last  = focusables[focusables.length - 1];
 
   if (e.shiftKey && document.activeElement === first) {
-    e.preventDefault();
-    last.focus();
+    e.preventDefault(); last.focus();
   } else if (!e.shiftKey && document.activeElement === last) {
-    e.preventDefault();
-    first.focus();
+    e.preventDefault(); first.focus();
   }
 }
 
@@ -349,13 +305,7 @@ let _activeSuggestionIndex = -1;
 function _handleArretInput() {
   clearTimeout(_autocompleteTimeout);
   const query = _elArret.value;
-
-  if (query.length < 2) {
-    _hideSuggestions();
-    return;
-  }
-
-  // Debounce 120ms
+  if (query.length < 2) { _hideSuggestions(); return; }
   _autocompleteTimeout = setTimeout(() => {
     const results = _searchArrets(query, _elLigne.value);
     _renderSuggestions(results);
@@ -364,7 +314,6 @@ function _handleArretInput() {
 
 function _handleArretKeydown(e) {
   if (_elSuggestions.hidden) return;
-
   const items = _elSuggestions.querySelectorAll('[role="option"]');
   if (!items.length) return;
 
@@ -394,24 +343,19 @@ function _highlightSuggestion(items) {
   }
 }
 
-/**
- * Recherche fuzzy dans ARRETS_CONNUS.
- * Priorité : 1. starts-with sur name, 2. includes sur name+aliases, 3. includes sur aliases.
- * Si une ligne est sélectionnée, on remonte les arrêts de cette ligne.
- */
 function _searchArrets(query, selectedLigne) {
   const q = normalizeText(query);
 
   const score = (arret) => {
-    const normalName    = normalizeText(arret.name);
-    const allTexts      = [normalName, ...arret.aliases.map(normalizeText)];
+    const normalName     = normalizeText(arret.name);
+    const allTexts       = [normalName, ...arret.aliases.map(normalizeText)];
     const onSelectedLine = selectedLigne && arret.lines.includes(selectedLigne);
 
     let s = 0;
-    if (normalName.startsWith(q))              s += 30;
-    else if (normalName.includes(q))           s += 20;
+    if (normalName.startsWith(q))               s += 30;
+    else if (normalName.includes(q))            s += 20;
     else if (allTexts.some(t => t.includes(q))) s += 10;
-    else return -1; // pas de match
+    else return -1;
 
     if (onSelectedLine) s += 5;
     return s;
@@ -429,18 +373,15 @@ function _renderSuggestions(results) {
   _activeSuggestionIndex = -1;
   _elArret.removeAttribute('aria-activedescendant');
 
-  if (!results.length) {
-    _hideSuggestions();
-    return;
-  }
+  if (!results.length) { _hideSuggestions(); return; }
 
   const query = normalizeText(_elArret.value);
 
   _elSuggestions.innerHTML = results.map((arret, i) => {
     const highlighted = _highlightMatch(arret.name, query);
-    const linesBadges = arret.lines.slice(0, 3).map(l =>
-      `<span class="suggestion-line-badge">${l}</span>`
-    ).join('');
+    const linesBadges = arret.lines.slice(0, 3)
+      .map(l => `<span class="suggestion-line-badge">${l}</span>`)
+      .join('');
     return `
       <li id="suggestion-${i}"
           role="option"
@@ -455,7 +396,7 @@ function _renderSuggestions(results) {
 
   _elSuggestions.querySelectorAll('[role="option"]').forEach(item => {
     item.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // évite le blur avant le click
+      e.preventDefault();
       _elArret.value = item.dataset.name;
       _hideSuggestions();
       _updateWaLink(_elLigne.value, _elArret.value);
@@ -470,7 +411,6 @@ function _highlightMatch(name, query) {
   const normalName = normalizeText(name);
   const idx = normalName.indexOf(query);
   if (idx === -1) return _escapeHtml(name);
-
   return (
     _escapeHtml(name.slice(0, idx)) +
     `<mark>${_escapeHtml(name.slice(idx, idx + query.length))}</mark>` +
@@ -491,19 +431,15 @@ function _hideSuggestions() {
 async function _handleSubmit(e) {
   e.preventDefault();
 
-  // Honeypot check
   const honeypot = _elForm.querySelector('input[name="website"]');
-  if (honeypot && honeypot.value) return; // bot détecté, silence
-
+  if (honeypot && honeypot.value) return;
   if (_isSubmitting) return;
 
-  const ligne      = _elLigne.value.trim();
-  const arret      = _elArret.value.trim();
+  const ligne       = _elLigne.value.trim();
+  const arret       = _elArret.value.trim();
   const observation = _elObservation.value;
 
-  // Validation
   let valid = true;
-
   if (!ligne || !LIGNES_CONNUES.has(ligne)) {
     _showError('ligne-error', 'Veuillez choisir une ligne valide.');
     _elLigne.focus();
@@ -514,7 +450,6 @@ async function _handleSubmit(e) {
     if (valid) _elArret.focus();
     valid = false;
   }
-
   if (!valid) return;
 
   _setSubmitting(true);
@@ -530,11 +465,15 @@ async function _handleSubmit(e) {
     Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
 
-    // Ferme le modal après 1.2s
+    // FIX : callback vers app.js pour recharger stats + carte
+    if (_onReportSuccess) _onReportSuccess();
+
+    // Ferme après 1.2s — closeModal() reset le formulaire
     setTimeout(closeModal, 1200);
 
   } catch (err) {
     _handlePostError(err, _elSubmitBtn, ligne, arret);
+    // FIX : réactiver le bouton en cas d'erreur (setSubmitting(false) dans finally)
   } finally {
     _setSubmitting(false);
   }
@@ -548,8 +487,8 @@ async function _postReport({ ligne, arret, observation, source }) {
   const payload = {
     ligne,
     arret,
-    source:    source || 'web_dashboard',
-    client_ts: new Date().toISOString(),
+    source:     source || 'web_dashboard',
+    client_ts:  new Date().toISOString(),
     session_id: SESSION_ID,
   };
   if (observation) payload.observation = observation;
@@ -571,19 +510,16 @@ function _handlePostError(err, retryBtn, ligne, arret) {
     Toast.error(`⏱️ Trop de signalements. Réessaie dans ${mins} min.`);
     return;
   }
-
   if (err.code === 'timeout') {
     Toast.error('⚡ Connexion lente. Réessaie dans un instant.', {
       retry: retryBtn ? () => retryBtn.click() : null,
     });
     return;
   }
-
-  // Après échec réseau → proposer WA/TG
   const waUrl = `https://wa.me/${_getWaNumber()}?text=${encodeURIComponent(`Bus ${ligne} à ${arret}`)}`;
   Toast.error('❌ Envoi échoué.', {
-    retry:       retryBtn ? () => retryBtn.click() : null,
-    fallbackUrl: waUrl,
+    retry:         retryBtn ? () => retryBtn.click() : null,
+    fallbackUrl:   waUrl,
     fallbackLabel: 'Signaler par WhatsApp',
   });
 }
@@ -611,9 +547,9 @@ function _clearError(id) {
 }
 
 function _resetForm() {
-  _elForm.reset();
+  if (_elForm) _elForm.reset();
   _hideSuggestions();
-  _isSubmitting = false;
+  _isSubmitting         = false;
   _elSubmitBtn.disabled = false;
   _elSubmitLabel.textContent = '📡 Envoyer le signalement';
   document.querySelectorAll('.form-error').forEach(el => {
@@ -624,28 +560,20 @@ function _resetForm() {
 }
 
 function _updateWaLink(ligne, arret) {
-  const msg = ligne && arret
-    ? `Bus ${ligne} à ${arret}`
-    : ligne
-      ? `Bus ${ligne}`
-      : 'Signalement bus';
-
-  const wa = _getWaNumber();
-  _elWaLink.href = `https://wa.me/${wa}?text=${encodeURIComponent(msg)}`;
+  const msg = ligne && arret ? `Bus ${ligne} à ${arret}`
+            : ligne          ? `Bus ${ligne}`
+            :                  'Signalement bus';
+  _elWaLink.href = `https://wa.me/${_getWaNumber()}?text=${encodeURIComponent(msg)}`;
 }
 
 function _getWaNumber() {
-  // Import dynamique évité — on lit depuis constants si dispo
-  try {
-    return window.__XETU_WA_NUMBER__ || '221XXXXXXXXX';
-  } catch {
-    return '221XXXXXXXXX';
-  }
+  try { return window.__XETU_WA_NUMBER__ || '221XXXXXXXXX'; }
+  catch { return '221XXXXXXXXX'; }
 }
 
 function _bumpReportsCount() {
-  const stats = store.get('stats');
-  const current = parseInt(stats.reportsToday, 10) || 0;
+  const stats   = store.get('stats');
+  const current = parseInt(stats?.reportsToday, 10) || 0;
   store.set('stats', { ...stats, reportsToday: current + 1 });
 }
 
