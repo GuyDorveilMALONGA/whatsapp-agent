@@ -23,27 +23,34 @@ export function init(containerId, onBusSelect) {
     attributionControl: true,
   });
 
-  // Tuiles OSM (universel, marche partout)
+  // OSM par défaut — marche partout sans restriction
   const osmLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors',
     maxZoom: 19,
   });
 
-  // CartoCDN dark (si disponible)
+  osmLayer.addTo(_map);
+
+  // Tente CartoCDN dark en remplacement si ça marche
   const cartoLayer = L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
     attribution: '© OpenStreetMap © CARTO',
     subdomains: 'abcd',
     maxZoom: 19,
   });
 
-  // Bascule sur OSM si CartoCDN échoue
-  cartoLayer.on('tileerror', () => {
-    if (_map.hasLayer(cartoLayer)) {
-      _map.removeLayer(cartoLayer);
-      osmLayer.addTo(_map);
-    }
-  });
-  cartoLayer.addTo(_map);
+  // On essaie de charger une seule tuile CartoCDN pour tester
+  const testUrl = 'https://a.basemaps.cartocdn.com/dark_all/13/4040/3748.png';
+  const img = new Image();
+  img.onload = () => {
+    // CartoCDN accessible — on bascule sur le thème sombre
+    osmLayer.remove();
+    cartoLayer.addTo(_map);
+  };
+  img.onerror = () => {
+    // CartoCDN bloqué — on garde OSM, rien à faire
+    console.log('[Map] CartoCDN inaccessible, OSM actif.');
+  };
+  img.src = testUrl;
 
   // Abonnements store
   store.subscribe('buses', (buses) => {
@@ -58,7 +65,6 @@ export function init(containerId, onBusSelect) {
 
   store.subscribe('selectedBus', (bus) => {
     if (bus) flyToBus(bus);
-    // Re-render markers pour refléter la sélection
     const filtered = _applyFilter(store.get('buses'), store.get('filteredLine'));
     _syncMarkers(filtered, bus?.id ?? null);
   });
@@ -72,7 +78,6 @@ function _applyFilter(buses, line) {
 function _syncMarkers(buses, selectedId) {
   const newIds = new Set(buses.map(b => b.id));
 
-  // Supprimer les markers obsolètes
   Object.keys(_markers).forEach(id => {
     if (!newIds.has(Number(id))) {
       _map.removeLayer(_markers[id]);
@@ -80,7 +85,6 @@ function _syncMarkers(buses, selectedId) {
     }
   });
 
-  // Ajouter / mettre à jour
   buses.forEach(bus => {
     if (_markers[bus.id]) _map.removeLayer(_markers[bus.id]);
     _markers[bus.id] = _createMarker(bus, selectedId === bus.id);
@@ -117,10 +121,6 @@ function _createMarker(bus, isSelected) {
   return marker;
 }
 
-/**
- * Popup compact : 3 lignes max + 2 actions.
- * RÈGLE : Popup = résumé. Détails = panel.
- */
 function _buildPopupHtml(bus) {
   const ageShort = formatAgeShort(bus.minutes_ago);
   const ageClass = getAgeClass(bus.minutes_ago);
@@ -163,7 +163,6 @@ export function pulseMarker(busId) {
   const el = marker.getElement()?.querySelector('.bus-marker');
   if (el) {
     el.classList.remove('pulse');
-    // Force reflow pour relancer l'animation
     void el.offsetWidth;
     el.classList.add('pulse');
     setTimeout(() => el.classList.remove('pulse'), 3000);
