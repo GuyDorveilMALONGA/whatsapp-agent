@@ -7,6 +7,11 @@ Algorithme Dead Reckoning dakarois :
   2. Calcule la position estimée selon le temps écoulé
   3. Détecte si le bus est au terminus
   4. Attribue un score de confiance (vert/jaune/rouge)
+
+FIXES V2 :
+  - FIX B1 : arret_signale utilise "position" (pas "arret_nom" inexistant)
+  - FIX B2 : ligne utilise "ligne" (pas "ligne_id" inexistant)
+  - FIX B3 : timestamp utilise "timestamp" en priorité (pas "created_at")
 """
 
 import json
@@ -127,7 +132,6 @@ async def get_buses():
     Retourne la liste des bus actifs avec leur position estimée.
     """
     try:
-        # Récupère tous les signalements actifs (toutes lignes)
         all_sigs = queries.get_all_signalements_actifs()
     except Exception as e:
         logger.error(f"[/api/buses] Erreur Supabase: {e}")
@@ -143,32 +147,36 @@ async def get_buses():
         pass
 
     buses = []
-    # On garde le signalement le plus récent par ligne
     seen_lignes: dict[str, dict] = {}
+
     for sig in all_sigs:
-        ligne = sig.get("ligne_id") or sig.get("ligne")
+        # FIX B2 : colonne "ligne" (pas "ligne_id")
+        ligne = sig.get("ligne")
         if not ligne:
             continue
         if ligne not in seen_lignes:
             seen_lignes[ligne] = sig
         else:
-            # Garder le plus récent
-            existing_min = _minutes_depuis(seen_lignes[ligne].get("created_at", ""))
-            current_min  = _minutes_depuis(sig.get("created_at", ""))
-            if current_min < existing_min:
+            # Garder le plus récent — FIX B3 : "timestamp" en priorité
+            t_existing = seen_lignes[ligne].get("timestamp") or seen_lignes[ligne].get("created_at", "")
+            t_current  = sig.get("timestamp") or sig.get("created_at", "")
+            if _minutes_depuis(t_current) < _minutes_depuis(t_existing):
                 seen_lignes[ligne] = sig
 
     for ligne, sig in seen_lignes.items():
         stops = _LINES_INDEX.get(ligne)
         if not stops:
+            logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau GPS")
             continue
 
-        arret_signale    = sig.get("arret_nom") or sig.get("position", "")
-        created_at       = sig.get("created_at", "")
-        minutes_ecoules  = _minutes_depuis(created_at)
-        intervalle       = network_memory.get(ligne, INTERVALLE_DEFAUT_MIN)
+        # FIX B1 : colonne "position" (pas "arret_nom")
+        arret_signale   = sig.get("position", "")
+        # FIX B3 : colonne "timestamp" en priorité
+        created_at      = sig.get("timestamp") or sig.get("created_at", "")
+        minutes_ecoules = _minutes_depuis(created_at)
+        intervalle      = network_memory.get(ligne, INTERVALLE_DEFAUT_MIN)
 
-        pos = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
+        pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
         conf = _confiance(minutes_ecoules)
 
         # Temps avant redépart si au terminus
@@ -177,18 +185,19 @@ async def get_buses():
             repart_dans = max(0, int(intervalle - (minutes_ecoules % intervalle)))
 
         buses.append({
-            "ligne":                    ligne,
-            "arret_signale":            arret_signale,
-            "arret_estime":             pos["nom"],
-            "lat":                      pos["lat"],
-            "lon":                      pos["lon"],
-            "au_terminus":              pos["au_terminus"],
-            "repart_dans_min":          repart_dans,
+            "ligne":                      ligne,
+            "arret_signale":              arret_signale,
+            "arret_estime":               pos["nom"],
+            "lat":                        pos["lat"],
+            "lon":                        pos["lon"],
+            "au_terminus":                pos["au_terminus"],
+            "repart_dans_min":            repart_dans,
             "minutes_depuis_signalement": round(minutes_ecoules, 1),
-            "confiance":                conf,
-            "signale_par":              sig.get("phone", "")[-4:],  # 4 derniers chiffres
+            "confiance":                  conf,
+            "signale_par":                sig.get("phone", "")[-4:],
         })
 
+    logger.info(f"[/api/buses] {len(buses)} bus actifs retournés")
     return {
         "buses":     buses,
         "total":     len(buses),
