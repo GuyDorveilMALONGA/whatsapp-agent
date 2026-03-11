@@ -111,14 +111,14 @@ function _initPWA() {
       .then(reg => {
         console.log('[PWA] Service Worker enregistré :', reg.scope);
 
-        // Mise à jour silencieuse dès qu'un nouveau SW est prêt
+        // Mise à jour disponible → proposer à l'utilisateur
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (!newWorker) return;
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // Un nouveau SW est disponible — on l'active sans déranger l'utilisateur
-              newWorker.postMessage({ type: 'SKIP_WAITING' });
+              // Nouvelle version prête — afficher un bandeau de mise à jour
+              _showUpdateBanner(newWorker);
             }
           });
         });
@@ -160,7 +160,59 @@ function _initPWA() {
   });
 }
 
-// ── CHAT + WEBSOCKET ──────────────────────────────────────
+// ── MISE À JOUR PWA ───────────────────────────────────────
+
+function _showUpdateBanner(newWorker) {
+  // Éviter les doublons
+  if (document.getElementById('update-banner')) return;
+
+  const banner = document.createElement('div');
+  banner.id = 'update-banner';
+  banner.style.cssText = `
+    position: fixed;
+    bottom: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1e293b;
+    border: 1px solid #ff6b35;
+    color: #fff;
+    padding: 12px 20px;
+    border-radius: 12px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    z-index: 9999;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+    max-width: calc(100vw - 32px);
+    white-space: nowrap;
+  `;
+  banner.innerHTML = `
+    <span>🔄 Nouvelle version disponible</span>
+    <button style="
+      background: #ff6b35;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+    ">Mettre à jour</button>
+  `;
+
+  banner.querySelector('button').addEventListener('click', () => {
+    newWorker.postMessage({ type: 'SKIP_WAITING' });
+    banner.remove();
+  });
+
+  document.body.appendChild(banner);
+
+  // Auto-disparaît après 30s si ignoré
+  setTimeout(() => banner.remove(), 30_000);
+}
+
+
 
 function _initChat() {
   Chat.init({
