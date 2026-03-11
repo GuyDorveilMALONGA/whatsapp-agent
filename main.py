@@ -1,6 +1,12 @@
 """
-main.py — V7.6
+main.py — V7.6.1
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
+
+MIGRATIONS V7.6.1 depuis V7.6 :
+  - DEBUG LOGS dans _process_message_safe pour diagnostiquer
+    l'erreur générique affichée dans le widget web.
+    Chaque étape du pipeline est loggée → Railway logs montreront
+    exactement où ça plante (route_async, LLM, Supabase, etc.)
 
 MIGRATIONS V7.6 depuis V7.5 :
   - PHASE 3 DASHBOARD : Endpoint WebSocket /ws/{session_id}
@@ -61,9 +67,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.6 démarré — WebSocket /ws/{session_id}")
+    logger.info("🚌 Xëtu V7.6.1 démarré — WebSocket /ws/{session_id}")
     yield
-    logger.info("🚌 Xëtu V7.6 arrêté proprement")
+    logger.info("🚌 Xëtu V7.6.1 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -135,7 +141,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.6", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "7.6.1", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -375,40 +381,65 @@ async def _process_message_safe(
     background_tasks: BackgroundTasks,
     send_fn,
 ):
+    _is_web = phone.startswith("web_")
+    _tag    = f"[Pipeline]{'[WS]' if _is_web else ''}"
+
     try:
+        logger.info(f"{_tag} START — id={phone[:24]!r} text={text[:60]!r}")
+
+        # ── Validation longueur ──────────────────────────────
         error_msg = _check_message(text)
         if error_msg:
             await send_fn(phone, error_msg)
             return
 
+        # ── Normalisation ────────────────────────────────────
         normalized = normalize(text)
-        session    = get_context(phone)
+        logger.info(f"{_tag} normalize OK → {normalized[:60]!r}")
 
+        # ── Session ──────────────────────────────────────────
+        session = get_context(phone)
+        logger.info(f"{_tag} get_context OK → etat={session.etat!r}")
+
+        # ── Contact + Conversation (pre-route) ───────────────
         _contact_pre = queries.get_or_create_contact(phone, "fr")
-        _conv_pre    = queries.get_or_create_conversation(_contact_pre["id"])
-        history      = queries.get_recent_messages(_conv_pre["id"])
+        logger.info(f"{_tag} contact_pre OK → id={_contact_pre['id']}")
 
+        _conv_pre = queries.get_or_create_conversation(_contact_pre["id"])
+        logger.info(f"{_tag} conversation_pre OK → id={_conv_pre['id']}")
+
+        history = queries.get_recent_messages(_conv_pre["id"])
+        logger.info(f"{_tag} history OK → {len(history)} messages")
+
+        # ── Routage LLM ──────────────────────────────────────
+        logger.info(f"{_tag} route_async START…")
         route_result = await route_async(
             normalized,
             history=history,
             session_context=session,
         )
-        langue = route_result.lang or detect_language(text)
+        logger.info(
+            f"{_tag} route_async OK → intent={route_result.intent!r} "
+            f"lang={route_result.lang!r} source={getattr(route_result, 'source', '?')!r}"
+        )
 
+        langue = route_result.lang or detect_language(text)
         est_auteur_signalement = getattr(route_result, "is_signalement_fort", False)
 
+        # ── Contact final (langue détectée) ──────────────────
         contact      = queries.get_or_create_contact(phone, langue)
         conversation = queries.get_or_create_conversation(contact["id"])
         conv_id      = conversation["id"]
         if contact["id"] != _contact_pre["id"]:
             history = queries.get_recent_messages(conv_id)
 
+        # ── Message de bienvenue (1ère fois) ─────────────────
         if not history:
             await send_fn(phone, WELCOME_MESSAGE)
 
         queries.save_message(conv_id, "user", text, langue, route_result.intent)
 
-        # PRIORITÉ 1 : ABANDON
+        # ── PRIORITÉ 1 : ABANDON ─────────────────────────────
         if route_result.intent == "abandon" or is_abandon(text):
             reset_context(phone)
             response = _reponse_abandon(langue)
@@ -416,7 +447,7 @@ async def _process_message_safe(
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # PRIORITÉ 2 : SESSION ACTIVE
+        # ── PRIORITÉ 2 : SESSION ACTIVE ──────────────────────
         if session.etat:
             response = await _handle_session_active(
                 phone=phone, text=text, langue=langue,
@@ -429,7 +460,7 @@ async def _process_message_safe(
                 queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
                 return
 
-        # PRIORITÉ 3 : MESSAGE HYBRIDE
+        # ── PRIORITÉ 3 : MESSAGE HYBRIDE ─────────────────────
         if (
             route_result.intent != "signalement"
             and _detecter_signalement_dans_message(route_result.entities)
@@ -440,7 +471,7 @@ async def _process_message_safe(
                 langue=langue, background_tasks=background_tasks,
             )
 
-        # PRIORITÉ 3b : SIGNALEMENT DOUBLE LIGNE
+        # ── PRIORITÉ 3b : SIGNALEMENT DOUBLE LIGNE ───────────
         if route_result.intent == "signalement":
             lignes = _detecter_multi_ligne(route_result.entities)
             if len(lignes) > 1:
@@ -456,12 +487,14 @@ async def _process_message_safe(
                     await _proposer_abonnement_si_nouveau(phone, lignes[0], langue, send_fn)
                 return
 
-        # PRIORITÉ 4 : DISPATCH NORMAL
+        # ── PRIORITÉ 4 : DISPATCH NORMAL ─────────────────────
+        logger.info(f"{_tag} dispatch START → intent={route_result.intent!r}")
         response = await _dispatch(
             text=text, intent=route_result.intent, contact=contact,
             langue=langue, conv_id=conv_id, history=history,
             entities=route_result.entities, background_tasks=background_tasks,
         )
+        logger.info(f"{_tag} dispatch OK → réponse {len(response)} chars")
 
         await send_fn(phone, response)
         queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
@@ -486,8 +519,10 @@ async def _process_message_safe(
             ),
         )
 
+        logger.info(f"{_tag} END OK")
+
     except Exception as e:
-        logger.error(f"Erreur pipeline [{phone}]: {e}", exc_info=True)
+        logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}", exc_info=True)
         await send_fn(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
 
