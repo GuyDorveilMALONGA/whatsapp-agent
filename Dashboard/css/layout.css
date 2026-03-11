@@ -435,21 +435,12 @@ html, body {
   .sidebar      { display: none; }
   .bottom-sheet { display: flex; }
 
-  /* Carte plein écran comme Yango — stats et filtres cachés */
-  .stats-bar   { display: none; }
-  .filter-bar  { display: none; }
+  /* Stats bar compacte */
+  .stats-bar .stat-label { display: none; }
+  .stat-val  { font-size: 16px; }
+  .stat-item { padding: 6px 10px; }
+  .stat-icon { font-size: 16px; }
 
-  /* Header compact */
-  #app-header {
-    height: 48px;
-    padding: 0 var(--space-md);
-  }
-  .logo-sub       { display: none; }
-  .logo-text      { font-size: 17px; }
-  .logo-icon      { width: 30px; height: 30px; font-size: 15px; }
-  .live-badge     { font-size: 11px; padding: 4px 10px; }
-  .refresh-timer  { font-size: 11px; }
-
-  /* La carte prend tout l'espace sous le header */
+  /* Carte prend toute la hauteur disponible */
   .main { height: 100%; }
 }

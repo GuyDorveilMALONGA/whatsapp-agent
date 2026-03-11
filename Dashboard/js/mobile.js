@@ -181,7 +181,8 @@ function _onSheetTouchMove(e) {
 
   e.preventDefault();
 
-  const newTranslate = Math.max(0, _startTranslate + deltaY);
+  const maxTranslate = window.innerHeight - PEEK_HEIGHT; // ne jamais descendre sous le peek
+  const newTranslate = Math.min(maxTranslate, Math.max(0, _startTranslate + deltaY));
 
   if (_rafId) cancelAnimationFrame(_rafId);
   _rafId = requestAnimationFrame(() => {
@@ -206,10 +207,8 @@ function _onSheetTouchEnd() {
 
   // Snap par vélocité
   if (_velocity > VELOCITY_THRESHOLD) {
-    // Glisse vers le bas → état inférieur
-    target = _currentState === 'full' ? 'half'
-           : _currentState === 'half' ? 'peek'
-           : 'peek';
+    // Glisse vers le bas → minimum peek (jamais complètement caché)
+    target = _currentState === 'full' ? 'half' : 'peek';
   } else if (_velocity < -VELOCITY_THRESHOLD) {
     // Glisse vers le haut → état supérieur
     target = _currentState === 'peek' ? 'half'

@@ -263,8 +263,10 @@ function _initChat() {
     Chat.setStatus(status);
   });
 
-  // Ouvrir le chat automatiquement après 1s
-  setTimeout(() => Chat.open(), 1000);
+  // Ouvrir le chat automatiquement sur desktop uniquement
+  if (window.innerWidth > 768) {
+    setTimeout(() => Chat.open(), 1000);
+  }
 }
 
 // ── CHARGEMENT ────────────────────────────────────────────
