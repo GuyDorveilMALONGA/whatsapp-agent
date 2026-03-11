@@ -256,6 +256,14 @@ function _snapTo(state, animate = true) {
     _sheet.style.transform = `translateY(${translateY}px)`;
   });
 
+  // Mettre à jour la position du FAB signaler
+  const fab = document.getElementById('btn-signaler-mobile');
+  if (fab) {
+    fab.classList.remove('fab-signaler--sheet-half', 'fab-signaler--sheet-full');
+    if (state === 'half') fab.classList.add('fab-signaler--sheet-half');
+    if (state === 'full') fab.classList.add('fab-signaler--sheet-full');
+  }
+
   // Scroll interne : remettre à 0 si on ferme
   if (state === 'peek' && _content) {
     _content.scrollTop = 0;
@@ -271,12 +279,19 @@ function _attachKeyboardEvents() {
   if (!window.visualViewport) return;
 
   window.visualViewport.addEventListener('resize', () => {
+    // Si le chat est ouvert, il gère le clavier lui-même → ne pas toucher le sheet
+    const chatWin = document.getElementById('chat-window');
+    if (chatWin && chatWin.classList.contains('chat-window--open')) return;
+
     const vvHeight = window.visualViewport.height;
     const windowH  = window.innerHeight;
 
     if (vvHeight < windowH * 0.85) {
       // Clavier ouvert → passer en full pour que l'input reste visible
       _snapTo('full');
+    } else {
+      // Clavier fermé → revenir à half si on était en full à cause du clavier
+      if (_currentState === 'full') _snapTo('half');
     }
   });
 }

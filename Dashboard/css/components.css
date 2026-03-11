@@ -661,6 +661,68 @@
 }
 
 /* ════════════════════════════════════════════════════════
+   FAB SIGNALER MOBILE — toujours visible, action principale
+   ════════════════════════════════════════════════════════ */
+
+.fab-signaler {
+  display: none; /* desktop : caché, le btn sidebar suffit */
+}
+
+@media (max-width: 768px) {
+  .fab-signaler {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    position: fixed;
+    bottom: calc(var(--sheet-peek) + 16px);
+    right: 16px;
+    height: 52px;
+    padding: 0 20px 0 16px;
+    border: none;
+    border-radius: 26px;
+    background: var(--orange);
+    color: white;
+    font-family: var(--font-body);
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+    z-index: calc(var(--z-sheet) + 10); /* au-dessus du sheet */
+    box-shadow: 0 4px 20px rgba(255, 107, 53, 0.5);
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1),
+                box-shadow 0.2s ease,
+                bottom 0.3s cubic-bezier(0.34, 1.2, 0.64, 1);
+    will-change: transform;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .fab-signaler:active {
+    transform: scale(0.95);
+  }
+
+  .fab-signaler__icon {
+    font-size: 18px;
+    line-height: 1;
+  }
+
+  .fab-signaler__label {
+    letter-spacing: 0.01em;
+  }
+
+  /* S'écarte quand le sheet monte en half ou full */
+  .fab-signaler--sheet-half {
+    bottom: calc(45vh + 16px);
+  }
+
+  .fab-signaler--sheet-full {
+    bottom: calc(90vh + 16px);
+    /* Se cache complètement quand sheet est full */
+    transform: scale(0) translateY(20px);
+    opacity: 0;
+    pointer-events: none;
+  }
+}
+
+/* ════════════════════════════════════════════════════════
    CHAT — FAB, fenêtre, bulles, typing, suggestions
    ════════════════════════════════════════════════════════ */
 
