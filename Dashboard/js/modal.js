@@ -1,6 +1,15 @@
 /**
  * js/modal.js
  * Modal de signalement — deux modes : confirmation rapide + signalement complet.
+ *
+ * MODE CONFIRMATION (depuis popup "Confirmer") :
+ *   → POST direct, pas de modal, toast + pulseMarker
+ *
+ * MODE SIGNALEMENT (depuis sidebar "Signaler") :
+ *   → Modal complet : ligne (dropdown) + arrêt (autocomplete) + observation
+ *
+ * Dépend de : store.js, constants.js, utils.js, toast.js
+ * RÈGLE : ne touche jamais map.js ou ui.js directement — passe par store ou callbacks.
  */
 
 import * as store from './store.js';
@@ -8,25 +17,47 @@ import { ARRETS_CONNUS, LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constant
 import { normalizeText, safeFetch, generateUUID } from './utils.js';
 import * as Toast from './toast.js';
 
-let _onConfirmSuccess = null;
+// ── Callbacks injectés depuis app.js ──────────────────────
+let _onConfirmSuccess = null; // (busId) → pulseMarker + update stats
+let _onReportSuccess  = null; // () → recharger la carte après signalement
+
+// ── Session ID (mémoire uniquement, jamais localStorage) ──
 const SESSION_ID = `web_${generateUUID()}`;
 
+// ── État interne du modal ─────────────────────────────────
 let _modal        = null;
 let _isSubmitting = false;
-let _focusTrigger = null;
+let _focusTrigger = null; // élément qui a ouvert le modal → focus au close
 let _autocompleteTimeout = null;
 
+// ── Éléments DOM (cachés après init) ─────────────────────
 let _elModal, _elOverlay, _elForm;
 let _elLigne, _elArret, _elObservation;
 let _elSuggestions, _elSubmitBtn, _elSubmitLabel;
 let _elWaLink, _elTgLink;
 
+// ═══════════════════════════════════════════════════════════
+// INIT
+// ═══════════════════════════════════════════════════════════
+
 export function init(callbacks = {}) {
   _onConfirmSuccess = callbacks.onConfirmSuccess || null;
+  _onReportSuccess  = callbacks.onReportSuccess  || null;
   _buildDOM();
   _attachEvents();
 }
 
+// ═══════════════════════════════════════════════════════════
+// API PUBLIQUE
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Confirmation rapide depuis le popup carte.
+ * Aucun modal — POST direct + toast + pulse.
+ *
+ * @param {number} busId
+ * @param {HTMLElement} triggerEl — bouton qui a déclenché (pour le désactiver)
+ */
 export async function confirmBus(busId, triggerEl = null) {
   const bus = store.get('buses').find(b => b.id === busId);
   if (!bus) {
@@ -48,7 +79,10 @@ export async function confirmBus(busId, triggerEl = null) {
     });
 
     Toast.success(`✅ Bus ${bus.ligne} confirmé à ${bus.position} !`);
+
     if (_onConfirmSuccess) _onConfirmSuccess(busId);
+
+    // Incrémenter le compteur stats visuellement
     _bumpReportsCount();
 
   } catch (err) {
@@ -61,6 +95,12 @@ export async function confirmBus(busId, triggerEl = null) {
   }
 }
 
+/**
+ * Ouvre le modal de signalement complet.
+ *
+ * @param {Object} prefill — { ligne?, arret? } pour pré-remplir
+ * @param {HTMLElement} triggerEl — pour restaurer le focus à la fermeture
+ */
 export function openModal(prefill = {}, triggerEl = null) {
   _focusTrigger = triggerEl;
   _resetForm();
@@ -73,12 +113,11 @@ export function openModal(prefill = {}, triggerEl = null) {
     _elArret.value = prefill.arret;
   }
 
-  // Afficher overlay ET modal
-  _elOverlay.style.display = 'block';
   _elModal.hidden = false;
   _elModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
 
+  // Focus sur le premier champ vide
   requestAnimationFrame(() => {
     if (!_elLigne.value) {
       _elLigne.focus();
@@ -91,8 +130,6 @@ export function openModal(prefill = {}, triggerEl = null) {
 }
 
 export function closeModal() {
-  // Cacher overlay ET modal
-  _elOverlay.style.display = 'none';
   _elModal.hidden = true;
   _elModal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
@@ -104,11 +141,15 @@ export function closeModal() {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// CONSTRUCTION DU DOM
+// ═══════════════════════════════════════════════════════════
+
 function _buildDOM() {
+  // Overlay + conteneur
   _elOverlay = document.createElement('div');
   _elOverlay.className = 'modal-overlay';
   _elOverlay.setAttribute('aria-hidden', 'true');
-  _elOverlay.style.display = 'none'; // CACHÉ par défaut
 
   _elModal = document.createElement('div');
   _elModal.id               = 'report-modal';
@@ -126,6 +167,7 @@ function _buildDOM() {
 
     <form class="modal-form" id="report-form" novalidate>
 
+      <!-- Ligne -->
       <div class="form-group">
         <label for="modal-ligne" class="form-label">
           Ligne <span class="required" aria-hidden="true">*</span>
@@ -138,6 +180,7 @@ function _buildDOM() {
         <span id="ligne-error" class="form-error" role="alert" aria-live="polite"></span>
       </div>
 
+      <!-- Arrêt avec autocomplete -->
       <div class="form-group">
         <label for="modal-arret" class="form-label">
           Arrêt <span class="required" aria-hidden="true">*</span>
@@ -162,6 +205,7 @@ function _buildDOM() {
         <span id="arret-error" class="form-error" role="alert" aria-live="polite"></span>
       </div>
 
+      <!-- Observation (optionnel) -->
       <div class="form-group">
         <label for="modal-observation" class="form-label">
           Observation <span class="form-optional">(optionnel)</span>
@@ -176,15 +220,18 @@ function _buildDOM() {
         </select>
       </div>
 
+      <!-- Honeypot (anti-bot) -->
       <input type="text" name="website" tabindex="-1"
              aria-hidden="true" style="display:none" autocomplete="off" />
 
+      <!-- Submit -->
       <button type="submit" id="modal-submit" class="modal-submit-btn" aria-live="polite">
         <span id="modal-submit-label">📡 Envoyer le signalement</span>
       </button>
 
     </form>
 
+    <!-- Lien discret WA / TG -->
     <div class="modal-footer-links">
       <span class="modal-footer-text">Préférez WhatsApp ou Telegram ?</span>
       <a id="modal-wa-link" href="#" target="_blank" rel="noopener" class="modal-channel-link">
@@ -201,6 +248,7 @@ function _buildDOM() {
   document.body.appendChild(_elOverlay);
   document.body.appendChild(_elModal);
 
+  // Références DOM
   _elForm        = _elModal.querySelector('#report-form');
   _elLigne       = _elModal.querySelector('#modal-ligne');
   _elArret       = _elModal.querySelector('#modal-arret');
@@ -226,25 +274,43 @@ function _buildLigneOptions() {
     .join('');
 }
 
+// ═══════════════════════════════════════════════════════════
+// EVENTS
+// ═══════════════════════════════════════════════════════════
+
 function _attachEvents() {
+  // Fermeture
   _elModal.querySelector('#modal-close-btn').addEventListener('click', closeModal);
   _elOverlay.addEventListener('click', closeModal);
+
+  // Escape + focus trap
   _elModal.addEventListener('keydown', _handleKeydown);
+
+  // Submit
   _elForm.addEventListener('submit', _handleSubmit);
+
+  // Autocomplete arrêt
   _elArret.addEventListener('input', _handleArretInput);
   _elArret.addEventListener('keydown', _handleArretKeydown);
   _elArret.addEventListener('blur', () => {
+    // Léger délai pour laisser le clic sur suggestion se déclencher
     setTimeout(_hideSuggestions, 150);
   });
+
+  // Mise à jour lien WA quand ligne ou arrêt change
   _elLigne.addEventListener('change', () =>
     _updateWaLink(_elLigne.value, _elArret.value)
   );
   _elArret.addEventListener('input', () =>
     _updateWaLink(_elLigne.value, _elArret.value)
   );
+
+  // Nettoyage erreurs à la saisie
   _elLigne.addEventListener('change', () => _clearError('ligne-error'));
   _elArret.addEventListener('input',  () => _clearError('arret-error'));
 }
+
+// ── Focus trap ────────────────────────────────────────────
 
 function _handleKeydown(e) {
   if (e.key === 'Escape') {
@@ -273,6 +339,10 @@ function _handleKeydown(e) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// AUTOCOMPLETE ARRÊTS
+// ═══════════════════════════════════════════════════════════
+
 let _activeSuggestionIndex = -1;
 
 function _handleArretInput() {
@@ -284,6 +354,7 @@ function _handleArretInput() {
     return;
   }
 
+  // Debounce 120ms
   _autocompleteTimeout = setTimeout(() => {
     const results = _searchArrets(query, _elLigne.value);
     _renderSuggestions(results);
@@ -322,6 +393,11 @@ function _highlightSuggestion(items) {
   }
 }
 
+/**
+ * Recherche fuzzy dans ARRETS_CONNUS.
+ * Priorité : 1. starts-with sur name, 2. includes sur name+aliases, 3. includes sur aliases.
+ * Si une ligne est sélectionnée, on remonte les arrêts de cette ligne.
+ */
 function _searchArrets(query, selectedLigne) {
   const q = normalizeText(query);
 
@@ -334,7 +410,7 @@ function _searchArrets(query, selectedLigne) {
     if (normalName.startsWith(q))              s += 30;
     else if (normalName.includes(q))           s += 20;
     else if (allTexts.some(t => t.includes(q))) s += 10;
-    else return -1;
+    else return -1; // pas de match
 
     if (onSelectedLine) s += 5;
     return s;
@@ -378,7 +454,7 @@ function _renderSuggestions(results) {
 
   _elSuggestions.querySelectorAll('[role="option"]').forEach(item => {
     item.addEventListener('mousedown', (e) => {
-      e.preventDefault();
+      e.preventDefault(); // évite le blur avant le click
       _elArret.value = item.dataset.name;
       _hideSuggestions();
       _updateWaLink(_elLigne.value, _elArret.value);
@@ -407,11 +483,16 @@ function _hideSuggestions() {
   _activeSuggestionIndex = -1;
 }
 
+// ═══════════════════════════════════════════════════════════
+// SOUMISSION
+// ═══════════════════════════════════════════════════════════
+
 async function _handleSubmit(e) {
   e.preventDefault();
 
+  // Honeypot check
   const honeypot = _elForm.querySelector('input[name="website"]');
-  if (honeypot && honeypot.value) return;
+  if (honeypot && honeypot.value) return; // bot détecté, silence
 
   if (_isSubmitting) return;
 
@@ -419,6 +500,7 @@ async function _handleSubmit(e) {
   const arret      = _elArret.value.trim();
   const observation = _elObservation.value;
 
+  // Validation
   let valid = true;
 
   if (!ligne || !LIGNES_CONNUES.has(ligne)) {
@@ -446,6 +528,9 @@ async function _handleSubmit(e) {
 
     Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
+    _onReportSuccess?.();
+
+    // Ferme le modal après 1.2s
     setTimeout(closeModal, 1200);
 
   } catch (err) {
@@ -454,6 +539,10 @@ async function _handleSubmit(e) {
     _setSubmitting(false);
   }
 }
+
+// ═══════════════════════════════════════════════════════════
+// POST /api/report
+// ═══════════════════════════════════════════════════════════
 
 async function _postReport({ ligne, arret, observation, source }) {
   const payload = {
@@ -472,6 +561,10 @@ async function _postReport({ ligne, arret, observation, source }) {
   });
 }
 
+// ═══════════════════════════════════════════════════════════
+// GESTION ERREURS
+// ═══════════════════════════════════════════════════════════
+
 function _handlePostError(err, retryBtn, ligne, arret) {
   if (err.code === 'rate_limited') {
     const mins = Math.ceil((err.retryAfter || 120) / 60);
@@ -486,6 +579,7 @@ function _handlePostError(err, retryBtn, ligne, arret) {
     return;
   }
 
+  // Après échec réseau → proposer WA/TG
   const waUrl = `https://wa.me/${_getWaNumber()}?text=${encodeURIComponent(`Bus ${ligne} à ${arret}`)}`;
   Toast.error('❌ Envoi échoué.', {
     retry:       retryBtn ? () => retryBtn.click() : null,
@@ -493,6 +587,10 @@ function _handlePostError(err, retryBtn, ligne, arret) {
     fallbackLabel: 'Signaler par WhatsApp',
   });
 }
+
+// ═══════════════════════════════════════════════════════════
+// HELPERS UI
+// ═══════════════════════════════════════════════════════════
 
 function _setSubmitting(state) {
   _isSubmitting         = state;
@@ -537,6 +635,7 @@ function _updateWaLink(ligne, arret) {
 }
 
 function _getWaNumber() {
+  // Import dynamique évité — on lit depuis constants si dispo
   try {
     return window.__XETU_WA_NUMBER__ || '221XXXXXXXXX';
   } catch {

@@ -12,6 +12,8 @@
  *  7. fetchAll initial
  *  8. polling 30s
  *  9. Service Worker + PWA install prompt
+ *
+ * FIX : onReportSuccess → _loadAndRender() après signalement modal
  */
 
 import * as store      from './store.js';
@@ -55,6 +57,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       MapManager.pulseMarker(busId);
       _bumpReportsCount();
     },
+    // FIX : recharge la carte + stats après chaque signalement réussi
+    onReportSuccess: () => _loadAndRender(),
   });
 
   // 5. Callbacks globaux pour popups Leaflet
@@ -95,7 +99,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 12. Shortcut manifest (?action=report)
   const action = new URLSearchParams(window.location.search).get('action');
   if (action === 'report') {
-    // Attendre que le DOM soit prêt avant d'ouvrir le modal
     setTimeout(() => Modal.openModal({}, document.getElementById('btn-signaler')), 300);
   }
 });
@@ -212,7 +215,7 @@ function _showUpdateBanner(newWorker) {
   setTimeout(() => banner.remove(), 30_000);
 }
 
-
+// ── CHAT + WEBSOCKET ──────────────────────────────────────
 
 function _initChat() {
   Chat.init({

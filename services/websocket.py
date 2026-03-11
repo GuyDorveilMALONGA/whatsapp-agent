@@ -1,32 +1,15 @@
 """
-services/websocket.py — V1.0
-WebSocket handler pour le dashboard Xëtu.
+services/websocket.py — V1.1
+FIX B-WS : AsyncBackgroundTasks pour compatibilité WebSocket
 
-PROTOCOLE JSON structuré :
-
-  Client → Serveur :
-    { "type": "chat",   "text": "Bus 15 ?" }
-    { "type": "report", "ligne": "15", "arret": "Liberté 5", "observation": "bondé" }
-    { "type": "ping" }
-
-  Serveur → Client :
-    { "type": "chat_response", "text": "Le bus 15 est à..." }
-    { "type": "bus_update",    "buses": [...] }
-    { "type": "report_ack",    "success": true, "id": "rpt_xxx" }
-    { "type": "error",         "message": "..." }
-    { "type": "pong" }
-    { "type": "welcome",       "text": "Salam ! Je suis Xëtu..." }
-
-ARCHITECTURE :
-  Même Core Xëtu que WhatsApp et Telegram.
-  Le session_id web_xxx est utilisé comme "phone" dans Supabase.
-  Les messages WS passent par _process_message_safe() de main.py.
-
-SÉCURITÉ :
-  - session_id validé (format web_uuid4)
-  - Rate limit 30 msg / session / heure (partagé avec api/report.py)
-  - Messages vides ou trop longs rejetés
-  - Timeout ping/pong : 60s sans message → déconnexion
+MIGRATIONS V1.1 depuis V1.0 :
+  - AsyncBackgroundTasks remplace BackgroundTasks dans handle_websocket
+    Les coroutines async (notify_abonnes, etc.) sont planifiées via
+    asyncio.create_task() au lieu d'être empilées pour exécution HTTP.
+    Sans ce fix, background_tasks.add_task(notify_abonnes, ...) ne
+    s'exécutait jamais côté WS → exception silencieuse → "error" envoyé
+    au client web → "Une erreur s'est produite" affiché dans le chat.
+    WhatsApp n'était pas affecté car son endpoint est HTTP normal.
 """
 
 import json
@@ -36,6 +19,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
+from starlette.background import BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
@@ -64,14 +48,38 @@ _QUICK_SUGGESTIONS = [
 
 
 # ═══════════════════════════════════════════════════════════
+# FIX B-WS : BackgroundTasks compatible WebSocket
+# ═══════════════════════════════════════════════════════════
+
+class AsyncBackgroundTasks(BackgroundTasks):
+    """
+    BackgroundTasks compatible avec les endpoints WebSocket FastAPI.
+
+    Problème : BackgroundTasks standard est lié au cycle de vie d'une
+    requête HTTP. Dans un endpoint WebSocket, les tâches empilées via
+    add_task() ne s'exécutent jamais — FastAPI ne les déclenche pas
+    car il n'y a pas de réponse HTTP à compléter.
+
+    Solution : pour les coroutines async, on utilise asyncio.create_task()
+    qui les planifie immédiatement dans la boucle en cours.
+    Les fonctions sync gardent le comportement standard (rare dans Xëtu).
+    """
+    def add_task(self, func, *args, **kwargs):
+        if asyncio.iscoroutinefunction(func):
+            asyncio.create_task(func(*args, **kwargs))
+        else:
+            super().add_task(func, *args, **kwargs)
+
+
+# ═══════════════════════════════════════════════════════════
 # HANDLER PRINCIPAL
 # ═══════════════════════════════════════════════════════════
 
 async def handle_websocket(
     websocket: WebSocket,
     session_id: str,
-    process_fn,       # callable → _process_message_safe de main.py
-    background_tasks, # BackgroundTasks FastAPI
+    process_fn,            # callable → _process_message_safe de main.py
+    background_tasks=None, # ignoré — on crée toujours un AsyncBackgroundTasks
 ):
     """
     Gère une connexion WebSocket complète.
@@ -80,8 +88,11 @@ async def handle_websocket(
         websocket:        connexion FastAPI WebSocket
         session_id:       identifiant de session (ex: "web_uuid4")
         process_fn:       coroutine partagée avec WA/TG pour traiter les messages
-        background_tasks: BackgroundTasks FastAPI (pour notify_abonnes etc.)
+        background_tasks: ignoré — remplacé par AsyncBackgroundTasks en interne
     """
+    # FIX B-WS : toujours utiliser AsyncBackgroundTasks, jamais le paramètre HTTP
+    background_tasks = AsyncBackgroundTasks()
+
     # Validation du session_id
     if not _SESSION_ID_RE.match(session_id):
         await websocket.accept()
@@ -204,7 +215,7 @@ async def _handle_report(
     websocket: WebSocket,
     msg: dict,
     session_id: str,
-    background_tasks,
+    background_tasks: AsyncBackgroundTasks,
 ):
     """
     Signalement rapide depuis le chat WS.
@@ -213,8 +224,8 @@ async def _handle_report(
     from config.settings import VALID_LINES
     from db import queries
 
-    ligne      = str(msg.get("ligne", "")).strip().upper()
-    arret      = str(msg.get("arret", "")).strip()
+    ligne       = str(msg.get("ligne", "")).strip().upper()
+    arret       = str(msg.get("arret", "")).strip()
     observation = str(msg.get("observation", "")).strip() or None
 
     # Validation
@@ -252,7 +263,6 @@ async def _handle_report(
 
         if observation:
             try:
-                import skills.signalement as skill_signalement
                 queries.enrichir_signalement(
                     ligne=ligne, arret=arret,
                     qualite=observation, phone=session_id
@@ -260,7 +270,7 @@ async def _handle_report(
             except Exception as e:
                 logger.warning(f"[WS] Enrichissement échoué: {e}")
 
-        # Notifier les abonnés
+        # Notifier les abonnés — FIX B-WS : asyncio.create_task via AsyncBackgroundTasks
         import skills.signalement as skill_signalement
         background_tasks.add_task(
             skill_signalement.notify_abonnes, ligne, arret, session_id

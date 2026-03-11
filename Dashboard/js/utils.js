@@ -74,7 +74,9 @@ export async function safeFetch(url, options = {}, retries = 3) {
         throw { code: 'rate_limited', message: 'Trop de requêtes', retryAfter: data.retry_after };
       }
       if (!res.ok) throw { code: `http_${res.status}`, message: `Erreur serveur (${res.status})`, status: res.status };
-      return await res.json();
+      // FIX : certains endpoints retournent 200 avec body vide ou non-JSON
+      const text = await res.text();
+      return text ? JSON.parse(text) : { status: 'ok' };
     } catch (err) {
       clearTimeout(timer);
       const isLast = attempt === retries - 1;
