@@ -17,8 +17,7 @@
 import * as store from './store.js';
 import { ARRETS_CONNUS, LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constants.js';
 import { normalizeText, safeFetch, generateUUID } from './utils.js';
-import * as _ToastModule from './toast.js';
-const Toast = _ToastModule.default || _ToastModule;
+import * as Toast from './toast.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
 let _onConfirmSuccess = null;
@@ -56,7 +55,7 @@ export function init(callbacks = {}) {
 export async function confirmBus(busId, triggerEl = null) {
   const bus = store.get('buses').find(b => String(b.id) === String(busId));
   if (!bus) {
-    Toast.error('Bus introuvable. Actualise la carte.');
+    Toast.default.error('Bus introuvable. Actualise la carte.');
     return;
   }
 
@@ -73,7 +72,7 @@ export async function confirmBus(busId, triggerEl = null) {
       source:      'web_popup_confirm',
     });
 
-    Toast.success(`✅ Bus ${bus.ligne} confirmé à ${bus.position} !`);
+    Toast.default.success(`✅ Bus ${bus.ligne} confirmé à ${bus.position} !`);
     if (_onConfirmSuccess) _onConfirmSuccess(busId);
     _bumpReportsCount();
 
@@ -463,7 +462,7 @@ async function _handleSubmit(e) {
       source: 'web_dashboard',
     });
 
-    Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
+    Toast.default.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
 
     // Ferme et vide le formulaire immédiatement
@@ -508,17 +507,17 @@ async function _postReport({ ligne, arret, observation, source }) {
 function _handlePostError(err, retryBtn, ligne, arret) {
   if (err.code === 'rate_limited') {
     const mins = Math.ceil((err.retryAfter || 120) / 60);
-    Toast.error(`⏱️ Trop de signalements. Réessaie dans ${mins} min.`);
+    Toast.default.error(`⏱️ Trop de signalements. Réessaie dans ${mins} min.`);
     return;
   }
   if (err.code === 'timeout') {
-    Toast.error('⚡ Connexion lente. Réessaie dans un instant.', {
+    Toast.default.error('⚡ Connexion lente. Réessaie dans un instant.', {
       retry: retryBtn ? () => retryBtn.click() : null,
     });
     return;
   }
   const waUrl = `https://wa.me/${_getWaNumber()}?text=${encodeURIComponent(`Bus ${ligne} à ${arret}`)}`;
-  Toast.error('❌ Envoi échoué.', {
+  Toast.default.error('❌ Envoi échoué.', {
     retry:         retryBtn ? () => retryBtn.click() : null,
     fallbackUrl:   waUrl,
     fallbackLabel: 'Signaler par WhatsApp',
