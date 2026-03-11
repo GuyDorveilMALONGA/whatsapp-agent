@@ -19,7 +19,6 @@ import * as Toast from './toast.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
 let _onConfirmSuccess = null; // (busId) → pulseMarker + update stats
-let _onReportSuccess  = null; // () → recharger la carte après signalement
 
 // ── Session ID (mémoire uniquement, jamais localStorage) ──
 const SESSION_ID = `web_${generateUUID()}`;
@@ -42,7 +41,6 @@ let _elWaLink, _elTgLink;
 
 export function init(callbacks = {}) {
   _onConfirmSuccess = callbacks.onConfirmSuccess || null;
-  _onReportSuccess  = callbacks.onReportSuccess  || null;
   _buildDOM();
   _attachEvents();
 }
@@ -114,6 +112,7 @@ export function openModal(prefill = {}, triggerEl = null) {
   }
 
   _elModal.hidden = false;
+  _elOverlay.hidden = false;
   _elModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
 
@@ -131,6 +130,7 @@ export function openModal(prefill = {}, triggerEl = null) {
 
 export function closeModal() {
   _elModal.hidden = true;
+  _elOverlay.hidden = true;
   _elModal.setAttribute('aria-hidden', 'true');
   document.body.style.overflow = '';
   _hideSuggestions();
@@ -150,6 +150,7 @@ function _buildDOM() {
   _elOverlay = document.createElement('div');
   _elOverlay.className = 'modal-overlay';
   _elOverlay.setAttribute('aria-hidden', 'true');
+  _elOverlay.hidden = true;
 
   _elModal = document.createElement('div');
   _elModal.id               = 'report-modal';
@@ -528,7 +529,6 @@ async function _handleSubmit(e) {
 
     Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
-    _onReportSuccess?.();
 
     // Ferme le modal après 1.2s
     setTimeout(closeModal, 1200);
