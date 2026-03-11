@@ -661,54 +661,6 @@
 }
 
 /* ════════════════════════════════════════════════════════
-   FAB SIGNALER MOBILE — toujours visible, action principale
-   ════════════════════════════════════════════════════════ */
-
-.fab-signaler {
-  display: none; /* desktop : caché, le btn sidebar suffit */
-}
-
-@media (max-width: 768px) {
-  .fab-signaler {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: fixed;
-    bottom: calc(var(--sheet-peek) + 16px); /* valeur par défaut, JS la met à jour */
-    right: 16px;
-    height: 52px;
-    padding: 0 20px 0 16px;
-    border: none;
-    border-radius: 26px;
-    background: var(--orange);
-    color: white;
-    font-family: var(--font-body);
-    font-size: 15px;
-    font-weight: 700;
-    cursor: pointer;
-    z-index: calc(var(--z-sheet) + 10);
-    box-shadow: 0 4px 20px rgba(255, 107, 53, 0.5);
-    transition: bottom 0.3s cubic-bezier(0.34, 1.2, 0.64, 1),
-                transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
-    will-change: bottom, transform;
-    -webkit-tap-highlight-color: transparent;
-  }
-
-  .fab-signaler:active {
-    transform: scale(0.95);
-  }
-
-  .fab-signaler__icon {
-    font-size: 18px;
-    line-height: 1;
-  }
-
-  .fab-signaler__label {
-    letter-spacing: 0.01em;
-  }
-}
-
-/* ════════════════════════════════════════════════════════
    CHAT — FAB, fenêtre, bulles, typing, suggestions
    ════════════════════════════════════════════════════════ */
 

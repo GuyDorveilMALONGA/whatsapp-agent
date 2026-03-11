@@ -262,6 +262,9 @@ function _initChat() {
   store.subscribe('wsStatus', (status) => {
     Chat.setStatus(status);
   });
+
+  // Ouvrir le chat automatiquement après 1s
+  setTimeout(() => Chat.open(), 1000);
 }
 
 // ── CHARGEMENT ────────────────────────────────────────────

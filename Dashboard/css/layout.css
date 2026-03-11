@@ -350,10 +350,46 @@ html, body {
   border-radius: var(--radius-full);
 }
 
+.sheet-peek-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0 4px;
+  gap: var(--space-sm);
+}
+
 .sheet-peek-label {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--muted);
   font-weight: 500;
+  flex: 1;
+}
+
+/* ── Bouton Signaler dans le peek — toujours visible ── */
+.btn-signaler-peek {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--orange);
+  color: white;
+  border: none;
+  border-radius: var(--radius-full);
+  font-family: var(--font-body);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 2px 12px rgba(255, 107, 53, 0.45);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
+}
+
+.btn-signaler-peek:active {
+  transform: scale(0.95);
+  box-shadow: 0 1px 6px rgba(255, 107, 53, 0.3);
 }
 
 .sheet-tabs {

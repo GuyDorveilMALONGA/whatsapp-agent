@@ -132,7 +132,14 @@
 <div id="bottom-sheet" class="bottom-sheet" aria-label="Panneau mobile" role="dialog">
   <div class="sheet-handle-wrap" id="sheet-handle" aria-label="Faire glisser pour redimensionner">
     <div class="sheet-handle" aria-hidden="true"></div>
-    <div class="sheet-peek-label" id="sheet-summary">Chargement...</div>
+    <!-- Ligne peek : résumé + bouton signaler côte à côte -->
+    <div class="sheet-peek-row">
+      <div class="sheet-peek-label" id="sheet-summary">Chargement...</div>
+      <button class="btn-signaler-peek" id="btn-signaler-mobile"
+              aria-label="Signaler un bus directement">
+        📡 Signaler
+      </button>
+    </div>
   </div>
   <div class="sheet-tabs" role="tablist">
     <button class="sheet-tab-btn active" data-sheet-tab="buses"
@@ -150,13 +157,6 @@
 
 <!-- ── TOAST CONTAINER ── -->
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
-
-<!-- ── FAB SIGNALER (mobile only, toujours visible) ── -->
-<button class="fab-signaler" id="btn-signaler-mobile"
-        aria-label="Signaler un bus directement">
-  <span class="fab-signaler__icon">📡</span>
-  <span class="fab-signaler__label">Signaler</span>
-</button>
 
 <!-- ── SCRIPT MODULE UNIQUE ── -->
 <script type="module" src="js/app.js"></script>

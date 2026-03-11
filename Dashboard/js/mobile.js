@@ -17,7 +17,7 @@ import { getAgeClass, formatAge } from './utils.js';
 
 // ── Constantes ────────────────────────────────────────────
 
-const PEEK_HEIGHT  = 64;    // px
+const PEEK_HEIGHT  = 80;    // px — handle + résumé + bouton signaler
 const HALF_HEIGHT  = 0.45;  // % de la fenêtre
 const FULL_HEIGHT  = 0.90;  // % de la fenêtre
 
@@ -255,14 +255,6 @@ function _snapTo(state, animate = true) {
   requestAnimationFrame(() => {
     _sheet.style.transform = `translateY(${translateY}px)`;
   });
-
-  // Mettre à jour la position du FAB signaler
-  const fab = document.getElementById('btn-signaler-mobile');
-  if (fab) {
-    // Le FAB doit être juste au-dessus du sheet, avec 16px d'espace
-    const sheetVisibleHeight = windowH - translateY;
-    fab.style.bottom = (sheetVisibleHeight + 16) + 'px';
-  }
 
   // Scroll interne : remettre à 0 si on ferme
   if (state === 'peek' && _content) {
