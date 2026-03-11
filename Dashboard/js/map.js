@@ -2,6 +2,8 @@
  * js/map.js
  * Gestion carte Leaflet — markers, popups compacts, interactions.
  * Dépend de : store.js, utils.js, constants.js
+ *
+ * FIX : marker.openPopup() appelé directement au clic (ne dépend plus du store)
  */
 
 import * as store from './store.js';
@@ -81,16 +83,16 @@ function _applyFilter(buses, line) {
 }
 
 function _syncMarkers(buses, selectedId) {
-  const newIds = new Set(buses.map(b => b.id));
+  const newIds = new Set(buses.map(b => String(b.id)));
   Object.keys(_markers).forEach(id => {
-    if (!newIds.has(Number(id))) {
+    if (!newIds.has(String(id))) {
       _map.removeLayer(_markers[id]);
       delete _markers[id];
     }
   });
   buses.forEach(bus => {
     if (_markers[bus.id]) _map.removeLayer(_markers[bus.id]);
-    _markers[bus.id] = _createMarker(bus, selectedId === bus.id);
+    _markers[bus.id] = _createMarker(bus, String(selectedId) === String(bus.id));
   });
 }
 
@@ -117,7 +119,10 @@ function _createMarker(bus, isSelected) {
     .addTo(_map)
     .bindPopup(_buildPopupHtml(bus), { maxWidth: 260 });
 
+  // FIX : ouvrir le popup directement au clic, sans passer par le store
+  // Évite le bug string vs number sur bus.id qui empêchait le popup de s'ouvrir
   marker.on('click', () => {
+    marker.openPopup();
     if (_onBusSelect) _onBusSelect(bus.id);
   });
 

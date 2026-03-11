@@ -14,6 +14,7 @@
  *  9. Service Worker + PWA install prompt
  *
  * FIX : onReportSuccess → _loadAndRender() après signalement modal
+ * FIX : _onBusSelect utilise String() pour comparer les ids (évite string vs number)
  */
 
 import * as store      from './store.js';
@@ -120,7 +121,6 @@ function _initPWA() {
           if (!newWorker) return;
           newWorker.addEventListener('statechange', () => {
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // Nouvelle version prête — afficher un bandeau de mise à jour
               _showUpdateBanner(newWorker);
             }
           });
@@ -166,7 +166,6 @@ function _initPWA() {
 // ── MISE À JOUR PWA ───────────────────────────────────────
 
 function _showUpdateBanner(newWorker) {
-  // Éviter les doublons
   if (document.getElementById('update-banner')) return;
 
   const banner = document.createElement('div');
@@ -210,8 +209,6 @@ function _showUpdateBanner(newWorker) {
   });
 
   document.body.appendChild(banner);
-
-  // Auto-disparaît après 30s si ignoré
   setTimeout(() => banner.remove(), 30_000);
 }
 
@@ -282,7 +279,7 @@ async function _loadAndRender() {
     store.set('stats', {
       activeBuses:  data.buses?.length ?? 0,
       reportsToday: data.stats?.signalements_today ?? '—',
-      contributors: data.stats?.contributors ?? '—',
+      contributors: data.stats?.contributors       ?? '—',
     });
 
     UI.renderLeaderboard(data.leaderboard || []);
@@ -296,7 +293,8 @@ async function _loadAndRender() {
 // ── CALLBACKS ─────────────────────────────────────────────
 
 function _onBusSelect(busId) {
-  const bus = store.get('buses').find(b => b.id === busId);
+  // FIX : comparaison String() pour éviter le bug number vs string sur bus.id
+  const bus = store.get('buses').find(b => String(b.id) === String(busId));
   if (!bus) return;
   store.set('selectedBus', bus);
   UI.selectBusCard(busId);

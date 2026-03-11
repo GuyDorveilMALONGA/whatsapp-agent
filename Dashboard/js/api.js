@@ -34,9 +34,6 @@ const MOCK_STATS = { signalements_today: 247, contributors: 89 };
 let _busIdCounter = 1;
 const _busIdMap = {};
 
-// ── MODE MOCK (activé automatiquement si Railway KO) ──────
-let _useMock = false;
-
 // ── MAPPING Railway → Dashboard ──────────────────────────
 
 function _mapBuses(rawBuses) {
@@ -51,7 +48,7 @@ function _mapBuses(rawBuses) {
         position:    b.arret_estime || b.arret_signale || '—',
         lat:         b.lat,
         lng:         b.lon,
-        reporter:    b.signale_par ? `****${b.signale_par.slice(-2)}` : 'Anonyme',
+        reporter:    b.signale_par ? `****${b.signale_par}` : 'Anonyme',
         minutes_ago: Math.round(b.minutes_depuis_signalement || 0),
         qualite:     b.au_terminus ? 'au terminus' : null,
       };
@@ -72,35 +69,45 @@ function _mapLeaderboard(rawLb) {
 // ── FONCTIONS PUBLIQUES ───────────────────────────────────
 
 export async function fetchBuses() {
-  if (_useMock) {
-    return { buses: MOCK_BUSES, stats: MOCK_STATS };
-  }
   const data = await safeFetch(`${API_BASE}/api/buses`);
+  return { buses: _mapBuses(data.buses || []) };
+}
+
+export async function fetchLeaderboard() {
+  const data = await safeFetch(`${API_BASE}/api/leaderboard`);
   return {
-    buses: _mapBuses(data.buses || []),
+    leaderboard: _mapLeaderboard(data.leaderboard || []),
     stats: {
-      signalements_today: data.stats?.signalements_today ?? '—',
-      contributors:       data.stats?.contributors       ?? '—',
+      signalements_today: data.stats?.total_signalements_aujourd_hui ?? '—',
+      contributors:       data.stats?.nb_contributeurs               ?? '—',
     },
   };
 }
 
-export async function fetchLeaderboard() {
-  if (_useMock) return MOCK_LEADERBOARD;
-  const data = await safeFetch(`${API_BASE}/api/leaderboard`);
-  return _mapLeaderboard(data.leaderboard || []);
-}
-
 export async function fetchAll() {
-  try {
-    const [busData, leaderboard] = await Promise.all([
-      fetchBuses(),
-      fetchLeaderboard(),
-    ]);
-    return { ...busData, leaderboard };
-  } catch (err) {
-    console.warn('[Api] Erreur Railway, fallback mock:', err.message || err.code);
-    _useMock = true;
-    return { buses: MOCK_BUSES, stats: MOCK_STATS, leaderboard: MOCK_LEADERBOARD };
-  }
+  // Promise.allSettled : chaque appel réussit/échoue indépendamment
+  // → les stats s'affichent même si un seul endpoint est en erreur
+  const results = await Promise.allSettled([
+    fetchBuses(),
+    fetchLeaderboard(),
+  ]);
+
+  const busData = results[0].status === 'fulfilled'
+    ? results[0].value
+    : { buses: MOCK_BUSES };
+
+  const lbData = results[1].status === 'fulfilled'
+    ? results[1].value
+    : { leaderboard: MOCK_LEADERBOARD, stats: { signalements_today: '—', contributors: '—' } };
+
+  if (results[0].status === 'rejected')
+    console.warn('[Api] /api/buses erreur:', results[0].reason?.message);
+  if (results[1].status === 'rejected')
+    console.warn('[Api] /api/leaderboard erreur:', results[1].reason?.message);
+
+  return {
+    buses:       busData.buses,
+    leaderboard: lbData.leaderboard,
+    stats:       lbData.stats,
+  };
 }
