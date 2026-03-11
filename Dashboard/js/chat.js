@@ -147,6 +147,33 @@ function _attachEvents() {
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && _isOpen) close();
   });
+
+  // ── Clavier virtuel mobile : repositionner la fenêtre au-dessus du clavier ──
+  if (window.visualViewport) {
+    const _onViewportChange = () => {
+      if (!_isOpen) return;
+      const win = document.getElementById('chat-window');
+      if (!win) return;
+
+      const vv        = window.visualViewport;
+      const keyboardH = window.innerHeight - vv.height - vv.offsetTop;
+
+      if (keyboardH > 100) {
+        // Clavier ouvert → fenêtre juste au-dessus du clavier
+        win.style.bottom     = (keyboardH + 8) + 'px';
+        win.style.top        = 'auto';
+        win.style.maxHeight  = (vv.height - 70) + 'px';
+      } else {
+        // Clavier fermé → CSS reprend le dessus
+        win.style.bottom    = '';
+        win.style.maxHeight = '';
+      }
+      if (_messagesEl) _messagesEl.scrollTop = _messagesEl.scrollHeight;
+    };
+
+    window.visualViewport.addEventListener('resize', _onViewportChange);
+    window.visualViewport.addEventListener('scroll', _onViewportChange);
+  }
 }
 
 function _doSend() {

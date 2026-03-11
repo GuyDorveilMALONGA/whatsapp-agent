@@ -259,9 +259,9 @@ function _snapTo(state, animate = true) {
   // Mettre à jour la position du FAB signaler
   const fab = document.getElementById('btn-signaler-mobile');
   if (fab) {
-    fab.classList.remove('fab-signaler--sheet-half', 'fab-signaler--sheet-full');
-    if (state === 'half') fab.classList.add('fab-signaler--sheet-half');
-    if (state === 'full') fab.classList.add('fab-signaler--sheet-full');
+    // Le FAB doit être juste au-dessus du sheet, avec 16px d'espace
+    const sheetVisibleHeight = windowH - translateY;
+    fab.style.bottom = (sheetVisibleHeight + 16) + 'px';
   }
 
   // Scroll interne : remettre à 0 si on ferme
