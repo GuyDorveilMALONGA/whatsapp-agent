@@ -668,7 +668,7 @@
 .chat-fab {
   position: fixed;
   bottom: 24px;
-  right: calc(var(--sidebar-width, 300px) + 24px);
+  left: 24px;
   width: 52px;
   height: 52px;
   border-radius: 50%;
@@ -691,7 +691,7 @@
 @media (max-width: 768px) {
   .chat-fab {
     bottom: calc(var(--sheet-peek) + 16px);
-    right: 16px;
+    left: 16px;
     width: 46px;
     height: 46px;
     font-size: 20px;
@@ -702,8 +702,9 @@
 .chat-window {
   position: fixed;
   bottom: 88px;
-  right: calc(var(--sidebar-width, 300px) + 24px);
-  width: min(360px, calc(100vw - 32px));
+  left: 24px;
+  right: auto;
+  width: min(360px, calc(100vw - 48px));
   height: min(520px, calc(100dvh - 120px));
   background: var(--surface);
   border: 1px solid var(--border);
