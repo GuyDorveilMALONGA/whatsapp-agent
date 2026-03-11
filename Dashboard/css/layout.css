@@ -434,13 +434,5 @@ html, body {
 @media (max-width: 768px) {
   .sidebar      { display: none; }
   .bottom-sheet { display: flex; }
-
-  /* Stats bar compacte */
-  .stats-bar .stat-label { display: none; }
-  .stat-val  { font-size: 16px; }
-  .stat-item { padding: 6px 10px; }
-  .stat-icon { font-size: 16px; }
-
-  /* Carte prend toute la hauteur disponible */
-  .main { height: 100%; }
+  .main         { height: 100%; }
 }
