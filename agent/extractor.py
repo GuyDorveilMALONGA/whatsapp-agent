@@ -1,7 +1,12 @@
 """
 agent/extractor.py
 Extraction ligne + arrêt — ZÉRO LLM.
-Source : dem_dikk_lines_gps_final.json (site officiel Dem Dikk · 39 lignes · 375 arrêts)
+Source : routes_geometry_v4.json (39 lignes · 750 arrêts)
+
+MIGRATION V4 :
+  - _load_network() pointe sur routes_geometry_v4.json
+  - Structure routes{} au lieu de categories[]
+  - Champ arrêt "name" au lieu de "nom"
 """
 import re
 import json
@@ -12,33 +17,32 @@ from dataclasses import dataclass, field
 
 def _load_network() -> dict:
     """
-    Charge dem_dikk_lines_gps_final.json depuis la racine du projet.
-    Retourne un dict indexé par number (ex: "15", "16A", "RUF-YENNE").
+    Charge routes_geometry_v4.json depuis la racine du projet.
+    Retourne un dict indexé par line_id (ex: "15", "16A", "RUF-YENNE").
     """
     base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "dem_dikk_lines_gps_final.json")
+    path = os.path.join(base, "routes_geometry_v4.json")
     try:
         with open(path, encoding="utf-8") as f:
             data = json.load(f)
         network = {}
-        for cat, lines in data["categories"].items():
-            for line in lines:
-                num = line["number"]
-                # stops = liste de dicts {"nom": str, "lat": float, "lon": float}
-                stop_names = [s["nom"] for s in line["stops"]]
-                network[num] = {
-                    "id":          line["id"],
-                    "number":      num,
-                    "name":        line["name"],
-                    "description": f"{line['terminus_a']} → {line['terminus_b']}",
-                    "category":    line["category"],
-                    "terminus_a":  line["terminus_a"],
-                    "terminus_b":  line["terminus_b"],
-                    "arrets_aller":  stop_names,
-                    "arrets_retour": list(reversed(stop_names)),
-                    "stops":         stop_names,
-                    "stops_gps":     line["stops"],  # GPS conservés pour dashboard
-                }
+        for line_id, line in data.get("routes", {}).items():
+            num = line_id
+            # v4 : champ "name" au lieu de "nom"
+            stop_names = [s["name"] for s in line.get("stops", []) if s.get("name")]
+            network[num] = {
+                "id":          line.get("line_id", num),
+                "number":      num,
+                "name":        line.get("name", f"LIGNE {num}"),
+                "description": f"{line.get('terminus_a', '')} → {line.get('terminus_b', '')}",
+                "category":    line.get("category", ""),
+                "terminus_a":  line.get("terminus_a", ""),
+                "terminus_b":  line.get("terminus_b", ""),
+                "arrets_aller":  stop_names,
+                "arrets_retour": list(reversed(stop_names)),
+                "stops":         stop_names,
+                "stops_gps":     line.get("stops", []),  # GPS conservés pour dashboard
+            }
         return network
     except FileNotFoundError:
         return {}
@@ -86,15 +90,14 @@ _STOPWORDS = {
 
 @dataclass
 class ExtractResult:
-    ligne: str | None             # ex: "15", "16A", None si non trouvée
-    arret: str | None             # ex: "Liberté 5", None si non trouvé
-    ligne_valide: bool            # False si la ligne n'existe pas dans le réseau
-    arret_normalise: str | None   # Nom officiel de l'arrêt si trouvé
-    ambigues: list[str] = field(default_factory=list)  # ex: ["16A", "16B"] si ambigu
+    ligne: str | None
+    arret: str | None
+    ligne_valide: bool
+    arret_normalise: str | None
+    ambigues: list[str] = field(default_factory=list)
 
 
 def _normalize_text(text: str) -> str:
-    """Remplace les nombres en lettres par des chiffres."""
     t = text.lower()
     for mot, chiffre in sorted(_CHIFFRES.items(), key=lambda x: -len(x[0])):
         t = re.sub(r'\b' + mot + r'\b', chiffre, t)
@@ -102,14 +105,6 @@ def _normalize_text(text: str) -> str:
 
 
 def _find_ligne(text: str) -> tuple[str | None, list[str]]:
-    """
-    Cherche un numéro de ligne dans le texte.
-    Retourne (ligne_résolue, ambigues).
-    - Match exact    → (ligne, [])
-    - "15" seul      → résolution silencieuse si une seule ligne → ("15", [])
-    - "16" → 16A/16B → (None, ["16A", "16B"])
-    - Rien           → (None, [])
-    """
     text_up = text.upper()
 
     if "TAF TAF" in text_up:
@@ -134,10 +129,6 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
 
 
 def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
-    """
-    Cherche un arrêt dans le texte.
-    Retourne (arret_brut, arret_normalise).
-    """
     words = [w for w in text.lower().split() if w not in _STOPWORDS]
     cleaned = " ".join(words)
 
@@ -172,10 +163,6 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
 
 
 def extract(text: str) -> ExtractResult:
-    """
-    Extrait ligne + arrêt depuis un message brut.
-    Point d'entrée principal — utilisé par tous les skills.
-    """
     normalized = _normalize_text(text)
     ligne, ambigues = _find_ligne(normalized.upper())
     ligne_valide = ligne is not None and ligne in VALID_LINES
@@ -200,10 +187,6 @@ def extract(text: str) -> ExtractResult:
 
 
 def get_arrets_ligne(ligne: str) -> dict:
-    """
-    Retourne les arrêts d'une ligne.
-    Compatibilité : expose aller + retour même si le fichier n'a qu'une liste.
-    """
     if ligne not in NETWORK:
         return {"exists": False, "aller": [], "retour": [], "description": ""}
     data = NETWORK[ligne]

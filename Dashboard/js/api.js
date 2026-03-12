@@ -2,6 +2,10 @@
  * js/api.js
  * Couche données — fetch Railway + mapping + fallback mock.
  * Dépend de : constants.js, utils.js
+ *
+ * AJOUT Phase 5 :
+ *   - loadRoutes() : charge routes_geometry_v4.json (39 lignes, 750 arrêts)
+ *   - Cache en mémoire pour éviter de recharger le JSON à chaque filtre
  */
 
 import { API_BASE, LIGNE_NAMES } from './constants.js';
@@ -33,6 +37,9 @@ const MOCK_STATS = { signalements_today: 247, contributors: 89 };
 // ── ID stable par ligne ───────────────────────────────────
 let _busIdCounter = 1;
 const _busIdMap = {};
+
+// ── CACHE routes v4 ───────────────────────────────────────
+let _routesCache = null;
 
 // ── MAPPING Railway → Dashboard ──────────────────────────
 
@@ -66,6 +73,38 @@ function _mapLeaderboard(rawLb) {
   }));
 }
 
+// ── ROUTES V4 ─────────────────────────────────────────────
+
+/**
+ * Charge routes_geometry_v4.json une seule fois (cache mémoire).
+ * Retourne l'objet routes : { "1": { stops, osm_trace, ... }, ... }
+ */
+export async function loadRoutes() {
+  if (_routesCache) return _routesCache;
+
+  try {
+    const res = await fetch('./data/routes_geometry_v4.json');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const json = await res.json();
+    _routesCache = json.routes || {};
+    console.log(`[Api] routes_geometry_v4 chargé — ${Object.keys(_routesCache).length} lignes`);
+  } catch (err) {
+    console.warn('[Api] Impossible de charger routes_geometry_v4.json :', err.message);
+    _routesCache = {};
+  }
+
+  return _routesCache;
+}
+
+/**
+ * Retourne les données d'une ligne spécifique depuis le cache v4.
+ * { stops: [{name, lat, lon, confidence}], osm_trace: [[lat,lon],...] | null }
+ */
+export async function getLineData(lineId) {
+  const routes = await loadRoutes();
+  return routes[lineId] || null;
+}
+
 // ── FONCTIONS PUBLIQUES ───────────────────────────────────
 
 export async function fetchBuses() {
@@ -85,8 +124,6 @@ export async function fetchLeaderboard() {
 }
 
 export async function fetchAll() {
-  // Promise.allSettled : chaque appel réussit/échoue indépendamment
-  // → les stats s'affichent même si un seul endpoint est en erreur
   const results = await Promise.allSettled([
     fetchBuses(),
     fetchLeaderboard(),

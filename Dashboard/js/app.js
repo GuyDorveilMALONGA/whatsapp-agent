@@ -1,6 +1,10 @@
 /**
- * js/app.js — Phase 4
+ * js/app.js — Phase 5
  * Point d'entrée unique. Orchestre sans logique de rendu.
+ *
+ * AJOUT Phase 5 :
+ *   - _onFilterChange branche sur showLineOverlay / clearLineOverlay
+ *   - loadRoutes() appelé au démarrage (préchargement du v4 en cache)
  *
  * Cycle de vie :
  *  1. store + deep link
@@ -9,12 +13,9 @@
  *  4. mobile bottom sheet
  *  5. modal signalement natif
  *  6. chat UI + WebSocket
- *  7. fetchAll initial
+ *  7. fetchAll initial + préchargement routes
  *  8. polling 30s
  *  9. Service Worker + PWA install prompt
- *
- * FIX : onReportSuccess → _loadAndRender() après signalement modal
- * FIX : _onBusSelect utilise String() pour comparer les ids (évite string vs number)
  */
 
 import * as store      from './store.js';
@@ -58,7 +59,6 @@ document.addEventListener('DOMContentLoaded', async () => {
       MapManager.pulseMarker(busId);
       _bumpReportsCount();
     },
-    // FIX : recharge la carte + stats après chaque signalement réussi
     onReportSuccess: () => _loadAndRender(),
   });
 
@@ -84,8 +84,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 7. Chat + WebSocket
   _initChat();
 
-  // 8. Chargement initial
-  await _loadAndRender();
+  // 8. Chargement initial + préchargement routes v4
+  await Promise.all([
+    _loadAndRender(),
+    Api.loadRoutes(),   // préchargement silencieux
+  ]);
+
+  // Si deep link avec une ligne → afficher l'overlay immédiatement
+  const deepLine = store.get('filteredLine');
+  if (deepLine) await _applyLineOverlay(deepLine);
 
   // 9. Timer polling
   UI.startTimer(REFRESH_SEC, _onTimerComplete);
@@ -94,7 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('online',  () => Toast.info('Connexion rétablie ✅'));
   window.addEventListener('offline', () => Toast.error('Hors ligne — données en cache'));
 
-  // 11. PWA : Service Worker + install prompt
+  // 11. PWA
   _initPWA();
 
   // 12. Shortcut manifest (?action=report)
@@ -104,18 +111,40 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
+// ── OVERLAY LIGNE ─────────────────────────────────────────
+
+/**
+ * Charge les données de la ligne depuis v4 et affiche l'overlay.
+ */
+async function _applyLineOverlay(line) {
+  if (!line) {
+    MapManager.clearLineOverlay();
+    return;
+  }
+
+  try {
+    const lineData = await Api.getLineData(line);
+    if (lineData) {
+      MapManager.showLineOverlay(lineData);
+    } else {
+      console.warn(`[App] Ligne ${line} introuvable dans routes_geometry_v4`);
+      MapManager.clearLineOverlay();
+    }
+  } catch (err) {
+    console.warn('[App] Erreur chargement overlay ligne :', err.message);
+    MapManager.clearLineOverlay();
+  }
+}
+
 // ── PWA ───────────────────────────────────────────────────
 
 let _deferredInstallPrompt = null;
 
 function _initPWA() {
-  // Enregistrement du Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', { scope: '/' })
       .then(reg => {
         console.log('[PWA] Service Worker enregistré :', reg.scope);
-
-        // Mise à jour disponible → proposer à l'utilisateur
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           if (!newWorker) return;
@@ -128,13 +157,11 @@ function _initPWA() {
       })
       .catch(err => console.warn('[PWA] Enregistrement SW échoué :', err));
 
-    // Rechargement propre quand le nouveau SW prend le contrôle
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     });
   }
 
-  // Bouton "Installer"
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault();
     _deferredInstallPrompt = e;
@@ -154,7 +181,6 @@ function _initPWA() {
     });
   }
 
-  // Masquer le bouton si déjà installé
   window.addEventListener('appinstalled', () => {
     const btn = document.getElementById('btn-install');
     if (btn) btn.hidden = true;
@@ -226,9 +252,7 @@ function _initChat() {
   });
 
   Ws.init({
-    onOpen: () => {
-      Chat.setStatus('open');
-    },
+    onOpen: () => Chat.setStatus('open'),
     onWelcome: (text, suggestions) => {
       Chat.appendMessage('bot', text);
       Chat.setSuggestions(suggestions);
@@ -254,16 +278,11 @@ function _initChat() {
       Chat.setStatus('closed');
       if (!wasClean) store.set('wsStatus', 'closed');
     },
-    onReconnecting: () => {
-      Chat.setStatus('connecting');
-    },
+    onReconnecting: () => Chat.setStatus('connecting'),
   });
 
-  store.subscribe('wsStatus', (status) => {
-    Chat.setStatus(status);
-  });
+  store.subscribe('wsStatus', (status) => Chat.setStatus(status));
 
-  // Ouvrir le chat automatiquement sur desktop uniquement
   if (window.innerWidth > 768) {
     setTimeout(() => Chat.open(), 1000);
   }
@@ -293,19 +312,23 @@ async function _loadAndRender() {
 // ── CALLBACKS ─────────────────────────────────────────────
 
 function _onBusSelect(busId) {
-  // FIX : comparaison String() pour éviter le bug number vs string sur bus.id
   const bus = store.get('buses').find(b => String(b.id) === String(busId));
   if (!bus) return;
   store.set('selectedBus', bus);
   UI.selectBusCard(busId);
 }
 
-function _onFilterChange(line) {
+async function _onFilterChange(line) {
   store.set('filteredLine', line);
+
+  // Mettre à jour l'URL
   const url = new URL(window.location);
   if (line) url.searchParams.set('line', line);
   else      url.searchParams.delete('line');
   history.replaceState(null, '', url);
+
+  // Afficher ou effacer l'overlay ligne
+  await _applyLineOverlay(line);
 }
 
 async function _onTimerComplete() {

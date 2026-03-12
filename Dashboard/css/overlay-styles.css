@@ -1,0 +1,27 @@
+/* ── OVERLAY LIGNE — arrêts et tracé ──────────────────────
+   À ajouter dans ton fichier CSS principal (style.css)
+   ────────────────────────────────────────────────────── */
+
+/* Tooltip nom d'arrêt */
+.stop-tooltip {
+  background: #1e293b;
+  border: 1px solid #ff6b35;
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 8px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+  pointer-events: none;
+}
+
+/* Supprimer la flèche par défaut Leaflet sur le tooltip */
+.stop-tooltip::before {
+  border-top-color: #ff6b35 !important;
+}
+
+/* Légère animation d'apparition de l'overlay */
+.leaflet-overlay-pane path {
+  transition: opacity 0.3s ease;
+}

@@ -8,10 +8,10 @@ Algorithme Dead Reckoning dakarois :
   3. Détecte si le bus est au terminus
   4. Attribue un score de confiance (vert/jaune/rouge)
 
-FIXES V2 :
-  - FIX B1 : arret_signale utilise "position" (pas "arret_nom" inexistant)
-  - FIX B2 : ligne utilise "ligne" (pas "ligne_id" inexistant)
-  - FIX B3 : timestamp utilise "timestamp" en priorité (pas "created_at")
+MIGRATION V3 :
+  - Source de données : dem_dikk_lines_gps_final.json → routes_geometry_v4.json
+  - Champ arrêt : "nom" → "name" (nouvelle structure v4)
+  - 39 lignes, 750 arrêts, confiance moyenne 0.748
 """
 
 import json
@@ -26,9 +26,9 @@ from db import queries
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ── Chargement réseau GPS ──────────────────────────────────
+# ── Chargement réseau GPS (v4) ─────────────────────────────
 
-_NETWORK_FILE = Path(__file__).parent.parent / "dem_dikk_lines_gps_final.json"
+_NETWORK_FILE = Path(__file__).parent.parent / "routes_geometry_v4.json"
 
 def _load_network() -> dict:
     with open(_NETWORK_FILE, encoding="utf-8") as f:
@@ -36,24 +36,25 @@ def _load_network() -> dict:
 
 _NETWORK = _load_network()
 
-# Index : numéro de ligne → liste d'arrêts [{nom, lat, lon}]
+# Index : numéro de ligne → liste d'arrêts [{name, lat, lon}]
+# v4 structure : { routes: { "1": { stops: [{name, lat, lon, confidence, source}] } } }
 _LINES_INDEX: dict[str, list[dict]] = {}
-for _cat in _NETWORK["categories"].values():
-    for _ligne in _cat:
-        _LINES_INDEX[_ligne["number"]] = _ligne["stops"]
+for _line_id, _line_data in _NETWORK.get("routes", {}).items():
+    _LINES_INDEX[_line_id] = _line_data.get("stops", [])
+
+logger.info(f"[buses] Réseau v4 chargé — {len(_LINES_INDEX)} lignes")
 
 
 # ── Constantes ─────────────────────────────────────────────
 
-INTERVALLE_DEFAUT_MIN = 15   # Si pas de donnée network_memory
-CONFIANCE_VERT_MIN    = 10   # minutes
-CONFIANCE_JAUNE_MAX   = 30   # minutes
+INTERVALLE_DEFAUT_MIN = 15
+CONFIANCE_VERT_MIN    = 10
+CONFIANCE_JAUNE_MAX   = 30
 
 
 # ── Utilitaires ────────────────────────────────────────────
 
 def _minutes_depuis(iso_str: str) -> float:
-    """Retourne le nombre de minutes écoulées depuis une date ISO."""
     try:
         dt = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
         delta = datetime.now(timezone.utc) - dt
@@ -63,13 +64,12 @@ def _minutes_depuis(iso_str: str) -> float:
 
 
 def _confiance(minutes: float) -> dict:
-    """Retourne le niveau de confiance selon le temps écoulé."""
     if minutes < CONFIANCE_VERT_MIN:
-        return {"niveau": "vert", "emoji": "🟢", "label": "Récent"}
+        return {"niveau": "vert",   "emoji": "🟢", "label": "Récent"}
     elif minutes < CONFIANCE_JAUNE_MAX:
-        return {"niveau": "jaune", "emoji": "🟡", "label": "Estimé"}
+        return {"niveau": "jaune",  "emoji": "🟡", "label": "Estimé"}
     else:
-        return {"niveau": "rouge", "emoji": "🔴", "label": "Ancien"}
+        return {"niveau": "rouge",  "emoji": "🔴", "label": "Ancien"}
 
 
 def _position_estimee(
@@ -80,12 +80,13 @@ def _position_estimee(
 ) -> dict:
     """
     Calcule la position estimée du bus à partir du dernier arrêt signalé.
-    Retourne l'arrêt estimé avec ses coordonnées GPS.
+    v4 : champ "name" (au lieu de "nom")
     """
-    # Trouver l'index de l'arrêt signalé
+    # Trouver l'index de l'arrêt signalé (comparaison insensible à la casse)
     idx_depart = None
+    arret_lower = arret_signale.lower().strip()
     for i, s in enumerate(stops):
-        if s["nom"].lower() == arret_signale.lower():
+        if s.get("name", "").lower().strip() == arret_lower:
             idx_depart = i
             break
 
@@ -94,7 +95,7 @@ def _position_estimee(
         for s in stops:
             if s.get("lat"):
                 return {
-                    "nom": s["nom"],
+                    "nom": s["name"],
                     "lat": s["lat"],
                     "lon": s["lon"],
                     "idx": 0,
@@ -113,7 +114,7 @@ def _position_estimee(
         s = stops[i]
         if s.get("lat"):
             return {
-                "nom": s["nom"],
+                "nom": s["name"],
                 "lat": s["lat"],
                 "lon": s["lon"],
                 "idx": i,
@@ -150,14 +151,12 @@ async def get_buses():
     seen_lignes: dict[str, dict] = {}
 
     for sig in all_sigs:
-        # FIX B2 : colonne "ligne" (pas "ligne_id")
         ligne = sig.get("ligne")
         if not ligne:
             continue
         if ligne not in seen_lignes:
             seen_lignes[ligne] = sig
         else:
-            # Garder le plus récent — FIX B3 : "timestamp" en priorité
             t_existing = seen_lignes[ligne].get("timestamp") or seen_lignes[ligne].get("created_at", "")
             t_current  = sig.get("timestamp") or sig.get("created_at", "")
             if _minutes_depuis(t_current) < _minutes_depuis(t_existing):
@@ -166,12 +165,10 @@ async def get_buses():
     for ligne, sig in seen_lignes.items():
         stops = _LINES_INDEX.get(ligne)
         if not stops:
-            logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau GPS")
+            logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau v4")
             continue
 
-        # FIX B1 : colonne "position" (pas "arret_nom")
         arret_signale   = sig.get("position", "")
-        # FIX B3 : colonne "timestamp" en priorité
         created_at      = sig.get("timestamp") or sig.get("created_at", "")
         minutes_ecoules = _minutes_depuis(created_at)
         intervalle      = network_memory.get(ligne, INTERVALLE_DEFAUT_MIN)
@@ -179,7 +176,6 @@ async def get_buses():
         pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
         conf = _confiance(minutes_ecoules)
 
-        # Temps avant redépart si au terminus
         repart_dans = None
         if pos["au_terminus"]:
             repart_dans = max(0, int(intervalle - (minutes_ecoules % intervalle)))

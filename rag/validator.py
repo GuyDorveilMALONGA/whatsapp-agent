@@ -4,23 +4,14 @@ Fuzzy matching arrêts — indépendant de extractor.py.
 
 Source : core.network (singleton JSON)
 
+MIGRATION V4 :
+  - Aucun changement de code nécessaire.
+  - core.network charge désormais routes_geometry_v4.json.
+  - Le commentaire _ALIASES mis à jour : référence v4 au lieu de gps_final.
+  - Recommandation V6 : migrer vers table stop_aliases Supabase
+
 V5 :
   + SequenceMatcher → rapidfuzz.fuzz.WRatio
-    Gain : x10-20 sur 500+ arrêts (C extension vs pure Python)
-    API identique — aucun changement de comportement observable.
-    WRatio = meilleur des algos selon longueur (token_sort + partial)
-    → meilleur que SequenceMatcher sur les arrêts avec préfixes longs
-       ex: "ker massar" → "Terminus Keur Massar" (token_sort gère l'ordre)
-    Prérequis : ajouter rapidfuzz dans requirements.txt
-
-  Ajout requirements.txt :
-    rapidfuzz>=3.0.0
-
-V4 :
-  + Alias terrain Dakar enrichis — expressions usagers réelles
-    non présentes dans le JSON officiel demdikk.sn.
-  + _ALIASES dict appliqué avant fuzzy matching
-  + Recommandation V6 : migrer vers table stop_aliases Supabase
 """
 import re
 import logging
@@ -50,10 +41,10 @@ _ABBREVS = {
     r"\bface à\b":  "",
 }
 
-# ── Alias terrain Dakar → noms officiels JSON ─────────────
+# ── Alias terrain Dakar → noms officiels ──────────────────
 # Expressions réelles des usagers absentes du réseau officiel.
-# Clé : expression normalisée (lowercase, sans accents facultatifs)
-# Valeur : nom officiel exact dans dem_dikk_lines_gps_final.json
+# Clé : expression normalisée (lowercase)
+# Valeur : nom officiel exact dans routes_geometry_v4.json
 # V6 : migrer vers table stop_aliases Supabase + UI admin
 _ALIASES: dict[str, str] = {
     # Zone Yoff / Aéroport
@@ -161,10 +152,6 @@ def _clean(text: str) -> str:
 
 
 def _apply_aliases(cleaned: str) -> str | None:
-    """
-    Vérifie si le texte nettoyé correspond à un alias connu.
-    Retourne le nom officiel ou None.
-    """
     if cleaned in _ALIASES:
         return _ALIASES[cleaned]
     for alias, officiel in _ALIASES.items():
@@ -174,39 +161,10 @@ def _apply_aliases(cleaned: str) -> str | None:
 
 
 def _similarity(a: str, b: str) -> float:
-    """
-    V5 : rapidfuzz.fuzz.WRatio remplace SequenceMatcher.
-
-    WRatio choisit automatiquement le meilleur algorithme :
-      - token_sort_ratio : gère les mots dans le désordre
-        "ker massar" vs "terminus keur massar" → bon score
-      - partial_ratio : gère les sous-chaînes
-        "parcell" vs "parcelles assainies" → bon score
-      - ratio standard pour les cas simples
-
-    Retourne 0.0–1.0 (WRatio retourne 0–100, divisé par 100).
-    Les bonus subset/prefix de V4 sont absorbés par WRatio —
-    token_sort_ratio couvre déjà ces cas plus robustement.
-    """
     return fuzz.WRatio(a, b) / 100.0
 
 
 def normalize_arret(arret_brut: str, ligne: str | None = None) -> dict:
-    """
-    Normalise un nom d'arrêt brut vers le nom officiel.
-    Ordre de résolution :
-      1. Alias terrain (_ALIASES) — correspondance exacte/partielle
-      2. Fuzzy matching sur arrêts de la ligne spécifique
-      3. Fuzzy matching sur tous les arrêts
-
-    Retourne :
-      {
-        "found": bool,
-        "arret_officiel": str | None,
-        "score": float,
-        "needs_confirmation": bool,
-      }
-    """
     if not arret_brut or len(arret_brut.strip()) < 2:
         return {"found": False, "arret_officiel": None,
                 "score": 0.0, "needs_confirmation": False}
@@ -226,7 +184,8 @@ def normalize_arret(arret_brut: str, ligne: str | None = None) -> dict:
         ligne_up = str(ligne).upper()
         if ligne_up in NETWORK:
             for stop in NETWORK[ligne_up].get("stops", []):
-                nom = stop.get("nom", "")
+                # v4 : champ "name"
+                nom = stop.get("name", "")
                 if nom:
                     candidates[nom.lower()] = nom
 
@@ -253,7 +212,6 @@ def normalize_arret(arret_brut: str, ligne: str | None = None) -> dict:
 
 
 def validate_and_suggest(arret_brut: str, ligne: str | None = None) -> str | None:
-    """Retourne le nom officiel ou None."""
     result = normalize_arret(arret_brut, ligne)
     return result["arret_officiel"] if result["found"] else None
 
