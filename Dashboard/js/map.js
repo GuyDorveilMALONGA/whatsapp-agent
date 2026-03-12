@@ -181,7 +181,8 @@ export function showLineOverlay(lineData) {
 
   if (!lineData) return;
 
-  const { stops = [], osm_trace } = lineData;
+  const { osm_trace } = lineData;
+  const stops = (lineData.stops || []).filter(s => (s.confidence ?? 1) >= 0.5);
 
   // ── Tracé ──────────────────────────────────────────────
   if (osm_trace && osm_trace.length > 1) {
