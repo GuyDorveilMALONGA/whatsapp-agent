@@ -3,13 +3,11 @@
  * Bottom sheet mobile — 3 états, drag, scroll interne, clavier virtuel.
  *
  * États :
- *   peek  → 64px visible (handle + résumé)
+ *   peek  → 100px visible (handle + résumé + bouton signaler)
  *   half  → 45vh
  *   full  → 90vh
  *
  * Dépend de : store.js, utils.js
- * RÈGLE : ne parle jamais à map.js, ui.js, chat.js directement.
- *         Tout passe par store.js.
  */
 
 import * as store from './store.js';
@@ -17,34 +15,32 @@ import { getAgeClass, formatAge } from './utils.js';
 
 // ── Constantes ────────────────────────────────────────────
 
-const PEEK_HEIGHT  = 100;   // px — handle + résumé + bouton signaler, toujours visible
-const HALF_HEIGHT  = 0.45;  // % de la fenêtre
-const FULL_HEIGHT  = 0.90;  // % de la fenêtre
-
-const VELOCITY_THRESHOLD  = 0.5;  // px/ms — snap au prochain état
-const POSITION_THRESHOLD  = 0.30; // 30% entre deux snaps → snap
+const PEEK_HEIGHT         = 100;
+const HALF_HEIGHT         = 0.45;
+const FULL_HEIGHT         = 0.90;
+const VELOCITY_THRESHOLD  = 0.5;
+const POSITION_THRESHOLD  = 0.30;
 
 // ── État interne ──────────────────────────────────────────
 
-let _sheet        = null;
-let _handle       = null;
-let _content      = null;
-let _summary      = null;
-let _tabs         = null;
-let _currentState = 'peek'; // 'peek' | 'half' | 'full'
-let _isDragging   = false;
-let _startY       = 0;
+let _sheet          = null;
+let _handle         = null;
+let _content        = null;
+let _summary        = null;
+let _tabs           = null;
+let _currentState   = 'peek';
+let _isDragging     = false;
+let _startY         = 0;
 let _startTranslate = 0;
-let _lastY        = 0;
-let _lastTime     = 0;
-let _velocity     = 0;
-let _rafId        = null;
-let _onBusSelect  = null;
+let _lastY          = 0;
+let _lastTime       = 0;
+let _velocity       = 0;
+let _rafId          = null;
+let _onBusSelect    = null;
 
 // ── INIT ─────────────────────────────────────────────────
 
 export function init(onBusSelect) {
-  // Uniquement sur mobile
   if (window.innerWidth > 768) return;
 
   _onBusSelect = onBusSelect;
@@ -56,21 +52,27 @@ export function init(onBusSelect) {
 
   if (!_sheet || !_handle) return;
 
-  // Performance : will-change uniquement pendant le drag
   _sheet.style.willChange = 'transform';
-
   _snapTo('peek', false);
   _attachDragEvents();
   _attachTabEvents();
   _attachKeyboardEvents();
   _subscribeStore();
+
+  // FIX : protège le bouton signaler mobile contre l'interception du drag
+  const btnMobile = document.getElementById('btn-signaler-mobile');
+  if (btnMobile) {
+    btnMobile.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+    }, { passive: true });
+  }
 }
 
 // ── STORE SUBSCRIPTIONS ───────────────────────────────────
 
 function _subscribeStore() {
   store.subscribe('buses', (buses) => {
-    const line   = store.get('filteredLine');
+    const line     = store.get('filteredLine');
     const filtered = line ? buses.filter(b => b.ligne === line) : buses;
     _updateSummary(filtered.length);
     _renderBusList(filtered);
@@ -84,9 +86,7 @@ function _subscribeStore() {
   });
 
   store.subscribe('selectedBus', (bus) => {
-    if (bus && _currentState === 'peek') {
-      _snapTo('half');
-    }
+    if (bus && _currentState === 'peek') _snapTo('half');
     _highlightSelectedCard(bus?.id);
   });
 
@@ -98,32 +98,32 @@ function _subscribeStore() {
 // ── DRAG — TOUCH EVENTS ───────────────────────────────────
 
 function _attachDragEvents() {
-  // Touch sur le handle uniquement pour ouvrir depuis peek
   _handle.addEventListener('touchstart', _onTouchStart, { passive: true });
 
-  // Touch sur le sheet entier (géré via scroll vs drag)
   _sheet.addEventListener('touchstart', _onSheetTouchStart, { passive: true });
   _sheet.addEventListener('touchmove',  _onSheetTouchMove,  { passive: false });
   _sheet.addEventListener('touchend',   _onSheetTouchEnd,   { passive: true });
 
-  // Clic sur le handle = toggle peek/half
   _handle.addEventListener('click', _onHandleClick);
 }
 
 function _onHandleClick() {
-  if (_currentState === 'peek') _snapTo('half');
+  if (_currentState === 'peek')      _snapTo('half');
   else if (_currentState === 'half') _snapTo('peek');
-  // full → on ne colle pas au clic (laisse le drag)
 }
 
 function _onTouchStart(e) {
+  // Si on touche un élément interactif dans le handle, ne pas démarrer le drag
+  const interactive = e.target.closest('button, input, textarea, a, [role="button"]');
+  if (interactive) return;
   _startDrag(e.touches[0].clientY);
 }
 
 function _onSheetTouchStart(e) {
-  // Ignorer les touches venant du chat ou des boutons interactifs
-  const tag = e.target.tagName;
-  if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'A') return;
+  // FIX : utiliser closest() au lieu de tagName pour gérer les enfants (span, emoji…)
+  const interactive = e.target.closest('button, input, textarea, a, [role="button"]');
+  if (interactive) return;
+
   const chatWindow = document.getElementById('chat-window');
   if (chatWindow && chatWindow.contains(e.target)) return;
 
@@ -131,57 +131,41 @@ function _onSheetTouchStart(e) {
 }
 
 function _startDrag(clientY) {
-  _isDragging   = true;
-  _startY       = clientY;
-  _lastY        = clientY;
-  _lastTime     = Date.now();
-  _velocity     = 0;
+  _isDragging     = true;
+  _startY         = clientY;
+  _lastY          = clientY;
+  _lastTime       = Date.now();
+  _velocity       = 0;
   _startTranslate = _getCurrentTranslate();
-
-  // Désactiver la transition pendant le drag
   _sheet.style.transition = 'none';
 }
 
 function _onSheetTouchMove(e) {
   if (!_isDragging) return;
 
-  const touch    = e.touches[0];
-  const clientY  = touch.clientY;
-  const deltaY   = clientY - _startY;
-  const now      = Date.now();
+  const touch   = e.touches[0];
+  const clientY = touch.clientY;
+  const deltaY  = clientY - _startY;
+  const now     = Date.now();
 
-  // Calcul vélocité
   const dt = now - _lastTime;
-  if (dt > 0) {
-    _velocity = (clientY - _lastY) / dt; // px/ms, positif = vers le bas
-  }
+  if (dt > 0) _velocity = (clientY - _lastY) / dt;
   _lastY    = clientY;
   _lastTime = now;
 
-  // Déterminer si on doit drag ou scroller
   const scrollTop = _content?.scrollTop ?? 0;
 
   if (_currentState === 'full' || _currentState === 'half') {
     const isInsideContent = _content && _content.contains(e.target);
-
     if (isInsideContent) {
-      if (deltaY < 0) {
-        // Scroll vers le bas du contenu → jamais un drag
-        _isDragging = false;
-        return;
-      }
-      if (deltaY > 0 && scrollTop > 0) {
-        // Glisse vers le bas mais contenu pas encore en haut → scroll natif
-        _isDragging = false;
-        return;
-      }
-      // deltaY > 0 et scrollTop === 0 → drag vers le bas autorisé (fermer le sheet)
+      if (deltaY < 0) { _isDragging = false; return; }
+      if (deltaY > 0 && scrollTop > 0) { _isDragging = false; return; }
     }
   }
 
   e.preventDefault();
 
-  const maxTranslate = _sheet.offsetHeight - PEEK_HEIGHT; // ne jamais descendre sous le peek
+  const maxTranslate = _sheet.offsetHeight - PEEK_HEIGHT;
   const newTranslate = Math.min(maxTranslate, Math.max(0, _startTranslate + deltaY));
 
   if (_rafId) cancelAnimationFrame(_rafId);
@@ -199,24 +183,19 @@ function _onSheetTouchEnd() {
   const sheetH           = _sheet.offsetHeight;
   const windowH          = window.innerHeight;
 
-  // Positions des snaps (translateY)
   const snapPeek = sheetH - PEEK_HEIGHT;
   const snapHalf = sheetH - windowH * HALF_HEIGHT;
   const snapFull = sheetH - windowH * FULL_HEIGHT;
 
   let target;
 
-  // Snap par vélocité
   if (_velocity > VELOCITY_THRESHOLD) {
-    // Glisse vers le bas → minimum peek (jamais complètement caché)
     target = _currentState === 'full' ? 'half' : 'peek';
   } else if (_velocity < -VELOCITY_THRESHOLD) {
-    // Glisse vers le haut → état supérieur
     target = _currentState === 'peek' ? 'half'
            : _currentState === 'half' ? 'full'
            : 'full';
   } else {
-    // Snap par position — trouver le snap le plus proche
     const distances = [
       { state: 'peek', dist: Math.abs(currentTranslate - snapPeek) },
       { state: 'half', dist: Math.abs(currentTranslate - snapHalf) },
@@ -235,18 +214,18 @@ function _snapTo(state, animate = true) {
   _currentState = state;
   store.set('mobileSheetState', state);
 
-  const sheetH = _sheet.offsetHeight; // hauteur réelle du sheet (90dvh en px)
+  const sheetH = _sheet.offsetHeight;
   let translateY;
 
   if (state === 'peek') {
-    translateY = sheetH - PEEK_HEIGHT;          // montre seulement PEEK_HEIGHT px
+    translateY = sheetH - PEEK_HEIGHT;
   } else if (state === 'half') {
     translateY = sheetH - window.innerHeight * HALF_HEIGHT;
   } else {
     translateY = sheetH - window.innerHeight * FULL_HEIGHT;
   }
 
-  translateY = Math.max(0, translateY); // jamais négatif
+  translateY = Math.max(0, translateY);
 
   if (animate) {
     _sheet.style.transition = 'transform 0.3s cubic-bezier(0.34, 1.2, 0.64, 1)';
@@ -258,12 +237,7 @@ function _snapTo(state, animate = true) {
     _sheet.style.transform = `translateY(${translateY}px)`;
   });
 
-  // Scroll interne : remettre à 0 si on ferme
-  if (state === 'peek' && _content) {
-    _content.scrollTop = 0;
-  }
-
-  // touch-action sur le handle
+  if (state === 'peek' && _content) _content.scrollTop = 0;
   _handle.style.touchAction = 'none';
 }
 
@@ -273,7 +247,6 @@ function _attachKeyboardEvents() {
   if (!window.visualViewport) return;
 
   window.visualViewport.addEventListener('resize', () => {
-    // Si le chat est ouvert, il gère le clavier lui-même → ne pas toucher le sheet
     const chatWin = document.getElementById('chat-window');
     if (chatWin && chatWin.classList.contains('chat-window--open')) return;
 
@@ -281,10 +254,8 @@ function _attachKeyboardEvents() {
     const windowH  = window.innerHeight;
 
     if (vvHeight < windowH * 0.85) {
-      // Clavier ouvert → passer en full pour que l'input reste visible
       _snapTo('full');
     } else {
-      // Clavier fermé → revenir à half si on était en full à cause du clavier
       if (_currentState === 'full') _snapTo('half');
     }
   });
@@ -306,8 +277,6 @@ function _attachTabEvents() {
 
       const tab = btn.dataset.sheetTab;
       _renderTab(tab);
-
-      // Ouvrir le sheet si en peek
       if (_currentState === 'peek') _snapTo('half');
     });
   });
@@ -318,11 +287,8 @@ function _renderTab(tab) {
   const line     = store.get('filteredLine');
   const filtered = line ? buses.filter(b => b.ligne === line) : buses;
 
-  if (tab === 'buses') {
-    _renderBusList(filtered);
-  } else if (tab === 'leaderboard') {
-    _renderLeaderboard();
-  }
+  if (tab === 'buses')       _renderBusList(filtered);
+  else if (tab === 'leaderboard') _renderLeaderboard();
 }
 
 // ── RENDU BUS LIST ────────────────────────────────────────
@@ -335,7 +301,6 @@ function _updateSummary(count) {
 }
 
 function _renderBusList(buses) {
-  // Vérifier que l'onglet actif est "buses"
   const activeTab = _tabs?.querySelector('.sheet-tab-btn.active')?.dataset.sheetTab;
   if (activeTab && activeTab !== 'buses') return;
   if (!_content) return;
@@ -345,7 +310,6 @@ function _renderBusList(buses) {
   if (!buses || buses.length === 0) {
     _content.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">🔍</div>
         <div class="empty-text">Aucun bus actif sur cette ligne.</div>
         <button class="empty-action" onclick="window._resetFilter()">
           Voir toutes les lignes
@@ -355,7 +319,6 @@ function _renderBusList(buses) {
   }
 
   const selectedId = store.get('selectedBus')?.id;
-
   buses.forEach(bus => {
     const card = _buildBusCard(bus, selectedId === bus.id);
     _content.appendChild(card);
@@ -379,7 +342,7 @@ function _buildBusCard(bus, isSelected) {
       <div class="bus-name">${bus.name}</div>
       <div class="bus-age ${ageClass}">${ageLabel}</div>
     </div>
-    <div class="bus-position">📍 ${bus.position}</div>
+    <div class="bus-position">${bus.position}</div>
     <div class="bus-reporter">Signalé par ${bus.reporter}</div>
   `;
 
@@ -409,19 +372,10 @@ function _highlightSelectedCard(busId) {
 
 function _renderLeaderboard() {
   if (!_content) return;
-  _content.innerHTML = '';
-
-  // Récupère les données via store si disponibles,
-  // sinon affiche un état vide propre
-  const empty = `
+  _content.innerHTML = `
     <div class="empty-state">
-      <div class="empty-icon">🏆</div>
       <div class="empty-text">Chargement du classement...</div>
     </div>`;
-  _content.innerHTML = empty;
-
-  // Les données leaderboard ne sont pas dans le store actuellement.
-  // Elles seront injectées par app.js via injectLeaderboard().
 }
 
 export function injectLeaderboard(users) {
@@ -433,7 +387,6 @@ export function injectLeaderboard(users) {
   if (!users || users.length === 0) {
     _content.innerHTML = `
       <div class="empty-state">
-        <div class="empty-icon">🏆</div>
         <div class="empty-text">Aucun contributeur pour l'instant.</div>
       </div>`;
     return;
@@ -442,16 +395,16 @@ export function injectLeaderboard(users) {
   users.forEach((user, i) => {
     const div = document.createElement('div');
     div.className = 'lb-item';
-    const rank = i + 1;
+    const rank       = i + 1;
     const rankClass  = rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : 'other';
-    const rankSymbol = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : String(rank);
+    const rankSymbol = rank === 1 ? '1' : rank === 2 ? '2' : rank === 3 ? '3' : String(rank);
 
     div.innerHTML = `
       <div class="lb-rank ${rankClass}">${rankSymbol}</div>
       <div class="lb-avatar">${user.avatar}</div>
       <div class="lb-info">
         <div class="lb-name">${user.name}</div>
-        <div class="lb-zone">📍 ${user.zone}</div>
+        <div class="lb-zone">${user.zone}</div>
       </div>
       <div class="lb-score">
         <div class="lb-count">${user.count}</div>
@@ -472,10 +425,5 @@ function _getCurrentTranslate() {
 
 // ── API PUBLIQUE ──────────────────────────────────────────
 
-export function snapTo(state) {
-  _snapTo(state);
-}
-
-export function getState() {
-  return _currentState;
-}
+export function snapTo(state) { _snapTo(state); }
+export function getState()    { return _currentState; }
