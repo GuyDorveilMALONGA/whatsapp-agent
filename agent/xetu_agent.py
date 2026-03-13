@@ -40,13 +40,13 @@ _llm_gemini = ChatGoogleGenerativeAI(
 _agent_groq = create_react_agent(
     model=_llm_groq,
     tools=ALL_TOOLS,
-    state_modifier=SETU_SOUL,
+    prompt=SETU_SOUL,
 )
 
 _agent_gemini = create_react_agent(
     model=_llm_gemini,
     tools=ALL_TOOLS,
-    state_modifier=SETU_SOUL,
+    prompt=SETU_SOUL,
 )
 
 
