@@ -1,8 +1,13 @@
 """
-agent/tools.py — V1.0
+agent/tools.py — V1.1
 Skills Xëtu → Tools LangGraph.
 Le numéro de téléphone est injecté via RunnableConfig,
 pas extrait par le LLM — zéro risque de fuite ou d'erreur.
+
+FIX V1.1 :
+  - calculate_route et get_bus_info passés en async
+  - extract_entities passé en async
+  - config toujours en dernier paramètre (requis par LangGraph)
 """
 from typing import Optional
 from langchain_core.tools import tool
@@ -22,35 +27,67 @@ def _get_phone(config: RunnableConfig) -> str:
 # ══════════════════════════════════════════════════════════
 
 @tool
-def calculate_route(origin: str, destination: str, config: RunnableConfig) -> dict:
+async def calculate_route(origin: str, destination: str, config: RunnableConfig) -> dict:
     """Calcule un itinéraire en bus à Dakar entre deux points.
-    À utiliser quand l'utilisateur veut aller quelque part,
-    demande comment rejoindre un endroit, ou quelle ligne prendre.
+    À utiliser UNIQUEMENT quand l'utilisateur a fourni un point de départ
+    ET une destination explicites dans son message.
+    NE PAS utiliser si le point de départ est absent ou supposé.
 
     Args:
-        origin: Point de départ (quartier, arrêt ou adresse)
-        destination: Point d'arrivée (quartier, arrêt ou adresse)
+        origin: Point de départ explicitement fourni par l'utilisateur (quartier ou arrêt)
+        destination: Point d'arrivée (quartier, arrêt ou lieu)
     """
     from agent.graph import get_graph
     graph = get_graph()
-    result = graph.find_route(origin, destination)
-    if not result or not result.get("routes"):
-        return {"status": "not_found", "origin": origin, "destination": destination}
-    return {"status": "ok", "result": result}
+    try:
+        result = graph.find_route(origin, destination)
+        if not result or not result.get("routes"):
+            return {"status": "not_found", "origin": origin, "destination": destination}
+        return {"status": "ok", "result": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e), "origin": origin, "destination": destination}
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 2 — Signalement
+# TOOL 2 — Signalements récents
+# ══════════════════════════════════════════════════════════
+
+@tool
+async def get_recent_sightings(ligne: str, config: RunnableConfig) -> dict:
+    """Récupère les signalements récents d'une ligne de bus.
+    À utiliser quand l'utilisateur demande où est un bus ou s'il est passé.
+
+    Args:
+        ligne: Numéro de ligne (ex: '7', '15', '16A')
+    """
+    from db import queries
+    from config.settings import VALID_LINES
+
+    ligne = str(ligne).upper()
+    if ligne not in VALID_LINES:
+        return {"status": "unknown_line", "ligne": ligne}
+
+    try:
+        sightings = queries.get_recent_sightings(ligne, limit=3)
+        if not sightings:
+            return {"status": "no_data", "ligne": ligne}
+        return {"status": "ok", "ligne": ligne, "sightings": sightings}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ══════════════════════════════════════════════════════════
+# TOOL 3 — Signalement
 # ══════════════════════════════════════════════════════════
 
 @tool
 async def report_bus(ligne: str, arret: str, message_original: str, config: RunnableConfig) -> dict:
     """Enregistre un signalement : un utilisateur a VU un bus à un arrêt maintenant.
-    À utiliser uniquement pour une observation directe au présent.
+    À utiliser UNIQUEMENT après confirmation explicite de l'utilisateur (réponse "oui").
     NE PAS utiliser si l'utilisateur dit 'j'attends', 'je prends', ou pose une question.
 
     Args:
-        ligne: Numéro de ligne vu (ex: '7', '15', 'DDD')
+        ligne: Numéro de ligne vu (ex: '7', '15')
         arret: Arrêt où le bus a été observé
         message_original: Texte brut du message pour validation anti-fraude
     """
@@ -75,7 +112,7 @@ async def report_bus(ligne: str, arret: str, message_original: str, config: Runn
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 3 — Abonnement
+# TOOL 4 — Abonnement
 # ══════════════════════════════════════════════════════════
 
 @tool
@@ -119,13 +156,13 @@ async def manage_subscription(
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 4 — Info réseau
+# TOOL 5 — Info réseau
 # ══════════════════════════════════════════════════════════
 
 @tool
-def get_bus_info(query: str, config: RunnableConfig, ligne: Optional[str] = None) -> dict:
+async def get_bus_info(query: str, config: RunnableConfig, ligne: Optional[str] = None) -> dict:
     """Répond aux questions sur le réseau Dem Dikk :
-    arrêts d'une ligne, fréquences, horaires de service, tarifs.
+    arrêts d'une ligne, fréquences, horaires de service.
     À utiliser pour toute question informative sur le réseau.
 
     Args:
@@ -144,19 +181,22 @@ def get_bus_info(query: str, config: RunnableConfig, ligne: Optional[str] = None
             result["stops"] = get_stop_names(ligne_up)
             result["service"] = format_service(ligne_up)
 
-    rag_answer = retrieve(query)
-    if rag_answer:
-        result["rag"] = rag_answer
+    try:
+        rag_answer = retrieve(query)
+        if rag_answer:
+            result["rag"] = rag_answer
+    except Exception:
+        pass
 
     return result if result else {"status": "not_found", "query": query}
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 5 — Extracteur entités
+# TOOL 6 — Extracteur entités
 # ══════════════════════════════════════════════════════════
 
 @tool
-def extract_entities(text: str, config: RunnableConfig) -> dict:
+async def extract_entities(text: str, config: RunnableConfig) -> dict:
     """Extrait le numéro de ligne et le nom d'arrêt depuis un message.
     À appeler en premier sur tout message mentionnant un bus ou un arrêt.
 
@@ -180,6 +220,7 @@ def extract_entities(text: str, config: RunnableConfig) -> dict:
 
 ALL_TOOLS = [
     calculate_route,
+    get_recent_sightings,
     report_bus,
     manage_subscription,
     get_bus_info,
