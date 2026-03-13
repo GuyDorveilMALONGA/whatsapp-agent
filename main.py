@@ -446,6 +446,9 @@ async def _process_message_safe(
         logger.info(f"{_tag} END OK")
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        print(f"===== CRASH XETU ===== {type(e).__name__}: {e}", flush=True)
         logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}", exc_info=True)
         await send_fn(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
