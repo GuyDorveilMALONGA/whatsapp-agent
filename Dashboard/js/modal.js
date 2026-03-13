@@ -1,5 +1,5 @@
 /**
- * js/modal.js
+ * js/modal.js  — V2.0
  * Modal de signalement — deux modes : confirmation rapide + signalement complet.
  *
  * MODE CONFIRMATION (depuis popup "Confirmer") :
@@ -8,15 +8,22 @@
  * MODE SIGNALEMENT (depuis sidebar "Signaler") :
  *   → Modal complet : ligne (dropdown) + arrêt (autocomplete) + observation
  *
+ * V2.0 — AUTOCOMPLETE DYNAMIQUE :
+ *   → _arretIndex construit depuis routes_geometry_v13.json (3 129 arrêts réels)
+ *   → ARRETS_CONNUS statique n'est plus utilisé pour l'autocomplete
+ *   → Préchargement silencieux dans init(), avant toute ouverture du modal
+ *   → Score : exact (50) > début (30) > contient (20), +10 si arrêt sur la ligne choisie
+ *
  * FIX : closeModal() reset le formulaire + réactive le bouton submit
  *
- * Dépend de : store.js, constants.js, utils.js, toast.js
+ * Dépend de : store.js, constants.js, utils.js, toast.js, api.js
  * RÈGLE : ne touche jamais map.js ou ui.js directement — passe par store ou callbacks.
  */
 
 import * as store from './store.js';
-import { ARRETS_CONNUS, LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constants.js';
+import { LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constants.js';
 import { normalizeText, safeFetch, generateUUID } from './utils.js';
+import { loadRoutes } from './api.js';
 import * as Toast from './toast.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
@@ -30,6 +37,12 @@ const SESSION_ID = `web_${generateUUID()}`;
 let _isSubmitting = false;
 let _focusTrigger = null;
 let _autocompleteTimeout = null;
+
+// ── Index des arrêts (construit dynamiquement) ────────────
+// Structure : [{ name: string, normalName: string, lines: string[] }]
+let _arretIndex = [];
+let _arretIndexReady = false;
+let _arretIndexLoading = false;
 
 // ── Éléments DOM ─────────────────────────────────────────
 let _elModal, _elOverlay, _elForm;
@@ -46,6 +59,62 @@ export function init(callbacks = {}) {
   _onReportSuccess  = callbacks.onReportSuccess  || null;
   _buildDOM();
   _attachEvents();
+
+  // Préchargement silencieux de l'index d'arrêts
+  _loadArretIndex();
+}
+
+// ── Construction de l'index depuis routes_geometry_v13.json ──
+
+async function _loadArretIndex() {
+  if (_arretIndexReady || _arretIndexLoading) return;
+  _arretIndexLoading = true;
+
+  try {
+    const routes = await loadRoutes(); // retourne le GeoJSON complet
+    const map = new Map(); // normalName → { name, lines: Set }
+
+    for (const feature of routes.features) {
+      const ligne = feature.properties?.ligne;
+      if (!ligne) continue;
+
+      // Stops peuvent être dans properties.stops (array) ou properties.arrets
+      const stops =
+        feature.properties?.stops ||
+        feature.properties?.arrets ||
+        [];
+
+      for (const stop of stops) {
+        // stop peut être une string ou un objet { name, ... }
+        const raw = typeof stop === 'string' ? stop : stop?.name;
+        if (!raw || raw.trim().length < 2) continue;
+
+        const name       = raw.trim();
+        const normalName = normalizeText(name);
+
+        if (map.has(normalName)) {
+          map.get(normalName).lines.add(String(ligne));
+        } else {
+          map.set(normalName, { name, lines: new Set([String(ligne)]) });
+        }
+      }
+    }
+
+    _arretIndex = [...map.values()].map(({ name, lines }) => ({
+      name,
+      normalName: normalizeText(name),
+      lines: [...lines].sort(),
+    }));
+
+    _arretIndexReady = true;
+  } catch (err) {
+    console.warn('[modal] Impossible de charger l\'index d\'arrêts :', err);
+    // Fallback silencieux — l'autocomplete sera simplement vide
+    _arretIndex = [];
+    _arretIndexReady = true; // on ne bloque pas l'UI
+  } finally {
+    _arretIndexLoading = false;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -102,6 +171,9 @@ export function openModal(prefill = {}, triggerEl = null) {
   _elOverlay.hidden = false;
   _elModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
+
+  // Si l'index n'est pas encore prêt, on le lance (2e tentative silencieuse)
+  if (!_arretIndexReady) _loadArretIndex();
 
   requestAnimationFrame(() => {
     if (!_elLigne.value)       _elLigne.focus();
@@ -297,7 +369,7 @@ function _handleKeydown(e) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// AUTOCOMPLETE ARRÊTS
+// AUTOCOMPLETE ARRÊTS — INDEX DYNAMIQUE
 // ═══════════════════════════════════════════════════════════
 
 let _activeSuggestionIndex = -1;
@@ -343,30 +415,49 @@ function _highlightSuggestion(items) {
   }
 }
 
+/**
+ * Recherche dans _arretIndex (3 129 arrêts réels).
+ *
+ * Scoring :
+ *   +50  nom normalisé === query exacte
+ *   +30  nom normalisé commence par query
+ *   +20  nom normalisé contient query
+ *   +10  alias normalisé contient query (si pas déjà matché sur nom)
+ *   +10  bonus : arrêt appartient à la ligne sélectionnée
+ *
+ * Retourne les 6 meilleurs résultats, ligne sélectionnée en tête.
+ */
 function _searchArrets(query, selectedLigne) {
+  if (!_arretIndexReady || !_arretIndex.length) return [];
+
   const q = normalizeText(query);
+  if (q.length < 2) return [];
 
-  const score = (arret) => {
-    const normalName     = normalizeText(arret.name);
-    const allTexts       = [normalName, ...arret.aliases.map(normalizeText)];
-    const onSelectedLine = selectedLigne && arret.lines.includes(selectedLigne);
+  const scored = [];
 
+  for (const arret of _arretIndex) {
     let s = 0;
-    if (normalName.startsWith(q))               s += 30;
-    else if (normalName.includes(q))            s += 20;
-    else if (allTexts.some(t => t.includes(q))) s += 10;
-    else return -1;
 
-    if (onSelectedLine) s += 5;
-    return s;
-  };
+    if (arret.normalName === q)               s = 50;
+    else if (arret.normalName.startsWith(q))  s = 30;
+    else if (arret.normalName.includes(q))    s = 20;
+    else continue; // pas de match
 
-  return ARRETS_CONNUS
-    .map(arret => ({ arret, score: score(arret) }))
-    .filter(({ score }) => score >= 0)
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 5)
-    .map(({ arret }) => arret);
+    if (selectedLigne && arret.lines.includes(selectedLigne)) s += 10;
+
+    scored.push({ arret, s });
+  }
+
+  // Tri : score desc, puis ligne sélectionnée en tête, puis alpha
+  scored.sort((a, b) => {
+    if (b.s !== a.s) return b.s - a.s;
+    const aOnLine = selectedLigne && a.arret.lines.includes(selectedLigne) ? 0 : 1;
+    const bOnLine = selectedLigne && b.arret.lines.includes(selectedLigne) ? 0 : 1;
+    if (aOnLine !== bOnLine) return aOnLine - bOnLine;
+    return a.arret.name.localeCompare(b.arret.name, 'fr');
+  });
+
+  return scored.slice(0, 6).map(({ arret }) => arret);
 }
 
 function _renderSuggestions(results) {
@@ -375,21 +466,40 @@ function _renderSuggestions(results) {
 
   if (!results.length) { _hideSuggestions(); return; }
 
-  const query = normalizeText(_elArret.value);
+  const query          = normalizeText(_elArret.value);
+  const selectedLigne  = _elLigne.value;
 
   _elSuggestions.innerHTML = results.map((arret, i) => {
     const highlighted = _highlightMatch(arret.name, query);
-    const linesBadges = arret.lines.slice(0, 3)
-      .map(l => `<span class="suggestion-line-badge">${l}</span>`)
+
+    // Badges : ligne sélectionnée en premier, max 4 badges
+    const sortedLines = selectedLigne
+      ? [
+          ...arret.lines.filter(l => l === selectedLigne),
+          ...arret.lines.filter(l => l !== selectedLigne),
+        ]
+      : arret.lines;
+
+    const linesBadges = sortedLines.slice(0, 4)
+      .map(l => {
+        const isSelected = l === selectedLigne;
+        return `<span class="suggestion-line-badge${isSelected ? ' is-selected' : ''}">${_escapeHtml(l)}</span>`;
+      })
       .join('');
+
+    const moreCount = arret.lines.length - 4;
+    const moreLabel = moreCount > 0
+      ? `<span class="suggestion-line-more">+${moreCount}</span>`
+      : '';
+
     return `
       <li id="suggestion-${i}"
           role="option"
           aria-selected="false"
           class="autocomplete-item"
-          data-name="${arret.name}">
+          data-name="${_escapeHtml(arret.name)}">
         <span class="suggestion-name">${highlighted}</span>
-        <span class="suggestion-lines">${linesBadges}</span>
+        <span class="suggestion-lines">${linesBadges}${moreLabel}</span>
       </li>
     `;
   }).join('');
