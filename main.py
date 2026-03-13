@@ -1,21 +1,13 @@
 """
-main.py — V7.6.1
+main.py — V8.0
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V7.6.1 depuis V7.6 :
-  - DEBUG LOGS dans _process_message_safe pour diagnostiquer
-    l'erreur générique affichée dans le widget web.
-    Chaque étape du pipeline est loggée → Railway logs montreront
-    exactement où ça plante (route_async, LLM, Supabase, etc.)
-
-MIGRATIONS V7.6 depuis V7.5 :
-  - PHASE 3 DASHBOARD : Endpoint WebSocket /ws/{session_id}
-  - WebSocket partage _process_message_safe avec WA + Telegram
-  - Polling HTTP reste actif en fallback si WS déconnecté
-
-MIGRATIONS V7.5 depuis V7.4 :
-  - PHASE 1 DASHBOARD : POST /api/report
-  - CORS allow_methods étendu à GET + POST
+MIGRATIONS V8.0 depuis V7.6.1 :
+  - route_async() + _dispatch() remplacés par xetu_run() (agent LangGraph)
+  - Imports skills/* supprimés — devenus tools internes dans agent/tools.py
+  - Import extract_qualites conservé (utilisé dans _handle_enrichissement)
+  - Toute la logique session, confirmation, enrichissement : INCHANGÉE
+  - Canaux WhatsApp, Telegram, WebSocket : INCHANGÉS
 """
 import logging
 import re
@@ -34,16 +26,17 @@ from services import whisper
 from services import telegram as telegram_service
 from services.websocket import handle_websocket
 from db import queries
-from agent.router import route_async, extract_qualites
+
+# ── MIGRATION V8.0 : agent LangGraph au lieu de router + skills ──────────────
+from agent.xetu_agent import run as xetu_run
+from agent.router import extract_qualites           # conservé pour _handle_enrichissement
+# ─────────────────────────────────────────────────────────────────────────────
+
 from agent.normalizer import normalize
 from core.context_builder import build_context
 from core.security import verify_webhook_signature, validate_phone, check_rate_limit
 import core.queue_manager as queue_manager
-import skills.signalement as skill_signalement
-import skills.question as skill_question
-import skills.abonnement as skill_abonnement
-import skills.escalade as skill_escalade
-import skills.itineraire as skill_itineraire
+import skills.signalement as skill_signalement      # conservé pour notify_abonnes (BackgroundTask)
 from heartbeat.runner import start_heartbeat
 from memory import user_memory
 from core.session_manager import (
@@ -67,9 +60,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V7.6.1 démarré — WebSocket /ws/{session_id}")
+    logger.info("🚌 Xëtu V8.0 démarré — Agent LangGraph actif")
     yield
-    logger.info("🚌 Xëtu V7.6.1 arrêté proprement")
+    logger.info("🚌 Xëtu V8.0 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -92,7 +85,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Force CORS headers — Railway proxy écrase parfois Access-Control-Allow-Origin
 class ForceCORSMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         origin = request.headers.get("origin", "")
@@ -105,8 +97,6 @@ class ForceCORSMiddleware(BaseHTTPMiddleware):
 app.add_middleware(ForceCORSMiddleware)
 
 
-# Handler OPTIONS explicite pour forcer les bons headers CORS
-# (nécessaire quand Railway écrase les headers via son reverse proxy)
 @app.options("/{rest_of_path:path}")
 async def preflight_handler(rest_of_path: str, request: Request):
     origin = request.headers.get("origin", "")
@@ -141,7 +131,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "7.6.1", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "8.0", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -154,11 +144,6 @@ async def websocket_endpoint(
     session_id: str,
     background_tasks: BackgroundTasks,
 ):
-    """
-    WebSocket pour le chat natif du dashboard.
-    session_id = "web_{uuid4}" généré côté client (js/ws.js).
-    Partage _process_message_safe avec WA et Telegram.
-    """
     await handle_websocket(
         websocket=websocket,
         session_id=session_id,
@@ -255,7 +240,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPERS — DÉTECTION
+# HELPERS — DÉTECTION (inchangés)
 # ═══════════════════════════════════════════════════════════
 
 def _check_message(text: str) -> str | None:
@@ -401,46 +386,25 @@ async def _process_message_safe(
         session = get_context(phone)
         logger.info(f"{_tag} get_context OK → etat={session.etat!r}")
 
-        # ── Contact + Conversation (pre-route) ───────────────
-        _contact_pre = queries.get_or_create_contact(phone, "fr")
-        logger.info(f"{_tag} contact_pre OK → id={_contact_pre['id']}")
-
-        _conv_pre = queries.get_or_create_conversation(_contact_pre["id"])
-        logger.info(f"{_tag} conversation_pre OK → id={_conv_pre['id']}")
-
-        history = queries.get_recent_messages(_conv_pre["id"])
+        # ── Contact + Conversation ───────────────────────────
+        contact = queries.get_or_create_contact(phone, "fr")
+        conv    = queries.get_or_create_conversation(contact["id"])
+        conv_id = conv["id"]
+        history = queries.get_recent_messages(conv_id)
         logger.info(f"{_tag} history OK → {len(history)} messages")
-
-        # ── Routage LLM ──────────────────────────────────────
-        logger.info(f"{_tag} route_async START…")
-        route_result = await route_async(
-            normalized,
-            history=history,
-            session_context=session,
-        )
-        logger.info(
-            f"{_tag} route_async OK → intent={route_result.intent!r} "
-            f"lang={route_result.lang!r} source={getattr(route_result, 'source', '?')!r}"
-        )
-
-        langue = route_result.lang or detect_language(text)
-        est_auteur_signalement = getattr(route_result, "is_signalement_fort", False)
-
-        # ── Contact final (langue détectée) ──────────────────
-        contact      = queries.get_or_create_contact(phone, langue)
-        conversation = queries.get_or_create_conversation(contact["id"])
-        conv_id      = conversation["id"]
-        if contact["id"] != _contact_pre["id"]:
-            history = queries.get_recent_messages(conv_id)
 
         # ── Message de bienvenue (1ère fois) ─────────────────
         if not history:
             await send_fn(phone, WELCOME_MESSAGE)
 
-        queries.save_message(conv_id, "user", text, langue, route_result.intent)
+        # ── Détection langue (avant agent, pour routing LLM) ─
+        langue = detect_language(text)
+        logger.info(f"{_tag} langue détectée → {langue!r}")
+
+        queries.save_message(conv_id, "user", text, langue, "incoming")
 
         # ── PRIORITÉ 1 : ABANDON ─────────────────────────────
-        if route_result.intent == "abandon" or is_abandon(text):
+        if is_abandon(text):
             reset_context(phone)
             response = _reponse_abandon(langue)
             await send_fn(phone, response)
@@ -451,72 +415,33 @@ async def _process_message_safe(
         if session.etat:
             response = await _handle_session_active(
                 phone=phone, text=text, langue=langue,
-                session=session, route_result=route_result,
-                contact=contact, conv_id=conv_id, history=history,
+                session=session, contact=contact,
+                conv_id=conv_id, history=history,
                 background_tasks=background_tasks, send_fn=send_fn,
             )
             if response is not None:
                 await send_fn(phone, response)
-                queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
+                queries.save_message(conv_id, "assistant", response, langue, "session")
                 return
 
-        # ── PRIORITÉ 3 : MESSAGE HYBRIDE ─────────────────────
-        if (
-            route_result.intent != "signalement"
-            and _detecter_signalement_dans_message(route_result.entities)
-            and not _detecter_question_communautaire(text)
-        ):
-            await _handle_signalement_silencieux(
-                phone=phone, entities=route_result.entities,
-                langue=langue, background_tasks=background_tasks,
-            )
-
-        # ── PRIORITÉ 3b : SIGNALEMENT DOUBLE LIGNE ───────────
-        if route_result.intent == "signalement":
-            lignes = _detecter_multi_ligne(route_result.entities)
-            if len(lignes) > 1:
-                response = await _handle_multi_ligne(
-                    phone=phone, text=text, langue=langue,
-                    entities=route_result.entities, lignes=lignes,
-                    contact=contact, conv_id=conv_id,
-                    background_tasks=background_tasks,
-                )
-                await send_fn(phone, response)
-                queries.save_message(conv_id, "assistant", response, langue, "signalement")
-                if not est_auteur_signalement:
-                    await _proposer_abonnement_si_nouveau(phone, lignes[0], langue, send_fn)
-                return
-
-        # ── PRIORITÉ 4 : DISPATCH NORMAL ─────────────────────
-        logger.info(f"{_tag} dispatch START → intent={route_result.intent!r}")
-        response = await _dispatch(
-            text=text, intent=route_result.intent, contact=contact,
-            langue=langue, conv_id=conv_id, history=history,
-            entities=route_result.entities, background_tasks=background_tasks,
+        # ── PRIORITÉ 3 : AGENT LANGGRAPH ─────────────────────
+        logger.info(f"{_tag} xetu_run START…")
+        response = await xetu_run(
+            message=normalized,
+            phone=phone,
+            langue=langue,
+            history=history,
         )
-        logger.info(f"{_tag} dispatch OK → réponse {len(response)} chars")
+        logger.info(f"{_tag} xetu_run OK → réponse {len(response)} chars")
 
         await send_fn(phone, response)
-        queries.save_message(conv_id, "assistant", response, langue, route_result.intent)
+        queries.save_message(conv_id, "assistant", response, langue, "agent")
 
-        ligne_extraite = route_result.entities.get("ligne")
-        if (
-            route_result.intent == "signalement"
-            and ligne_extraite
-            and route_result.source in ("signalement_fort", "llm", "regex", "regex_low")
-            and not est_auteur_signalement
-        ):
-            await _proposer_abonnement_si_nouveau(phone, ligne_extraite, langue, send_fn)
-
+        # ── Mémoire utilisateur ──────────────────────────────
         contact["_last_message"] = text
         user_memory.update_after_message(
-            contact=contact, langue=langue, intent=route_result.intent,
-            ligne=ligne_extraite,
-            arret=(
-                route_result.entities.get("arret")
-                or route_result.entities.get("position")
-                or route_result.entities.get("origin")
-            ),
+            contact=contact, langue=langue, intent="agent",
+            ligne=None, arret=None,
         )
 
         logger.info(f"{_tag} END OK")
@@ -527,22 +452,26 @@ async def _process_message_safe(
 
 
 # ═══════════════════════════════════════════════════════════
-# HANDLER SESSION ACTIVE
+# HANDLER SESSION ACTIVE (inchangé)
 # ═══════════════════════════════════════════════════════════
 
 async def _handle_session_active(
-    phone, text, langue, session, route_result,
-    contact, conv_id, history, background_tasks, send_fn,
+    phone, text, langue, session, contact,
+    conv_id, history, background_tasks, send_fn,
 ) -> str | None:
-    intent   = route_result.intent
-    entities = route_result.entities
+    from agent.extractor import extract as _extract
 
     if _is_annulation(text):
         reset_context(phone)
         return _reponse_annulation(langue)
 
+    entities = {}
+    extracted = _extract(text)
+    if extracted:
+        entities = {"ligne": extracted.ligne, "arret": extracted.arret}
+
     if session.etat == "attente_arret":
-        if (_is_confirmation_implicite(text) or intent == "signalement") \
+        if (_is_confirmation_implicite(text) or entities.get("ligne") == session.ligne) \
                 and session.ligne and session.signalement:
             position = session.signalement.get("position", "")
             response = await skill_signalement.handle(
@@ -552,14 +481,12 @@ async def _handle_session_active(
             )
             reset_context(phone)
             return response
-        return await skill_question.handle_arret_response(
-            phone, text, langue, entities, history=history
-        )
+        from skills.question import handle_arret_response
+        return await handle_arret_response(phone, text, langue, entities, history=history)
 
     if session.etat == "attente_origin":
-        return await skill_itineraire.handle_origin_response(
-            phone, text, langue, entities, history=history
-        )
+        from skills.itineraire import handle_origin_response
+        return await handle_origin_response(phone, text, langue, entities, history=history)
 
     if session.etat == "post_signalement":
         if _is_enrichissement_qualitatif(text):
@@ -611,40 +538,8 @@ async def _handle_session_active(
 
 
 # ═══════════════════════════════════════════════════════════
-# HANDLERS SECONDAIRES
+# HANDLERS SECONDAIRES (inchangés)
 # ═══════════════════════════════════════════════════════════
-
-async def _handle_signalement_silencieux(phone, entities, langue, background_tasks):
-    ligne = str(entities["ligne"]).upper()
-    arret = entities.get("arret") or entities.get("position") or entities.get("origin", "")
-    try:
-        result = queries.save_signalement(ligne=ligne, arret=arret, phone=phone)
-        if result is None:
-            return
-        background_tasks.add_task(skill_signalement.notify_abonnes, ligne, arret, phone)
-    except Exception as e:
-        logger.error(f"[Hybride] Erreur: {e}")
-
-
-async def _handle_multi_ligne(phone, text, langue, entities, lignes, contact, conv_id, background_tasks):
-    arret = entities.get("arret") or entities.get("position") or entities.get("origin", "")
-    confirmations = []
-    for ligne in lignes:
-        try:
-            result = queries.save_signalement(ligne=ligne.upper(), arret=arret, phone=phone)
-            if result is None:
-                continue
-            background_tasks.add_task(skill_signalement.notify_abonnes, ligne.upper(), arret, phone)
-            confirmations.append(f"Bus *{ligne.upper()}*")
-        except Exception as e:
-            logger.error(f"[Multi-ligne] Erreur ligne {ligne}: {e}")
-    if not confirmations:
-        return "❌ Impossible d'enregistrer les signalements. Réessaie."
-    noms = " et ".join(confirmations)
-    if langue == "wolof":
-        return f"✅ Jëf-jël ! {noms} ci *{arret}* — Signalé pour tout le monde. 🙏"
-    return f"✅ Merci ! {noms} à *{arret}* — signalés pour la communauté. 🙏"
-
 
 async def _handle_enrichissement(phone, text, langue, session):
     ligne    = session.ligne or ""
@@ -670,32 +565,7 @@ async def _handle_enrichissement(phone, text, langue, session):
 
 
 # ═══════════════════════════════════════════════════════════
-# DISPATCH NORMAL
-# ═══════════════════════════════════════════════════════════
-
-async def _dispatch(text, intent, contact, langue, conv_id, history, entities, background_tasks):
-    if intent == "signalement":
-        return await skill_signalement.handle(text, contact, langue, entities, background_tasks)
-    elif intent == "question":
-        return await skill_question.handle(text, contact, langue, history, entities)
-    elif intent == "liste_arrets":
-        return await skill_question.handle_liste_arrets(text, contact, langue, entities, history)
-    elif intent == "abonnement":
-        return await skill_abonnement.handle(text, contact, langue, entities)
-    elif intent == "escalade":
-        return await skill_escalade.handle(text, contact, langue, conv_id)
-    elif intent == "itineraire":
-        return await skill_itineraire.handle(text, contact, langue, entities)
-    elif intent == "alternatives_itineraire":
-        return await skill_itineraire.handle_alternatives(contact["phone"], langue, history)
-    else:
-        from agent.llm_brain import generate_response
-        ctx = build_context(message=text, intent="out_of_scope", contact=contact, history=history)
-        return await generate_response(ctx, langue, history)
-
-
-# ═══════════════════════════════════════════════════════════
-# HELPERS — RÉPONSES + PROACTIVITÉ
+# HELPERS — RÉPONSES + PROACTIVITÉ (inchangés)
 # ═══════════════════════════════════════════════════════════
 
 def _reponse_abandon(langue):

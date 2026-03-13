@@ -7,7 +7,19 @@ groq==0.9.0
 google-generativeai==0.7.2
 langdetect==1.0.9
 apscheduler==3.10.4
-# V2
 vecs==0.4.3
+rapidfuzz>=3.0.0
+langgraph>=0.3
+langchain-core>=0.3
+langchain-google-genai>=2.0
+langchain-mcp>=0.1
+redis>=5.0
+structlog>=24.0
+tenacity>=8.0
+pydantic-settings>=2.0
+langchain-groq>=0.3
+langchain-google-genai>=2.0
+langgraph>=0.3
+langchain-core>=0.3
 rapidfuzz>=3.0.0
 rapidfuzz 
