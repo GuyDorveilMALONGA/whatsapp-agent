@@ -334,10 +334,9 @@ async def _process_message(phone: str, text: str, background_tasks: BackgroundTa
                 send_fn=_whatsapp_service.send_message
             )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
-        await _whatsapp_service.send_message(
-            phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏"
-        )
 
 
 # ═══════════════════════════════════════════════════════════

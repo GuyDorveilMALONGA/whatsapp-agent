@@ -1,13 +1,10 @@
 """
-agent/xetu_agent.py — V1.0
+agent/xetu_agent.py — V1.1 (debug)
 Agent ReAct LangGraph — cœur de Xëtu.
 
 LLM routing :
-  - Wolof  → Gemini 2.0 Flash  (comme LLM_ROUTING actuel)
+  - Wolof  → Gemini 2.0 Flash
   - Autres → Llama 4 Scout via Groq
-
-Le numéro de téléphone est injecté via RunnableConfig.configurable
-et accessible dans tous les tools via _get_phone(config).
 """
 from langgraph.prebuilt import create_react_agent
 from langchain_groq import ChatGroq
@@ -57,25 +54,35 @@ async def run(message: str, phone: str, langue: str = "fr", history: list = None
 
     Args:
         message : Message brut de l'utilisateur
-        phone   : Numéro de téléphone E.164 (injecté dans tous les tools)
+        phone   : Numéro de téléphone E.164
         langue  : Langue détectée en amont ('wolof', 'fr', 'en', ...)
         history : Historique [{"role": "user/assistant", "content": "..."}]
 
     Returns:
-        Réponse finale en string, prête à envoyer sur WhatsApp/Telegram/WS
+        Réponse finale en string
     """
-    # Routing LLM selon la langue — miroir exact de LLM_ROUTING dans settings.py
-    agent = _agent_gemini if langue == "wolof" else _agent_groq
+    import traceback
+    import logging
+    logger = logging.getLogger(__name__)
 
-    # Historique + message courant
-    messages = list(history or [])
-    messages.append({"role": "user", "content": message})
+    try:
+        agent = _agent_gemini if langue == "wolof" else _agent_groq
 
-    # Le phone voyage dans config.configurable — accessible via _get_phone(config)
-    # dans TOUS les tools sans que le LLM ait à le "savoir"
-    result = await agent.ainvoke(
-        {"messages": messages},
-        config={"configurable": {"phone": phone}},
-    )
+        messages = list(history or [])
+        messages.append({"role": "user", "content": message})
 
-    return result["messages"][-1].content
+        logger.info(f"[xetu_run] langue={langue!r} | messages={len(messages)} | phone={phone[:8]}...")
+
+        result = await agent.ainvoke(
+            {"messages": messages},
+            config={"configurable": {"phone": phone}},
+        )
+
+        response = result["messages"][-1].content
+        logger.info(f"[xetu_run] réponse OK — {len(response)} chars")
+        return response
+
+    except Exception as e:
+        traceback.print_exc()
+        logger.error(f"[xetu_run] CRASH — {type(e).__name__}: {e}", exc_info=True)
+        raise
