@@ -1,17 +1,28 @@
 """
-agent/tools.py — V1.1
+agent/tools.py — V1.2 (fix)
 Skills Xëtu → Tools LangGraph.
 Le numéro de téléphone est injecté via RunnableConfig,
 pas extrait par le LLM — zéro risque de fuite ou d'erreur.
 
-FIX V1.1 :
-  - calculate_route et get_bus_info passés en async
-  - extract_entities passé en async
-  - config toujours en dernier paramètre (requis par LangGraph)
+FIX V1.2 :
+  - RunnableConfig récupéré via InjectedToolArg (LangGraph 1.0.x)
+    → Le LLM ne voit PAS le paramètre config dans le schema
+    → Injection automatique par LangGraph
+  - Fallback si InjectedToolArg n'existe pas (anciennes versions)
 """
-from typing import Optional
+from typing import Optional, Annotated
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
+
+# ── Import InjectedToolArg (LangGraph 1.0.x) ─────────────
+# Masque le paramètre `config` du schema JSON envoyé au LLM.
+# Si l'import échoue (ancienne version), on utilise un fallback.
+try:
+    from langchain_core.tools import InjectedToolArg
+    ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
+except ImportError:
+    # Fallback — anciennes versions de langchain-core
+    ConfigDep = RunnableConfig
 
 
 def _get_phone(config: RunnableConfig) -> str:
@@ -27,7 +38,11 @@ def _get_phone(config: RunnableConfig) -> str:
 # ══════════════════════════════════════════════════════════
 
 @tool
-async def calculate_route(origin: str, destination: str, config: RunnableConfig) -> dict:
+async def calculate_route(
+    origin: str,
+    destination: str,
+    config: ConfigDep,
+) -> dict:
     """Calcule un itinéraire en bus à Dakar entre deux points.
     À utiliser UNIQUEMENT quand l'utilisateur a fourni un point de départ
     ET une destination explicites dans son message.
@@ -53,7 +68,10 @@ async def calculate_route(origin: str, destination: str, config: RunnableConfig)
 # ══════════════════════════════════════════════════════════
 
 @tool
-async def get_recent_sightings(ligne: str, config: RunnableConfig) -> dict:
+async def get_recent_sightings(
+    ligne: str,
+    config: ConfigDep,
+) -> dict:
     """Récupère les signalements récents d'une ligne de bus.
     À utiliser quand l'utilisateur demande où est un bus ou s'il est passé.
 
@@ -81,7 +99,12 @@ async def get_recent_sightings(ligne: str, config: RunnableConfig) -> dict:
 # ══════════════════════════════════════════════════════════
 
 @tool
-async def report_bus(ligne: str, arret: str, message_original: str, config: RunnableConfig) -> dict:
+async def report_bus(
+    ligne: str,
+    arret: str,
+    message_original: str,
+    config: ConfigDep,
+) -> dict:
     """Enregistre un signalement : un utilisateur a VU un bus à un arrêt maintenant.
     À utiliser UNIQUEMENT après confirmation explicite de l'utilisateur (réponse "oui").
     NE PAS utiliser si l'utilisateur dit 'j'attends', 'je prends', ou pose une question.
@@ -119,7 +142,7 @@ async def report_bus(ligne: str, arret: str, message_original: str, config: Runn
 async def manage_subscription(
     action: str,
     ligne: str,
-    config: RunnableConfig,
+    config: ConfigDep,
     arret: Optional[str] = None,
     heure: Optional[str] = None,
 ) -> dict:
@@ -160,7 +183,11 @@ async def manage_subscription(
 # ══════════════════════════════════════════════════════════
 
 @tool
-async def get_bus_info(query: str, config: RunnableConfig, ligne: Optional[str] = None) -> dict:
+async def get_bus_info(
+    query: str,
+    config: ConfigDep,
+    ligne: Optional[str] = None,
+) -> dict:
     """Répond aux questions sur le réseau Dem Dikk :
     arrêts d'une ligne, fréquences, horaires de service.
     À utiliser pour toute question informative sur le réseau.
@@ -196,7 +223,10 @@ async def get_bus_info(query: str, config: RunnableConfig, ligne: Optional[str] 
 # ══════════════════════════════════════════════════════════
 
 @tool
-async def extract_entities(text: str, config: RunnableConfig) -> dict:
+async def extract_entities(
+    text: str,
+    config: ConfigDep,
+) -> dict:
     """Extrait le numéro de ligne et le nom d'arrêt depuis un message.
     À appeler en premier sur tout message mentionnant un bus ou un arrêt.
 

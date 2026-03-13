@@ -1,14 +1,23 @@
 """
-agent/xetu_agent.py — V1.1 (debug)
+agent/xetu_agent.py — V1.2 (fix)
 Agent ReAct LangGraph — cœur de Xëtu.
 
 LLM routing :
   - Wolof  → Gemini 2.0 Flash
   - Autres → Llama 4 Scout via Groq
+
+FIX V1.2 :
+  - Conversion history → messages LangChain (HumanMessage/AIMessage)
+  - Gestion robuste des formats history hétérogènes (Supabase, dict, etc.)
+  - Logging renforcé pour tracer les crashs
 """
+import logging
+import traceback
+
 from langgraph.prebuilt import create_react_agent
 from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, AIMessage
 
 from config.settings import (
     GROQ_API_KEY, GROQ_MODEL,
@@ -16,6 +25,8 @@ from config.settings import (
     SETU_SOUL,
 )
 from agent.tools import ALL_TOOLS
+
+logger = logging.getLogger(__name__)
 
 # ── LLM Groq — Llama 4 Scout (FR, EN, Pulaar, unknown) ───
 _llm_groq = ChatGroq(
@@ -47,6 +58,49 @@ _agent_gemini = create_react_agent(
 )
 
 
+# ══════════════════════════════════════════════════════════
+# Conversion history Supabase → messages LangChain
+# ══════════════════════════════════════════════════════════
+
+def _convert_history(history: list | None) -> list:
+    """
+    Convertit l'historique (format Supabase ou dict) en objets
+    HumanMessage / AIMessage compatibles LangGraph.
+
+    Accepte :
+      - [{"role": "user", "content": "..."}, ...]
+      - [{"role": "assistant", "content": "..."}, ...]
+      - Dicts Supabase avec clés supplémentaires (langue, created_at, etc.)
+    """
+    if not history:
+        return []
+
+    messages = []
+    for msg in history:
+        # Extraire role et content — tolérant aux formats variés
+        role = msg.get("role", "").lower().strip()
+        content = msg.get("content", "")
+
+        if not content or not isinstance(content, str):
+            continue  # Skip les messages vides ou malformés
+
+        content = content.strip()
+        if not content:
+            continue
+
+        if role in ("user", "human"):
+            messages.append(HumanMessage(content=content))
+        elif role in ("assistant", "ai", "bot"):
+            messages.append(AIMessage(content=content))
+        # Skip les rôles inconnus (system, tool, etc.) — on ne les renvoie pas
+
+    return messages
+
+
+# ══════════════════════════════════════════════════════════
+# Point d'entrée unique
+# ══════════════════════════════════════════════════════════
+
 async def run(message: str, phone: str, langue: str = "fr", history: list = None) -> str:
     """
     Point d'entrée unique de Xëtu.
@@ -61,24 +115,32 @@ async def run(message: str, phone: str, langue: str = "fr", history: list = None
     Returns:
         Réponse finale en string
     """
-    import traceback
-    import logging
-    logger = logging.getLogger(__name__)
-
     try:
         agent = _agent_gemini if langue == "wolof" else _agent_groq
 
-        messages = list(history or [])
-        messages.append({"role": "user", "content": message})
+        # ── Conversion history → LangChain messages ──────────
+        messages = _convert_history(history)
+        messages.append(HumanMessage(content=message))
 
-        logger.info(f"[xetu_run] langue={langue!r} | messages={len(messages)} | phone={phone[:8]}...")
+        logger.info(
+            f"[xetu_run] langue={langue!r} | messages={len(messages)} "
+            f"| phone={phone[:8]}… | agent={'gemini' if langue == 'wolof' else 'groq'}"
+        )
 
         result = await agent.ainvoke(
             {"messages": messages},
             config={"configurable": {"phone": phone}},
         )
 
-        response = result["messages"][-1].content
+        # ── Extraire la réponse ──────────────────────────────
+        last_msg = result["messages"][-1]
+        response = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+
+        # Sécurité : si la réponse est vide, message par défaut
+        if not response or not response.strip():
+            logger.warning("[xetu_run] Réponse vide de l'agent !")
+            response = "Désolé, je n'ai pas compris. Reformule ta demande. 🙏"
+
         logger.info(f"[xetu_run] réponse OK — {len(response)} chars")
         return response
 
