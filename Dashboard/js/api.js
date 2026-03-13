@@ -3,9 +3,10 @@
  * Couche données — fetch Railway + mapping + fallback mock.
  * Dépend de : constants.js, utils.js
  *
- * AJOUT Phase 5 :
- *   - loadRoutes() : charge routes_geometry_v4.json (39 lignes, 750 arrêts)
- *   - Cache en mémoire pour éviter de recharger le JSON à chaque filtre
+ * V6.0 — Migration routes_geometry_v13.json
+ *   - loadRoutes() : charge routes_geometry_v13.json (77 lignes · 3129 arrêts)
+ *   - Accès via json.routes (structure v13) au lieu de json.routes (inchangé)
+ *   - Cache mémoire maintenu
  */
 
 import { API_BASE, LIGNE_NAMES } from './constants.js';
@@ -14,14 +15,15 @@ import { safeFetch } from './utils.js';
 // ── DONNÉES MOCK (fallback si Railway down) ───────────────
 
 const MOCK_BUSES = [
-  { id:1, ligne:'15',  position:'Liberté 6',    lat:14.7167, lng:-17.4677, reporter:'M. D.',    minutes_ago:2,  name:'Parcelles → Plateau' },
-  { id:2, ligne:'8',   position:'Sandaga',       lat:14.6847, lng:-17.4395, reporter:'F. S.',    minutes_ago:5,  name:'Pikine → Palais' },
-  { id:3, ligne:'4',   position:'Colobane',      lat:14.6921, lng:-17.4512, reporter:'I. K.',    minutes_ago:8,  name:'HLM → Terminus Leclerc' },
-  { id:4, ligne:'232', position:'Grand Yoff',    lat:14.7312, lng:-17.4589, reporter:'A. B.',    minutes_ago:3,  name:'Guédiawaye → Plateau' },
-  { id:5, ligne:'7',   position:'UCAD',          lat:14.6934, lng:-17.4659, reporter:'O. N.',    minutes_ago:12, name:'Yoff → Gare Routière' },
-  { id:6, ligne:'2',   position:'Petersen',      lat:14.6788, lng:-17.4401, reporter:'R. F.',    minutes_ago:1,  name:'Rufisque → Plateau' },
-  { id:7, ligne:'327', position:"Patte d'Oie",   lat:14.7089, lng:-17.4734, reporter:'C. M.',    minutes_ago:18, name:'Keur Massar → Plateau' },
-  { id:8, ligne:'1',   position:"Jet d'eau",     lat:14.7023, lng:-17.4445, reporter:'N. T.',    minutes_ago:6,  name:'Liberté 5 → Terminus Palais' },
+  { id:1, ligne:'15',      position:'Liberté 6',    lat:14.7167, lng:-17.4677, reporter:'M. D.',    minutes_ago:2,  name:'Parcelles → Plateau' },
+  { id:2, ligne:'8',       position:'Sandaga',       lat:14.6847, lng:-17.4395, reporter:'F. S.',    minutes_ago:5,  name:'Pikine → Palais' },
+  { id:3, ligne:'4',       position:'Colobane',      lat:14.6921, lng:-17.4512, reporter:'I. K.',    minutes_ago:8,  name:'HLM → Terminus Leclerc' },
+  { id:4, ligne:'232',     position:'Grand Yoff',    lat:14.7312, lng:-17.4589, reporter:'A. B.',    minutes_ago:3,  name:'Guédiawaye → Plateau' },
+  { id:5, ligne:'7',       position:'UCAD',          lat:14.6934, lng:-17.4659, reporter:'O. N.',    minutes_ago:12, name:'Yoff → Gare Routière' },
+  { id:6, ligne:'2',       position:'Petersen',      lat:14.6788, lng:-17.4401, reporter:'R. F.',    minutes_ago:1,  name:'Rufisque → Plateau' },
+  { id:7, ligne:'327',     position:"Patte d'Oie",   lat:14.7089, lng:-17.4734, reporter:'C. M.',    minutes_ago:18, name:'Keur Massar → Plateau' },
+  { id:8, ligne:'1',       position:"Jet d'eau",     lat:14.7023, lng:-17.4445, reporter:'N. T.',    minutes_ago:6,  name:'Liberté 5 → Terminus Palais' },
+  { id:9, ligne:'TAF TAF', position:'Diamniadio',    lat:14.7200, lng:-17.0800, reporter:'B. N.',    minutes_ago:9,  name:'Dakar → AIBD Express' },
 ];
 
 const MOCK_LEADERBOARD = [
@@ -36,9 +38,9 @@ const MOCK_STATS = { signalements_today: 247, contributors: 89 };
 
 // ── ID stable par ligne ───────────────────────────────────
 let _busIdCounter = 1;
-const _busIdMap = {};
+const _busIdMap   = {};
 
-// ── CACHE routes v4 ───────────────────────────────────────
+// ── CACHE routes v13 ──────────────────────────────────────
 let _routesCache = null;
 
 // ── MAPPING Railway → Dashboard ──────────────────────────
@@ -73,23 +75,23 @@ function _mapLeaderboard(rawLb) {
   }));
 }
 
-// ── ROUTES V4 ─────────────────────────────────────────────
+// ── ROUTES V13 ────────────────────────────────────────────
 
 /**
- * Charge routes_geometry_v4.json une seule fois (cache mémoire).
- * Retourne l'objet routes : { "1": { stops, osm_trace, ... }, ... }
+ * Charge routes_geometry_v13.json une seule fois (cache mémoire).
+ * Retourne l'objet routes : { "1": { name, stops, geometry, ... }, ... }
  */
 export async function loadRoutes() {
   if (_routesCache) return _routesCache;
 
   try {
-    const res = await fetch('./data/routes_geometry_v4.json');
+    const res = await fetch('./data/routes_geometry_v13.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     _routesCache = json.routes || {};
-    console.log(`[Api] routes_geometry_v4 chargé — ${Object.keys(_routesCache).length} lignes`);
+    console.log(`[Api] routes_geometry_v13 chargé — ${Object.keys(_routesCache).length} lignes`);
   } catch (err) {
-    console.warn('[Api] Impossible de charger routes_geometry_v4.json :', err.message);
+    console.warn('[Api] Impossible de charger routes_geometry_v13.json :', err.message);
     _routesCache = {};
   }
 
@@ -97,12 +99,12 @@ export async function loadRoutes() {
 }
 
 /**
- * Retourne les données d'une ligne spécifique depuis le cache v4.
- * { stops: [{name, lat, lon, confidence}], osm_trace: [[lat,lon],...] | null }
+ * Retourne les données d'une ligne spécifique depuis le cache v13.
+ * { stops: [{name, lat, lon, confidence}], geometry: [[lat,lon],...] | null }
  */
 export async function getLineData(lineId) {
   const routes = await loadRoutes();
-  return routes[lineId] || null;
+  return routes[String(lineId).toUpperCase()] || null;
 }
 
 // ── FONCTIONS PUBLIQUES ───────────────────────────────────

@@ -1,6 +1,11 @@
 """
-skills/question.py — V5.3
+skills/question.py — V5.4
 Cold start → core.frequencies.format_service() au lieu de generate_response() LLM.
+
+MIGRATION V5.4 depuis V5.3 :
+  - FIX : handle_liste_arrets utilisait s["nom"] — champ v3.
+    Depuis v4, le champ est s["name"]. Corrigé.
+  - Aucun autre changement logique.
 """
 import re
 import logging
@@ -146,7 +151,7 @@ async def handle(message: str, contact: dict, langue: str,
             return f"🚌 Bus *{ligne}* signalé ci *{s['position']}* ({age}).\nFii nga nekk ? (wax ma sa arrêt)"
         return f"🚌 Bus *{ligne}* signalé à *{s['position']}* ({age}).\nTu es à quel arrêt ? Je calcule le temps d'arrivée. 📍"
 
-    # ── Cold start : fréquences estimées (FIX V5.3) ──────
+    # ── Cold start : fréquences estimées ─────────────────
     dernier_age = None
     try:
         derniers = queries.get_derniers_signalements(ligne, limit=1)
@@ -176,7 +181,10 @@ async def handle_liste_arrets(message: str, contact: dict, langue: str,
     nom_ligne = info.get("name", "")
     if not stops:
         return f"❌ Aucun arrêt trouvé pour la ligne *{ligne}*. Réessaie dans un moment."
-    noms = [s["nom"] for s in stops]
+
+    # FIX V5.4 : champ "name" (v4+) au lieu de "nom" (v3)
+    noms = [s["name"] for s in stops if s.get("name")]
+
     if len(noms) <= _MAX_ARRETS_INLINE:
         arrets_str = " → ".join(noms)
         if langue == "wolof":

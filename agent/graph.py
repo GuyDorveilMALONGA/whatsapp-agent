@@ -1,11 +1,18 @@
 """
-agent/graph.py — V3.2 Walk-Aware Routing
-Source : core.network (singleton JSON — plus de _load() local)
+agent/graph.py — V3.3
+Walk-Aware Routing — branché sur routes_geometry_v13.json
+
+V3.3 vs V3.2 :
+  - get_graph() utilise core.network.get_graph_data() au lieu de _RAW directement.
+    get_graph_data() expose un adaptateur de compatibilité v13 → format attendu par _build().
+    Zéro changement dans _build() — l'adaptateur fait le travail côté network.py.
+  - Résultat : 77 lignes · 3129 arrêts (vs 39 lignes · 750 arrêts en V3.2)
+  - travel_time_to_next_sec disponible dans les stops v13 — utilisé si présent
+    pour remplacer le calcul estimatif nb_stops * 120s.
 
 V3.2 vs V3.1 :
   - _load() supprimé → DemDikkGraph reçoit le dict directement depuis core.network
   - get_graph() utilise core.network._RAW (déjà en mémoire, zéro I/O)
-  - Tout le reste inchangé (5 passes fuzzy, Walk-Aware, Haversine)
 """
 import math
 import logging
@@ -109,6 +116,9 @@ _ALIASES: dict[str, str] = {
     "point e":                 "point e",
     "pikine":                  "pikine",
     "thiaroye":                "thiaroye",
+    "aibd":                    "aibd",
+    "diamniadio":              "diamniadio",
+    "jaxaay":                  "terminus jaxaay",
 }
 
 
@@ -116,13 +126,14 @@ _ALIASES: dict[str, str] = {
 
 class DemDikkGraph:
     def __init__(self, data: dict):
-        self.stop_to_lines:   dict[str, list[str]]           = defaultdict(list)
-        self.line_stops:      dict[str, list[str]]           = {}
-        self.line_meta:       dict[str, dict]                = {}
-        self.canon_to_raw:    dict[str, str]                 = {}
-        self.stop_coords:     dict[str, tuple[float, float]] = {}
-        self._all_stops:      list[str]                      = []
-        self._ascii_to_canon: dict[str, str]                 = {}
+        self.stop_to_lines:    dict[str, list[str]]           = defaultdict(list)
+        self.line_stops:       dict[str, list[str]]           = {}
+        self.line_stop_times:  dict[str, list[int]]           = {}  # V3.3 : travel times OSRM
+        self.line_meta:        dict[str, dict]                = {}
+        self.canon_to_raw:     dict[str, str]                 = {}
+        self.stop_coords:      dict[str, tuple[float, float]] = {}
+        self._all_stops:       list[str]                      = []
+        self._ascii_to_canon:  dict[str, str]                 = {}
         self._build(data)
 
     def _build(self, data: dict):
@@ -136,18 +147,22 @@ class DemDikkGraph:
                     "terminus_a": line["terminus_a"],
                     "terminus_b": line["terminus_b"],
                 }
-                canon_stops = []
+                canon_stops  = []
+                travel_times = []
                 for stop in line["stops"]:
                     raw = stop["nom"].strip()
                     c   = _norm(raw)
                     canon_stops.append(c)
+                    # V3.3 : récupère travel_time_to_next_sec si disponible
+                    travel_times.append(stop.get("travel_time_to_next_sec", _SECS_PER_STOP))
                     if c not in self.canon_to_raw:
                         self.canon_to_raw[c] = raw
                     if c not in self.stop_coords and stop.get("lat") and stop.get("lon"):
                         self.stop_coords[c] = (stop["lat"], stop["lon"])
                     if num not in self.stop_to_lines[c]:
                         self.stop_to_lines[c].append(num)
-                self.line_stops[num] = canon_stops
+                self.line_stops[num]      = canon_stops
+                self.line_stop_times[num] = travel_times
 
         self._all_stops = list(self.stop_to_lines.keys())
         for canon in self._all_stops:
@@ -156,10 +171,23 @@ class DemDikkGraph:
                 self._ascii_to_canon[ascii_key] = canon
 
         logger.info(
-            f"[Graph] {len(self.line_stops)} lignes · "
+            f"[Graph V3.3] {len(self.line_stops)} lignes · "
             f"{len(self._all_stops)} arrêts · "
             f"{len(self._ascii_to_canon)} clés ASCII"
         )
+
+    def _segment_time(self, line_num: str, stops: list, a: str, b: str) -> int:
+        """
+        V3.3 : Calcule le temps réel en secondes entre deux stops
+        en utilisant travel_time_to_next_sec si disponible.
+        """
+        times = self.line_stop_times.get(line_num, [])
+        i, j  = stops.index(a), stops.index(b)
+        if i > j:
+            i, j = j, i
+        if not times or j >= len(times):
+            return (j - i) * _SECS_PER_STOP
+        return sum(times[i:j])
 
     def find_stop(self, query: str) -> Optional[str]:
         if not query or not query.strip():
@@ -186,7 +214,7 @@ class DemDikkGraph:
         if q_ascii in self._ascii_to_canon:
             return self._ascii_to_canon[q_ascii]
 
-        # Passe 4 : substring avec meilleur score
+        # Passe 4 : substring
         subs = [c for c in self.stop_to_lines
                 if q_ascii in _norm_ascii(c) or _norm_ascii(c) in q_ascii]
         if subs:
@@ -234,12 +262,16 @@ class DemDikkGraph:
         i, j = stops.index(a), stops.index(b)
         return stops[i:j+1] if i <= j else list(reversed(stops[j:i+1]))
 
-    def direct(self, origin: str, dest: str) -> list[dict]:
+    def direct(self, origin: str, dest: str, exclude_lines: list = None) -> list[dict]:
+        exclude = set(exclude_lines or [])
         results = []
         for num, stops in self.line_stops.items():
+            if num in exclude:
+                continue
             if origin in stops and dest in stops:
-                seg = self._segment(stops, origin, dest)
-                nb  = len(seg) - 1
+                seg      = self._segment(stops, origin, dest)
+                nb       = len(seg) - 1
+                time_sec = self._segment_time(num, stops, origin, dest)
                 results.append({
                     "number":     num,
                     "name":       self.line_meta[num]["name"],
@@ -247,12 +279,14 @@ class DemDikkGraph:
                     "terminus_b": self.line_meta[num]["terminus_b"],
                     "stops":      [self.display(s) for s in seg],
                     "nb_stops":   nb,
-                    "score":      _bus_time(nb),
+                    "score":      time_sec,
                 })
         return sorted(results, key=lambda x: x["score"])
 
-    def walk_to_direct(self, origin: str, dest: str) -> list[dict]:
-        coords = self.stop_coords.get(origin)
+    def walk_to_direct(self, origin: str, dest: str,
+                       exclude_lines: list = None) -> list[dict]:
+        exclude = set(exclude_lines or [])
+        coords  = self.stop_coords.get(origin)
         if not coords:
             return []
         lat, lon    = coords
@@ -268,11 +302,13 @@ class DemDikkGraph:
             walk_secs = _walk_time(dist_m)
 
             for num, stops in self.line_stops.items():
+                if num in exclude:
+                    continue
                 if walk_stop not in stops or dest not in stops:
                     continue
                 seg      = self._segment(stops, walk_stop, dest)
                 nb       = len(seg) - 1
-                bus_secs = _bus_time(nb)
+                bus_secs = self._segment_time(num, stops, walk_stop, dest)
                 walk_dest_m, walk_dest_secs = 0, 0
 
                 if dest_coords:
@@ -284,10 +320,12 @@ class DemDikkGraph:
                         if 0 < d <= 500 and stop_c != dest:
                             alt_seg   = self._segment(stops, walk_stop, stop_c)
                             alt_nb    = len(alt_seg) - 1
-                            alt_score = walk_secs + _bus_time(alt_nb) + _walk_time(d)
+                            alt_score = (walk_secs
+                                         + self._segment_time(num, stops, walk_stop, stop_c)
+                                         + _walk_time(d))
                             if alt_score < walk_secs + bus_secs:
                                 seg, nb       = alt_seg, alt_nb
-                                bus_secs      = _bus_time(nb)
+                                bus_secs      = self._segment_time(num, stops, walk_stop, stop_c)
                                 walk_dest_m   = d
                                 walk_dest_secs = _walk_time(d)
 
@@ -312,17 +350,21 @@ class DemDikkGraph:
 
         return sorted(results, key=lambda x: x["score"])[:3]
 
-    def with_transfer(self, origin: str, dest: str) -> list[dict]:
+    def with_transfer(self, origin: str, dest: str,
+                      exclude_lines: list = None) -> list[dict]:
+        exclude        = set(exclude_lines or [])
         results, seen_keys = [], set()
 
         for l1 in self.stop_to_lines.get(origin, []):
+            if l1 in exclude:
+                continue
             stops1 = self.line_stops[l1]
             if origin not in stops1:
                 continue
             set1 = set(stops1)
 
             for l2 in self.stop_to_lines.get(dest, []):
-                if l1 == l2:
+                if l1 == l2 or l2 in exclude:
                     continue
                 stops2 = self.line_stops[l2]
                 if dest not in stops2:
@@ -333,10 +375,12 @@ class DemDikkGraph:
 
                 best = None
                 for t in common:
+                    t1   = self._segment_time(l1, stops1, origin, t)
+                    t2   = self._segment_time(l2, stops2, t, dest)
                     i1, j1 = stops1.index(origin), stops1.index(t)
                     i2, j2 = stops2.index(t),      stops2.index(dest)
                     nb     = abs(j1 - i1) + abs(j2 - i2)
-                    score  = _bus_time(nb) + _TRANSFER_PENALTY
+                    score  = t1 + t2 + _TRANSFER_PENALTY
                     if best is None or score < best["score"]:
                         best = {
                             "number1":   l1,
@@ -359,7 +403,8 @@ class DemDikkGraph:
         return sorted(results, key=lambda x: x["score"])[:3]
 
     def find_route(self, origin_query: str, dest_query: str,
-                   no_transfer: bool = False) -> dict:
+                   no_transfer: bool = False,
+                   exclude_lines: list = None) -> dict:
 
         origin = self.find_stop(origin_query)
         dest   = self.find_stop(dest_query)
@@ -374,23 +419,26 @@ class DemDikkGraph:
         origin_display = self.display(origin)
         dest_display   = self.display(dest)
 
-        logger.info(f"[find_route] '{origin_query}'→'{origin_display}' | '{dest_query}'→'{dest_display}'")
+        logger.info(
+            f"[find_route V3.3] '{origin_query}'→'{origin_display}' | "
+            f"'{dest_query}'→'{dest_display}'"
+        )
 
-        directs = self.direct(origin, dest)
+        directs = self.direct(origin, dest, exclude_lines=exclude_lines)
         if directs:
             return {"status": "direct", "origin_display": origin_display,
                     "dest_display": dest_display, "routes": directs}
 
         if no_transfer:
-            wtd = self.walk_to_direct(origin, dest)
+            wtd = self.walk_to_direct(origin, dest, exclude_lines=exclude_lines)
             if wtd:
                 return {"status": "walk_direct", "origin_display": origin_display,
                         "dest_display": dest_display, "routes": wtd}
             return {"status": "no_transfer_not_found",
                     "origin_display": origin_display, "dest_display": dest_display}
 
-        wtd       = self.walk_to_direct(origin, dest)
-        transfers = self.with_transfer(origin, dest)
+        wtd       = self.walk_to_direct(origin, dest, exclude_lines=exclude_lines)
+        transfers = self.with_transfer(origin, dest, exclude_lines=exclude_lines)
 
         best_wtd      = wtd[0]       if wtd       else None
         best_transfer = transfers[0] if transfers else None
@@ -401,7 +449,8 @@ class DemDikkGraph:
                         "dest_display": dest_display, "routes": wtd,
                         "alt_transfer": best_transfer}
             return {"status": "transfer", "origin_display": origin_display,
-                    "dest_display": dest_display, "routes": transfers, "alt_walk": best_wtd}
+                    "dest_display": dest_display, "routes": transfers,
+                    "alt_walk": best_wtd}
 
         if best_wtd:
             return {"status": "walk_direct", "origin_display": origin_display,
@@ -414,15 +463,14 @@ class DemDikkGraph:
                 "dest_display": dest_display}
 
 
-# ── Singleton — branché sur core.network ─────────────────
+# ── Singleton ─────────────────────────────────────────────
 
 _graph: Optional[DemDikkGraph] = None
+
 
 def get_graph() -> DemDikkGraph:
     global _graph
     if _graph is None:
-        # Réutilise le dict déjà en mémoire depuis core.network
-        # Zéro lecture disque supplémentaire
-        from core.network import _RAW
-        _graph = DemDikkGraph(_RAW)
+        from core.network import get_graph_data
+        _graph = DemDikkGraph(get_graph_data())
     return _graph

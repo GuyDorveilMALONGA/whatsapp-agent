@@ -1,56 +1,19 @@
 """
-agent/extractor.py
+agent/extractor.py — V5.0
 Extraction ligne + arrêt — ZÉRO LLM.
-Source : routes_geometry_v4.json (39 lignes · 750 arrêts)
 
-MIGRATION V4 :
-  - _load_network() pointe sur routes_geometry_v4.json
-  - Structure routes{} au lieu de categories[]
-  - Champ arrêt "name" au lieu de "nom"
+MIGRATION V5.0 depuis V4 :
+  - _load_network() supprimé — plus de lecture directe du JSON
+  - NETWORK et VALID_LINES importés depuis core.network (singleton)
+  - Plus de désynchronisation possible entre extractor et le reste du pipeline
+  - Champ arrêt : "name" (inchangé depuis v4, core.network expose déjà "name")
+  - 77 lignes · 3129 arrêts disponibles immédiatement au démarrage
 """
 import re
-import json
-import os
 from dataclasses import dataclass, field
+from core.network import NETWORK, VALID_LINES
 
-# ── Chargement réseau officiel ────────────────────────────
-
-def _load_network() -> dict:
-    """
-    Charge routes_geometry_v4.json depuis la racine du projet.
-    Retourne un dict indexé par line_id (ex: "15", "16A", "RUF-YENNE").
-    """
-    base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    path = os.path.join(base, "routes_geometry_v4.json")
-    try:
-        with open(path, encoding="utf-8") as f:
-            data = json.load(f)
-        network = {}
-        for line_id, line in data.get("routes", {}).items():
-            num = line_id
-            # v4 : champ "name" au lieu de "nom"
-            stop_names = [s["name"] for s in line.get("stops", []) if s.get("name")]
-            network[num] = {
-                "id":          line.get("line_id", num),
-                "number":      num,
-                "name":        line.get("name", f"LIGNE {num}"),
-                "description": f"{line.get('terminus_a', '')} → {line.get('terminus_b', '')}",
-                "category":    line.get("category", ""),
-                "terminus_a":  line.get("terminus_a", ""),
-                "terminus_b":  line.get("terminus_b", ""),
-                "arrets_aller":  stop_names,
-                "arrets_retour": list(reversed(stop_names)),
-                "stops":         stop_names,
-                "stops_gps":     line.get("stops", []),  # GPS conservés pour dashboard
-            }
-        return network
-    except FileNotFoundError:
-        return {}
-
-NETWORK: dict = _load_network()
-
-# Numéros de lignes valides (ex: "15", "16A", "RUF-YENNE", "TAF TAF")
-VALID_LINES: set[str] = set(NETWORK.keys())
+# ── Index dérivés du singleton ────────────────────────────
 
 # Index numéro de base → liste de lignes (ex: "16" → ["16A", "16B"])
 _BASE_TO_LIGNES: dict[str, list[str]] = {}
@@ -61,10 +24,13 @@ for _num in VALID_LINES:
 # Index de tous les arrêts connus (minuscules → nom officiel)
 _ALL_ARRETS_LOWER: dict[str, str] = {}
 for _line in NETWORK.values():
-    for _stop in _line["stops"]:
-        _ALL_ARRETS_LOWER[_stop.lower()] = _stop
+    for _stop in _line.get("stops", []):
+        nom = _stop.get("name", "")
+        if nom:
+            _ALL_ARRETS_LOWER[nom.lower()] = nom
 
-# Numéros en toutes lettres → chiffres
+# ── Numéros en toutes lettres → chiffres ──────────────────
+
 _CHIFFRES = {
     "un": "1", "une": "1", "deux": "2", "trois": "3", "quatre": "4",
     "cinq": "5", "six": "6", "sept": "7", "huit": "8", "neuf": "9",
@@ -90,11 +56,11 @@ _STOPWORDS = {
 
 @dataclass
 class ExtractResult:
-    ligne: str | None
-    arret: str | None
-    ligne_valide: bool
+    ligne:           str | None
+    arret:           str | None
+    ligne_valide:    bool
     arret_normalise: str | None
-    ambigues: list[str] = field(default_factory=list)
+    ambigues:        list[str] = field(default_factory=list)
 
 
 def _normalize_text(text: str) -> str:
@@ -115,7 +81,8 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
         return "TO1", []
 
     matches = re.findall(r'\b(\d{1,3}[A-Z]?)\b', text_up)
-    matches = [m for m in matches if re.search(r'(?<!\d)' + re.escape(m) + r'(?!\d)', text_up)]
+    matches = [m for m in matches
+               if re.search(r'(?<!\d)' + re.escape(m) + r'(?!\d)', text_up)]
     for m in matches:
         if m in VALID_LINES:
             return m, []
@@ -129,11 +96,15 @@ def _find_ligne(text: str) -> tuple[str | None, list[str]]:
 
 
 def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
-    words = [w for w in text.lower().split() if w not in _STOPWORDS]
+    words   = [w for w in text.lower().split() if w not in _STOPWORDS]
     cleaned = " ".join(words)
 
     if ligne and ligne in NETWORK:
-        candidates = [(a.lower(), a) for a in NETWORK[ligne]["stops"]]
+        candidates = [
+            (s["name"].lower(), s["name"])
+            for s in NETWORK[ligne].get("stops", [])
+            if s.get("name")
+        ]
     else:
         candidates = list(_ALL_ARRETS_LOWER.items())
 
@@ -142,7 +113,7 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     for arret_lower, arret_officiel in candidates:
         arret_words = set(arret_lower.split())
         text_words  = set(cleaned.split())
-        overlap = arret_words & text_words
+        overlap     = arret_words & text_words
         if len(overlap) >= min(2, len(arret_words)) and len(overlap) > best_score:
             best_score = len(overlap)
             best_match = arret_officiel
@@ -163,9 +134,9 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
 
 
 def extract(text: str) -> ExtractResult:
-    normalized = _normalize_text(text)
-    ligne, ambigues = _find_ligne(normalized.upper())
-    ligne_valide = ligne is not None and ligne in VALID_LINES
+    normalized          = _normalize_text(text)
+    ligne, ambigues     = _find_ligne(normalized.upper())
+    ligne_valide        = ligne is not None and ligne in VALID_LINES
     arret_brut, arret_normalise = _find_arret(normalized, ligne)
 
     if arret_brut and not arret_normalise:
@@ -189,10 +160,12 @@ def extract(text: str) -> ExtractResult:
 def get_arrets_ligne(ligne: str) -> dict:
     if ligne not in NETWORK:
         return {"exists": False, "aller": [], "retour": [], "description": ""}
-    data = NETWORK[ligne]
+    data       = NETWORK[ligne]
+    stop_names = [s["name"] for s in data.get("stops", []) if s.get("name")]
+    desc       = data.get("name", f"{data.get('terminus_a', '')} → {data.get('terminus_b', '')}")
     return {
         "exists":      True,
-        "description": data["description"],
-        "aller":       data["arrets_aller"],
-        "retour":      data["arrets_retour"],
+        "description": desc,
+        "aller":       stop_names,
+        "retour":      list(reversed(stop_names)),
     }
