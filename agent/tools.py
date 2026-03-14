@@ -11,11 +11,9 @@ from typing import Optional, Annotated
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
 
-try:
-    from langchain_core.tools import InjectedToolArg
-    ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
-except ImportError:
-    ConfigDep = RunnableConfig
+# Après
+from langchain_core.tools import InjectedToolArg
+ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
 
 
 def _get_phone(config: RunnableConfig) -> str:
