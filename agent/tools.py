@@ -1,10 +1,12 @@
 """
-agent/tools.py — V1.4
+agent/tools.py — V1.5
 Skills Xëtu → Tools LangGraph.
 
-MIGRATIONS V1.4 depuis V1.3 :
-  - get_recent_sightings : logging détaillé pour diagnostiquer
-    les "Données indisponibles" silencieux
+MIGRATIONS V1.5 depuis V1.4 :
+  - report_bus : anti-fraude complet (spam + distance + confidence)
+  - report_bus : notifications abonnés via asyncio.create_task
+  - report_bus : corroboration avant save
+  - report_bus : status needs_confirmation si confiance trop basse
 """
 import logging
 from typing import Optional, Annotated
@@ -17,7 +19,6 @@ ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
 
 
 def _get_phone(config: RunnableConfig) -> str:
-    """Récupère le phone depuis le config injecté par l'agent."""
     phone = config.get("configurable", {}).get("phone", "")
     if not phone:
         raise ValueError("phone manquant dans RunnableConfig — vérifier agent/xetu_agent.py")
@@ -78,12 +79,12 @@ async def get_recent_sightings(
     logger.info(f"[get_recent_sightings] appelé — ligne={ligne}")
 
     if ligne not in VALID_LINES:
-        logger.warning(f"[get_recent_sightings] ligne inconnue: {ligne!r} | VALID_LINES sample: {list(VALID_LINES)[:5]}")
+        logger.warning(f"[get_recent_sightings] ligne inconnue: {ligne!r}")
         return {"status": "unknown_line", "ligne": ligne}
 
     try:
         sightings = queries.get_signalements_actifs(ligne)
-        logger.info(f"[get_recent_sightings] ligne={ligne} → {len(sightings)} signalement(s) actif(s)")
+        logger.info(f"[get_recent_sightings] ligne={ligne} → {len(sightings)} signalement(s)")
         if not sightings:
             return {"status": "no_data", "ligne": ligne}
         results = []
@@ -95,12 +96,12 @@ async def get_recent_sightings(
             })
         return {"status": "ok", "ligne": ligne, "sightings": results}
     except Exception as e:
-        logger.error(f"[get_recent_sightings] ERREUR ligne={ligne}: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(f"[get_recent_sightings] ERREUR: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 3 — Signalement
+# TOOL 3 — Signalement V1.5
 # ══════════════════════════════════════════════════════════
 
 @tool
@@ -111,38 +112,111 @@ async def report_bus(
     config: ConfigDep,
 ) -> dict:
     """Enregistre un signalement : un utilisateur a VU un bus à un arrêt maintenant.
-    À utiliser UNIQUEMENT après confirmation explicite de l'utilisateur (réponse "oui").
+    À utiliser UNIQUEMENT quand l'utilisateur signale avoir vu un bus.
     NE PAS utiliser si l'utilisateur dit 'j'attends', 'je prends', ou pose une question.
+    Si status=needs_confirmation → demander confirmation à l'usager avant de rappeler.
 
     Args:
         ligne: Numéro de ligne vu (ex: '7', '15')
         arret: Arrêt où le bus a été observé
         message_original: Texte brut du message pour validation anti-fraude
     """
-    from core.anti_fraud import is_blacklisted_signalement
+    import asyncio
+    from core.anti_fraud import (
+        is_blacklisted_signalement,
+        is_spam_pattern,
+        check_distance_coherence,
+        compute_signalement_confidence,
+        CONFIDENCE_THRESHOLD,
+    )
     from config.settings import VALID_LINES
     from db import queries
+    from skills.signalement import notify_abonnes
 
     phone = _get_phone(config)
     logger.info(f"[report_bus] ligne={ligne!r} arret={arret!r} phone=…{phone[-4:]}")
 
+    # ── 1. Blacklist ──────────────────────────────────────
     if is_blacklisted_signalement(message_original):
-        logger.warning(f"[report_bus] signalement blacklisté: {message_original!r}")
+        logger.warning(f"[report_bus] blacklisté: {message_original!r}")
         return {"status": "rejected", "reason": "not_a_real_sighting"}
 
+    # ── 2. Validation ligne ───────────────────────────────
     ligne = str(ligne).upper()
     if ligne not in VALID_LINES:
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
+    # ── 3. Spam ───────────────────────────────────────────
+    if is_spam_pattern(phone, ligne):
+        logger.warning(f"[report_bus] spam {phone[-4:]}")
+        queries.penalise_spam(phone)
+        return {"status": "rejected", "reason": "spam"}
+
+    # ── 4. Cohérence distance ─────────────────────────────
+    if not check_distance_coherence(phone, ligne, arret):
+        logger.warning(f"[report_bus] distance incohérente {phone[-4:]}")
+        queries.penalise_spam(phone)
+        return {"status": "rejected", "reason": "distance_incoherence"}
+
+    # ── 5. Score de confiance ─────────────────────────────
+    confidence = compute_signalement_confidence(
+        phone=phone, ligne=ligne, arret=arret,
+        source="signalement_fort",
+        has_verbe_observation=True,
+        has_arret_connu=bool(arret),
+    )
+    if confidence < CONFIDENCE_THRESHOLD:
+        logger.info(f"[report_bus] confiance basse: {confidence:.2f}")
+        return {
+            "status": "needs_confirmation",
+            "ligne": ligne,
+            "arret": arret,
+            "confidence": round(confidence, 2),
+        }
+
+    # ── 6. Corroboration ──────────────────────────────────
+    try:
+        sigs_actifs = queries.get_signalements_actifs(ligne)
+        corrobore = any(
+            s["position"].lower() == arret.lower()
+            for s in sigs_actifs
+            if s["phone"] != phone
+        )
+        if corrobore:
+            queries.boost_corroboration(ligne, arret, phone)
+    except Exception as e:
+        logger.warning(f"[report_bus] corroboration erreur: {e}")
+
+    # ── 7. Enregistrement ─────────────────────────────────
     try:
         result = queries.save_signalement(ligne, arret, phone)
-        if result is None:
-            return {"status": "duplicate", "ligne": ligne, "arret": arret}
-        logger.info(f"[report_bus] ✅ signalement enregistré ligne={ligne} arret={arret}")
-        return {"status": "ok", "ligne": ligne, "arret": arret}
     except Exception as e:
-        logger.error(f"[report_bus] ERREUR: {type(e).__name__}: {e}", exc_info=True)
+        logger.error(f"[report_bus] save erreur: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
+
+    if result is None:
+        return {"status": "duplicate", "ligne": ligne, "arret": arret}
+
+    # ── 8. Notifications (fire-and-forget) ────────────────
+    try:
+        asyncio.create_task(notify_abonnes(ligne, arret, phone))
+    except Exception as e:
+        logger.warning(f"[report_bus] notify erreur: {e}")
+
+    # ── 9. Comptage abonnés ───────────────────────────────
+    try:
+        abonnes = queries.get_abonnes(ligne)
+        nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
+    except Exception:
+        nb_abonnes = 0
+
+    logger.info(f"[report_bus] ✅ ligne={ligne} arret={arret} abonnes={nb_abonnes}")
+    return {
+        "status": "ok",
+        "ligne": ligne,
+        "arret": arret,
+        "nb_abonnes_notifies": nb_abonnes,
+    }
 
 
 # ══════════════════════════════════════════════════════════
@@ -223,7 +297,7 @@ async def get_bus_info(
             result["service"] = format_service(ligne_up)
 
     try:
-        rag_answer = retrieve(query)
+        rag_answer = retrieve(query, ligne=ligne)
         if rag_answer:
             result["rag"] = rag_answer
     except Exception as e:

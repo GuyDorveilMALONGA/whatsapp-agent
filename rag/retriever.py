@@ -1,87 +1,53 @@
-from db.supabase import supabase
-import os
+"""
+rag/retriever.py — V2.0
+Pont entre get_bus_info (tools.py) et la knowledge base Supabase.
+
+MIGRATIONS V2.0 :
+  - Remplace l'ancienne version qui importait directement supabase
+  - Utilise hybrid_search() depuis rag/search (code existant)
+  - retrieve() synchrone pour compatibilité avec get_bus_info tool
+  - Zéro nouveau code métier — juste un adaptateur
+"""
+import asyncio
+import logging
+
+logger = logging.getLogger(__name__)
 
 
-async def hybrid_search(query: str, tenant_id: str, limit: int = 3) -> list:
-    """Recherche dans la knowledge base transport"""
+def retrieve(query: str, ligne: str | None = None, limit: int = 3) -> str | None:
+    """
+    Recherche dans la knowledge base transport.
+    Retourne un texte formaté ou None si rien trouvé.
+    Synchrone — appelé depuis get_bus_info tool.
+    """
     try:
-        result = supabase.rpc(
-            "search_knowledge_base",
-            {
-                "query_text": query,
-                "p_tenant_id": tenant_id,
-                "match_limit": limit
-            }
-        ).execute()
+        from config.settings import TENANT_ID
+        from rag.search import hybrid_search, format_context
 
-        if result.data:
-            return result.data
+        # hybrid_search est async — on l'exécute dans la boucle courante
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # Contexte async (LangGraph) — on crée une coroutine directe
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(
+                        asyncio.run,
+                        hybrid_search(query, TENANT_ID, limit)
+                    )
+                    chunks = future.result(timeout=5)
+            else:
+                chunks = loop.run_until_complete(
+                    hybrid_search(query, TENANT_ID, limit)
+                )
+        except Exception:
+            chunks = []
 
-        result = supabase.table("knowledge_base")\
-            .select("content, metadata, source_type")\
-            .eq("tenant_id", tenant_id)\
-            .limit(limit)\
-            .execute()
+        if not chunks:
+            return None
 
-        return result.data or []
+        return format_context(chunks) or None
 
     except Exception as e:
-        print(f"Erreur RAG search: {e}")
-        return []
-
-
-async def search_signalements_recents(ligne: str, tenant_id: str, limit: int = 3) -> list:
-    """Cherche les signalements récents d'une ligne"""
-    try:
-        result = supabase.table("signalements")\
-            .select("ligne, position, timestamp")\
-            .eq("tenant_id", tenant_id)\
-            .eq("ligne", ligne)\
-            .eq("valide", True)\
-            .order("timestamp", desc=True)\
-            .limit(limit)\
-            .execute()
-        return result.data or []
-    except Exception as e:
-        print(f"Erreur search signalements: {e}")
-        return []
-
-
-async def search_arrets(query: str, limit: int = 5) -> list:
-    """Cherche des arrêts par nom"""
-    try:
-        result = supabase.table("arrets")\
-            .select("nom, ligne_numero, direction")\
-            .ilike("nom", f"%{query}%")\
-            .limit(limit)\
-            .execute()
-        return result.data or []
-    except Exception as e:
-        print(f"Erreur search arrêts: {e}")
-        return []
-
-
-def format_context(chunks: list) -> str:
-    """Formate les chunks RAG pour le prompt"""
-    if not chunks:
-        return ""
-    context = "INFORMATIONS DISPONIBLES :\n"
-    for i, chunk in enumerate(chunks, 1):
-        content = chunk.get("content", "")
-        source = chunk.get("source_type", "")
-        if content:
-            context += f"\n[{i}]"
-            if source:
-                context += f" ({source})"
-            context += f" {content}\n"
-    return context
-
-
-def format_signalements(signalements: list, ligne: str) -> str:
-    """Formate les signalements récents pour le prompt"""
-    if not signalements:
-        return f"Aucun signalement récent pour la ligne {ligne}."
-    context = f"DERNIERS SIGNALEMENTS — Bus {ligne} :\n"
-    for s in signalements:
-        context += f"  • {s.get('position', '?')} — {s.get('timestamp', '?')}\n"
-    return context
+        logger.warning(f"[retriever] erreur: {e}")
+        return None
