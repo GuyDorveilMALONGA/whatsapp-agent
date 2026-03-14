@@ -1,11 +1,11 @@
 """
-agent/xetu_agent.py — V1.4 (checkpointer PostgreSQL)
+agent/xetu_agent.py — V1.5 (checkpointer PostgreSQL + fallback gracieux)
 Agent ReAct LangGraph — cœur de Xëtu.
 
-MIGRATIONS V1.4 depuis V1.3 :
-  - Checkpointer AsyncPostgresSaver branché sur les deux agents
-  - thread_id = phone (persistance par utilisateur)
-  - history n'est plus passé manuellement — LangGraph le gère
+MIGRATIONS V1.5 depuis V1.4 :
+  - Fallback sans checkpointer si la connexion DB échoue
+    (pas de persistance d'historique, mais l'agent répond)
+  - Log explicite pour diagnostiquer le problème checkpointer
 """
 import logging
 import time
@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 _fallback_count = 0
 _fallback_last_reset = time.time()
+_checkpointer_failed = False  # True si le checkpointer a déjà échoué
 
 
 def get_fallback_stats() -> dict:
@@ -49,8 +50,7 @@ _llm_gemini = ChatGoogleGenerativeAI(
     max_output_tokens=1024,
 )
 
-# Les agents sont créés sans checkpointer ici —
-# le checkpointer est injecté au moment de l'appel (async).
+# Agents SANS checkpointer (fallback / base)
 _agent_groq_base = create_react_agent(
     model=_llm_groq,
     tools=ALL_TOOLS,
@@ -76,96 +76,14 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return False
 
 
-async def run(
-    message: str,
-    phone: str,
-    langue: str = "fr",
-    history: list = None,  # conservé pour compatibilité, ignoré si checkpointer actif
-) -> str:
-    """
-    Point d'entrée unique de Xëtu.
-    Avec checkpointer : l'historique est géré par LangGraph via thread_id=phone.
-    Sans checkpointer (fallback) : history est utilisé comme avant.
-    """
-    global _fallback_count
-
-    from agent.checkpointer import get_checkpointer
-
-    # ── Choix de l'agent ─────────────────────────────────
-    if langue == "wolof":
-        agent_base = _agent_gemini_base
-        agent_name = "gemini"
-    else:
-        agent_base = _agent_groq_base
-        agent_name = "groq"
-
-    logger.info(
-        f"[xetu_run] langue={langue!r} | phone={phone[:8]}… | agent={agent_name}"
-    )
-
-    # ── Config : phone + thread_id pour le checkpointer ──
-    config = {
-        "configurable": {
-            "phone": phone,
-            "thread_id": phone,   # LangGraph utilise thread_id pour la persistance
-        }
-    }
-
-    # ── Tentative avec checkpointer ───────────────────────
-    try:
-        checkpointer = await get_checkpointer()
-
-        # Recrée l'agent avec le checkpointer si pas encore fait
-        agent = _get_agent_with_checkpointer(agent_base, checkpointer, agent_name)
-
-        result = await agent.ainvoke(
-            {"messages": [HumanMessage(content=message)]},
-            config=config,
-        )
-        return _extract_response(result)
-
-    except Exception as e:
-        # ── Fallback Gemini si Groq rate limit ───────────
-        if agent_name == "groq" and _is_rate_limit_error(e):
-            _fallback_count += 1
-            logger.warning(
-                f"[xetu_run] Groq 429 — fallback Gemini "
-                f"(fallback #{_fallback_count})"
-            )
-            try:
-                checkpointer = await get_checkpointer()
-                agent = _get_agent_with_checkpointer(
-                    _agent_gemini_base, checkpointer, "gemini-fallback"
-                )
-                result = await agent.ainvoke(
-                    {"messages": [HumanMessage(content=message)]},
-                    config=config,
-                )
-                return _extract_response(result)
-            except Exception as fallback_err:
-                logger.error(
-                    f"[xetu_run] Fallback Gemini AUSSI en échec — "
-                    f"{type(fallback_err).__name__}: {fallback_err}",
-                    exc_info=True,
-                )
-                raise fallback_err
-
-        logger.error(
-            f"[xetu_run] CRASH — {type(e).__name__}: {e}",
-            exc_info=True,
-        )
-        raise
-
-
-# Cache des agents avec checkpointer (évite de les recréer à chaque appel)
+# Cache des agents avec checkpointer
 _agents_with_checkpointer: dict = {}
 
 
 def _get_agent_with_checkpointer(agent_base, checkpointer, name: str):
     """Retourne un agent avec checkpointer, mis en cache par nom."""
     if name not in _agents_with_checkpointer:
-        from langgraph.prebuilt import create_react_agent
-        if name == "gemini" or name == "gemini-fallback":
+        if name in ("gemini", "gemini-fallback"):
             _agents_with_checkpointer[name] = create_react_agent(
                 model=_llm_gemini,
                 tools=ALL_TOOLS,
@@ -181,6 +99,126 @@ def _get_agent_with_checkpointer(agent_base, checkpointer, name: str):
             )
         logger.info(f"[xetu_run] Agent '{name}' créé avec checkpointer ✅")
     return _agents_with_checkpointer[name]
+
+
+async def _try_get_checkpointer():
+    """Tente d'obtenir le checkpointer. Retourne None si impossible."""
+    global _checkpointer_failed
+
+    # Si déjà échoué, ne pas réessayer à chaque message (évite les logs spam)
+    # On réessaiera toutes les 60 secondes
+    if _checkpointer_failed:
+        return None
+
+    try:
+        from agent.checkpointer import get_checkpointer
+        cp = await get_checkpointer()
+        return cp
+    except Exception as e:
+        _checkpointer_failed = True
+        logger.warning(
+            f"[xetu_run] Checkpointer indisponible — mode sans historique activé.\n"
+            f"  Cause : {type(e).__name__}: {e}\n"
+            f"  → Ajoutez DB_PASSWORD dans Railway pour activer la persistance."
+        )
+        # Réessayer dans 60s
+        import asyncio
+        asyncio.get_event_loop().call_later(60, _reset_checkpointer_flag)
+        return None
+
+
+def _reset_checkpointer_flag():
+    global _checkpointer_failed
+    _checkpointer_failed = False
+    logger.info("[xetu_run] Checkpointer flag reset — prochaine tentative de connexion.")
+
+
+async def run(
+    message: str,
+    phone: str,
+    langue: str = "fr",
+    history: list = None,
+) -> str:
+    """
+    Point d'entrée unique de Xëtu.
+    - Avec checkpointer : historique géré par LangGraph via thread_id=phone.
+    - Sans checkpointer (fallback) : agent sans mémoire, mais fonctionnel.
+    """
+    global _fallback_count
+
+    # ── Choix de l'agent ─────────────────────────────────
+    if langue == "wolof":
+        agent_base = _agent_gemini_base
+        agent_name = "gemini"
+    else:
+        agent_base = _agent_groq_base
+        agent_name = "groq"
+
+    logger.info(
+        f"[xetu_run] langue={langue!r} | phone={phone[:8]}… | agent={agent_name}"
+    )
+
+    config = {
+        "configurable": {
+            "phone": phone,
+            "thread_id": phone,
+        }
+    }
+
+    # ── Tentative avec checkpointer ───────────────────────
+    checkpointer = await _try_get_checkpointer()
+
+    if checkpointer:
+        try:
+            agent = _get_agent_with_checkpointer(agent_base, checkpointer, agent_name)
+            result = await agent.ainvoke(
+                {"messages": [HumanMessage(content=message)]},
+                config=config,
+            )
+            return _extract_response(result)
+
+        except Exception as e:
+            if _is_rate_limit_error(e) and agent_name == "groq":
+                _fallback_count += 1
+                logger.warning(f"[xetu_run] Groq 429 — fallback Gemini (#{_fallback_count})")
+                try:
+                    agent = _get_agent_with_checkpointer(
+                        _agent_gemini_base, checkpointer, "gemini-fallback"
+                    )
+                    result = await agent.ainvoke(
+                        {"messages": [HumanMessage(content=message)]},
+                        config=config,
+                    )
+                    return _extract_response(result)
+                except Exception as fallback_err:
+                    logger.error(f"[xetu_run] Fallback Gemini échoué: {fallback_err}", exc_info=True)
+                    raise fallback_err
+            raise
+
+    # ── Fallback SANS checkpointer ────────────────────────
+    logger.info(f"[xetu_run] Mode sans checkpointer — agent={agent_name}")
+
+    try:
+        result = await agent_base.ainvoke(
+            {"messages": [HumanMessage(content=message)]},
+            config=config,
+        )
+        return _extract_response(result)
+
+    except Exception as e:
+        if _is_rate_limit_error(e) and agent_name == "groq":
+            _fallback_count += 1
+            logger.warning(f"[xetu_run] Groq 429 (sans checkpointer) — fallback Gemini (#{_fallback_count})")
+            try:
+                result = await _agent_gemini_base.ainvoke(
+                    {"messages": [HumanMessage(content=message)]},
+                    config=config,
+                )
+                return _extract_response(result)
+            except Exception as fallback_err:
+                logger.error(f"[xetu_run] Fallback Gemini échoué: {fallback_err}", exc_info=True)
+                raise fallback_err
+        raise
 
 
 def _extract_response(result: dict) -> str:
