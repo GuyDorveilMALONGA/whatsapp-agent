@@ -1,6 +1,10 @@
 /**
- * js/app.js — Phase 5.1
+ * js/app.js — Phase 5.1.1
  * Point d'entrée unique. Orchestre sans logique de rendu.
+ *
+ * MIGRATIONS Phase 5.1.1 :
+ *   - FIX : suppression du doublon onError dans _initChat() — le second
+ *     écrasait le premier, empêchant Chat.setTyping(false) sur erreur.
  *
  * MIGRATIONS Phase 5.1 :
  *   - _initChat() branché sur chat.js V2 + ws.js V2 :
@@ -255,15 +259,12 @@ function _initChat() {
     },
 
     onChatResponse: (text) => {
-  Chat.setTyping(false);
-  Chat.appendMessage('bot', text);
-  },
+      Chat.setTyping(false);
+      Chat.appendMessage('bot', text);
+    },
 
     onError: (message) => {
-  Chat.setTyping(false);
-  Chat.appendMessage('bot', `⚠️ ${message}`);
-  },
-    onError: (message) => {
+      Chat.setTyping(false);
       Chat.appendMessage('bot', `⚠️ ${message}`);
     },
 

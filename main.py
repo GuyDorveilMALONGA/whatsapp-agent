@@ -386,7 +386,7 @@ async def _process_message_safe(
 
         # ── Message de bienvenue (1ère fois) ─────────────────
         history_count = queries.count_messages(conv_id)
-        if history_count == 0:
+        if history_count == 0 and not _is_web:
             await send_fn(phone, WELCOME_MESSAGE)
 
         # ── Détection langue ─────────────────────────────────
