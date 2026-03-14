@@ -1,6 +1,10 @@
 """
-services/websocket.py — V1.2
+services/websocket.py — V1.3 (debug)
 FIX B-WS-2 : Bypass validate_phone() pour sessions web (session_id = "web_uuid...")
+
+MIGRATIONS V1.3 depuis V1.2 :
+  - traceback.print_exc() + print(flush=True) dans TOUS les except
+    pour forcer l'affichage des erreurs dans Railway logs
 
 MIGRATIONS V1.2 depuis V1.1 :
   - CAUSE RÉELLE du "Une erreur s'est produite" dans le chat :
@@ -24,6 +28,7 @@ import json
 import logging
 import re
 import asyncio
+import traceback
 from datetime import datetime, timezone
 
 from fastapi import WebSocket, WebSocketDisconnect
@@ -158,6 +163,7 @@ async def handle_websocket(
                     f"[WS] Chat — session={session_id[:20]} "
                     f"text={text[:60]!r}"
                 )
+                print(f"[WS DEBUG] Chat reçu — session={session_id[:20]} text={text[:60]!r}", flush=True)
 
                 try:
                     await process_fn(
@@ -166,7 +172,10 @@ async def handle_websocket(
                         background_tasks=background_tasks,
                         send_fn=send_fn,
                     )
+                    print(f"[WS DEBUG] process_fn terminé OK", flush=True)
                 except Exception as e:
+                    traceback.print_exc()
+                    print(f"===== WS CRASH ===== {type(e).__name__}: {e}", flush=True)
                     logger.error(f"[WS] Erreur process_fn: {e}", exc_info=True)
                     await _send(websocket, {
                         "type":    "error",
@@ -187,6 +196,8 @@ async def handle_websocket(
     except WebSocketDisconnect:
         logger.info(f"[WS] Déconnexion propre — session={session_id[:20]}")
     except Exception as e:
+        traceback.print_exc()
+        print(f"===== WS GLOBAL CRASH ===== {type(e).__name__}: {e}", flush=True)
         logger.error(f"[WS] Erreur inattendue — session={session_id[:20]}: {e}", exc_info=True)
     finally:
         logger.info(f"[WS] Connexion fermée — session={session_id[:20]}")
@@ -251,6 +262,8 @@ async def _handle_report(
         })
 
     except Exception as e:
+        traceback.print_exc()
+        print(f"===== WS REPORT CRASH ===== {type(e).__name__}: {e}", flush=True)
         logger.error(f"[WS] Erreur report: {e}", exc_info=True)
         await _send(websocket, {
             "type": "report_ack", "success": False, "error": "Erreur interne.",
