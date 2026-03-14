@@ -4,6 +4,7 @@ uvicorn[standard]==0.30.6
 python-dotenv==1.0.1
 httpx==0.27.2
 pydantic-settings>=2.0
+pydantic>=2.9,<3.0
 
 # ── Base de données ───────────────────────────────
 supabase==2.7.4
@@ -11,10 +12,10 @@ vecs==0.4.3
 redis>=5.0
 
 # ── LangChain / LangGraph (agent agentique) ──────
-langgraph>=0.3
-langchain-core>=0.3
-langchain-groq==0.2.4          # LLM principal (Groq — ultra rapide)
-langchain-google-genai>=2.0    # LLM fallback (Gemini)
+langchain-core>=0.3.29,<0.4
+langgraph>=0.3,<2.0
+langchain-groq>=0.3.0,<0.4     # FIX: 0.2.4 incompatible avec langchain-core 0.3.29+
+langchain-google-genai>=2.0,<3.0
 
 # ── NLP & utilitaires ────────────────────────────
 langdetect==1.0.9
@@ -24,10 +25,3 @@ rapidfuzz>=3.0.0
 tenacity>=8.0
 structlog>=24.0
 apscheduler==3.10.4
-
-# ── MCP (Model Context Protocol) ─────────────────
-# langchain-mcp>=0.1           # Décommenter en Phase 4 (multi-domaine)
-
-# ── SUPPRIMÉS ─────────────────────────────────────
-# google-generativeai==0.7.2   # Ancien SDK, remplacé par langchain-google-genai
-# groq==0.9.0                  # Ancien SDK, remplacé par langchain-groq
