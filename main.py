@@ -1,13 +1,10 @@
 """
-main.py — V8.0
+main.py — V8.1
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V8.0 depuis V7.6.1 :
-  - route_async() + _dispatch() remplacés par xetu_run() (agent LangGraph)
-  - Imports skills/* supprimés — devenus tools internes dans agent/tools.py
-  - Import extract_qualites conservé (utilisé dans _handle_enrichissement)
-  - Toute la logique session, confirmation, enrichissement : INCHANGÉE
-  - Canaux WhatsApp, Telegram, WebSocket : INCHANGÉS
+MIGRATIONS V8.1 depuis V8.0 :
+  - Retrait des print() de debug (CRASH XETU, traceback.print_exc)
+  - Logging propre uniquement via logger.error(exc_info=True)
 """
 import logging
 import re
@@ -60,9 +57,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V8.0 démarré — Agent LangGraph actif")
+    logger.info("🚌 Xëtu V8.1 démarré — Agent LangGraph actif")
     yield
-    logger.info("🚌 Xëtu V8.0 arrêté proprement")
+    logger.info("🚌 Xëtu V8.1 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -131,7 +128,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "8.0", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "8.1", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -334,8 +331,6 @@ async def _process_message(phone: str, text: str, background_tasks: BackgroundTa
                 send_fn=_whatsapp_service.send_message
             )
     except Exception as e:
-        import traceback
-        traceback.print_exc()
         logger.error(f"Erreur queue [{phone}]: {e}", exc_info=True)
 
 
@@ -446,9 +441,6 @@ async def _process_message_safe(
         logger.info(f"{_tag} END OK")
 
     except Exception as e:
-        import traceback
-        traceback.print_exc()
-        print(f"===== CRASH XETU ===== {type(e).__name__}: {e}", flush=True)
         logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}", exc_info=True)
         await send_fn(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
 
