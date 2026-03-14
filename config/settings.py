@@ -54,7 +54,7 @@ DATABASE_URL         = os.getenv("DATABASE_URL", "")  # optionnel désormais
 GROQ_API_KEY   = _require("GROQ_API_KEY")
 GEMINI_API_KEY = _require("GEMINI_API_KEY")
 
-GROQ_MODEL   = "llama-3.3-70b-versatile"
+GROQ_MODEL   = "llama3-groq-70b-8192-tool-use-preview"
 GEMINI_MODEL = "gemini-2.0-flash"
 
 LLM_TIMEOUT_SECONDS = 15
