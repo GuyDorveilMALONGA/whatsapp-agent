@@ -1,21 +1,13 @@
 /**
- * js/app.js — Phase 5
+ * js/app.js — Phase 5.1
  * Point d'entrée unique. Orchestre sans logique de rendu.
  *
- * AJOUT Phase 5 :
- *   - _onFilterChange branche sur showLineOverlay / clearLineOverlay
- *   - loadRoutes() appelé au démarrage (préchargement du v4 en cache)
- *
- * Cycle de vie :
- *  1. store + deep link
- *  2. map
- *  3. ui sidebar
- *  4. mobile bottom sheet
- *  5. modal signalement natif
- *  6. chat UI + WebSocket
- *  7. fetchAll initial + préchargement routes
- *  8. polling 30s
- *  9. Service Worker + PWA install prompt
+ * MIGRATIONS Phase 5.1 :
+ *   - _initChat() branché sur chat.js V2 + ws.js V2 :
+ *     · onWelcome passe firstVisit à Chat.showWelcome()
+ *     · onTyping piloté par le serveur via Chat.setTyping()
+ *     · hideTyping() retiré de onChatResponse / onError / onReportAck
+ *       (c'est onTyping(false) qui s'en charge désormais)
  */
 
 import * as store      from './store.js';
@@ -84,13 +76,13 @@ document.addEventListener('DOMContentLoaded', async () => {
   // 7. Chat + WebSocket
   _initChat();
 
-  // 8. Chargement initial + préchargement routes v4
+  // 8. Chargement initial + préchargement routes
   await Promise.all([
     _loadAndRender(),
-    Api.loadRoutes(),   // préchargement silencieux
+    Api.loadRoutes(),
   ]);
 
-  // Si deep link avec une ligne → afficher l'overlay immédiatement
+  // Deep link ligne → overlay immédiat
   const deepLine = store.get('filteredLine');
   if (deepLine) await _applyLineOverlay(deepLine);
 
@@ -113,21 +105,17 @@ document.addEventListener('DOMContentLoaded', async () => {
 
 // ── OVERLAY LIGNE ─────────────────────────────────────────
 
-/**
- * Charge les données de la ligne depuis v4 et affiche l'overlay.
- */
 async function _applyLineOverlay(line) {
   if (!line) {
     MapManager.clearLineOverlay();
     return;
   }
-
   try {
     const lineData = await Api.getLineData(line);
     if (lineData) {
       MapManager.showLineOverlay(lineData);
     } else {
-      console.warn(`[App] Ligne ${line} introuvable dans routes_geometry_v4`);
+      console.warn(`[App] Ligne ${line} introuvable dans routes_geometry_v13`);
       MapManager.clearLineOverlay();
     }
   } catch (err) {
@@ -245,24 +233,33 @@ function _initChat() {
     onSend: (text) => {
       const sent = Ws.sendChat(text);
       if (!sent) {
-        Chat.hideTyping();
+        // Connexion fermée — pas de typing attendu, message d'erreur direct
         Chat.appendMessage('bot', '⚠️ Non connecté. Réessaie dans un instant.');
       }
     },
   });
 
   Ws.init({
-    onOpen: () => Chat.setStatus('open'),
-    onWelcome: (text, suggestions) => {
-      Chat.appendMessage('bot', text);
-      Chat.setSuggestions(suggestions);
+    onOpen: () => {
+      Chat.setStatus('open');
     },
+
+    // firstVisit piloté par le serveur — chat.js décide d'afficher ou non le texte
+    onWelcome: (text, suggestions, firstVisit) => {
+      Chat.showWelcome(text, suggestions, firstVisit);
+    },
+
+    // Typing piloté serveur — plus de hideTyping() manuel ici
+    onTyping: (active) => {
+      Chat.setTyping(active);
+    },
+
     onChatResponse: (text) => {
-      Chat.hideTyping();
+      // typing déjà masqué par onTyping(false) envoyé juste avant par le serveur
       Chat.appendMessage('bot', text);
     },
+
     onReportAck: (payload) => {
-      Chat.hideTyping();
       if (payload.success) {
         Chat.appendMessage('bot', '✅ Signalement enregistré ! Merci 🙏');
         _bumpReportsCount();
@@ -270,15 +267,19 @@ function _initChat() {
         Chat.appendMessage('bot', `❌ ${payload.error || 'Erreur lors du signalement.'}`);
       }
     },
+
     onError: (message) => {
-      Chat.hideTyping();
       Chat.appendMessage('bot', `⚠️ ${message}`);
     },
+
     onClose: (wasClean) => {
       Chat.setStatus('closed');
       if (!wasClean) store.set('wsStatus', 'closed');
     },
-    onReconnecting: () => Chat.setStatus('connecting'),
+
+    onReconnecting: () => {
+      Chat.setStatus('connecting');
+    },
   });
 
   store.subscribe('wsStatus', (status) => Chat.setStatus(status));
@@ -321,13 +322,11 @@ function _onBusSelect(busId) {
 async function _onFilterChange(line) {
   store.set('filteredLine', line);
 
-  // Mettre à jour l'URL
   const url = new URL(window.location);
   if (line) url.searchParams.set('line', line);
   else      url.searchParams.delete('line');
   history.replaceState(null, '', url);
 
-  // Afficher ou effacer l'overlay ligne
   await _applyLineOverlay(line);
 }
 

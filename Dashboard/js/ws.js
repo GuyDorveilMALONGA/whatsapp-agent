@@ -6,8 +6,9 @@
  *   Émis   : { type: "chat", text }
  *            { type: "report", ligne, arret, observation }
  *            { type: "ping" }
- *   Reçus  : { type: "welcome", text, suggestions }
+ *   Reçus  : { type: "welcome", text, suggestions, first_visit }
  *            { type: "chat_response", text }
+ *            { type: "typing", active }
  *            { type: "report_ack", success, id?, error? }
  *            { type: "error", message }
  *            { type: "pong" }
@@ -30,34 +31,51 @@ import { generateUUID } from './utils.js';
 
 // ── Constantes ────────────────────────────────────────────
 
-const RECONNECT_BASE_MS  = 1_500;
-const RECONNECT_MAX_MS   = 30_000;
-const RECONNECT_FACTOR   = 1.8;
-const PING_INTERVAL_MS   = 25_000; // en dessous du timeout serveur (60s)
+const RECONNECT_BASE_MS   = 1_500;
+const RECONNECT_MAX_MS    = 30_000;
+const RECONNECT_FACTOR    = 1.8;
+const PING_INTERVAL_MS    = 50_000; // serveur timeout = 120s → ping à 50s
 const MAX_RECONNECT_TRIES = 10;
 
 // ── WS URL ────────────────────────────────────────────────
-// API_BASE = "https://xxx.railway.app"
-// WS_BASE  = "wss://xxx.railway.app"
 const WS_BASE = API_BASE.replace(/^https/, 'wss').replace(/^http/, 'ws');
 
 // ── État interne ──────────────────────────────────────────
 
-let _ws            = null;
-let _sessionId     = null;
-let _handlers      = {};
-let _reconnectTry  = 0;
-let _reconnectTimer = null;
-let _pingTimer     = null;
+let _ws                  = null;
+let _sessionId           = null;
+let _handlers            = {};
+let _reconnectTry        = 0;
+let _reconnectTimer      = null;
+let _pingTimer           = null;
 let _intentionallyClosed = false;
 
 // ── SESSION ID ────────────────────────────────────────────
 
+/**
+ * Persiste en sessionStorage pour survivre aux refreshs de page.
+ * sessionStorage est vidé à la fermeture de l'onglet — pas de fuite long terme.
+ * Sans ça, chaque refresh crée un nouveau thread_id → checkpointer LangGraph
+ * perd le contexte conversationnel.
+ */
 function _getOrCreateSessionId() {
-  // Pas de localStorage — en mémoire uniquement (règle Xëtu)
-  if (!_sessionId) {
-    _sessionId = `${SESSION_PREFIX}${generateUUID()}`;
+  if (_sessionId) return _sessionId;
+
+  try {
+    const stored = sessionStorage.getItem('xetu_session_id');
+    if (stored) {
+      _sessionId = stored;
+    } else {
+      _sessionId = `${SESSION_PREFIX}${generateUUID()}`;
+      sessionStorage.setItem('xetu_session_id', _sessionId);
+    }
+  } catch {
+    // sessionStorage bloqué (iframe sandbox, mode privé strict) → mémoire
+    if (!_sessionId) {
+      _sessionId = `${SESSION_PREFIX}${generateUUID()}`;
+    }
   }
+
   return _sessionId;
 }
 
@@ -66,16 +84,17 @@ function _getOrCreateSessionId() {
 /**
  * @param {Object} handlers
  *   onOpen(sessionId)
- *   onMessage(payload)     — appelé pour TOUS les types de messages
- *   onWelcome(text, suggestions)
+ *   onMessage(payload)        — appelé pour TOUS les types
+ *   onWelcome(text, suggestions, firstVisit)
  *   onChatResponse(text)
+ *   onTyping(active)          — NOUVEAU : indicator de frappe
  *   onReportAck(payload)
  *   onError(message)
  *   onClose(wasClean)
  *   onReconnecting(attempt)
  */
 export function init(handlers = {}) {
-  _handlers = handlers;
+  _handlers            = handlers;
   _intentionallyClosed = false;
   _connect();
 }
@@ -96,10 +115,10 @@ function _connect() {
     return;
   }
 
-  _ws.addEventListener('open', _onOpen);
+  _ws.addEventListener('open',    _onOpen);
   _ws.addEventListener('message', _onMessage);
-  _ws.addEventListener('close', _onClose);
-  _ws.addEventListener('error', _onError);
+  _ws.addEventListener('close',   _onClose);
+  _ws.addEventListener('error',   _onError);
 }
 
 // ── HANDLERS WS ───────────────────────────────────────────
@@ -125,11 +144,22 @@ function _onMessage(event) {
 
   switch (payload.type) {
     case 'welcome':
-      _handlers.onWelcome?.(payload.text, payload.suggestions || []);
+      // first_visit=true  → afficher le message de bienvenue
+      // first_visit=false → afficher seulement les suggestions (reconnexion)
+      _handlers.onWelcome?.(
+        payload.text        ?? '',
+        payload.suggestions ?? [],
+        payload.first_visit ?? false,
+      );
       break;
 
     case 'chat_response':
       _handlers.onChatResponse?.(payload.text);
+      break;
+
+    case 'typing':
+      // { type: "typing", active: true|false }
+      _handlers.onTyping?.(payload.active ?? false);
       break;
 
     case 'report_ack':
@@ -141,7 +171,7 @@ function _onMessage(event) {
       break;
 
     case 'pong':
-      // Heartbeat OK, rien à faire
+      // Heartbeat OK
       break;
 
     default:
@@ -160,8 +190,8 @@ function _onClose(event) {
   _scheduleReconnect();
 }
 
-function _onError(event) {
-  // L'event 'error' est toujours suivi d'un 'close'
+function _onError() {
+  // L'event 'error' est toujours suivi d'un 'close' — pas d'action ici
   console.warn('[WS] Erreur WebSocket');
 }
 
@@ -169,7 +199,7 @@ function _onError(event) {
 
 function _scheduleReconnect() {
   if (_reconnectTry >= MAX_RECONNECT_TRIES) {
-    console.error('[WS] Trop de tentatives de reconnexion. Abandon.');
+    console.error('[WS] Trop de tentatives. Abandon.');
     _setStatus('failed');
     _handlers.onError?.('Connexion impossible. Rafraîchis la page.');
     return;
@@ -177,7 +207,7 @@ function _scheduleReconnect() {
 
   const delay = Math.min(
     RECONNECT_BASE_MS * Math.pow(RECONNECT_FACTOR, _reconnectTry),
-    RECONNECT_MAX_MS
+    RECONNECT_MAX_MS,
   );
 
   _reconnectTry++;
@@ -208,10 +238,6 @@ function _stopPing() {
 
 // ── ENVOI ─────────────────────────────────────────────────
 
-/**
- * Envoie un payload JSON brut.
- * Retourne false si la connexion n'est pas ouverte.
- */
 export function send(payload) {
   if (_ws?.readyState !== WebSocket.OPEN) {
     console.warn('[WS] send() ignoré — WebSocket non ouvert');
@@ -226,12 +252,10 @@ export function send(payload) {
   }
 }
 
-/** Raccourci : envoie un message chat */
 export function sendChat(text) {
   return send({ type: 'chat', text });
 }
 
-/** Raccourci : envoie un signalement */
 export function sendReport(ligne, arret, observation = null) {
   return send({ type: 'report', ligne, arret, observation });
 }

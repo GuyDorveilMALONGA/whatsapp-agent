@@ -1,9 +1,17 @@
 /**
- * js/chat.js
+ * js/chat.js — V2.0
  * UI chat — bulles de messages, suggestions rapides, typing indicator.
  *
+ * MIGRATIONS V2.0 :
+ *   - showWelcome(text, suggestions, firstVisit) — affiche le welcome
+ *     uniquement si firstVisit=true (cohérent avec ws.js V2 + websocket.py V1.5)
+ *   - showTyping() ne s'appelle plus dans _doSend() — piloté par
+ *     { type: "typing", active } venant du serveur via ws.js onTyping
+ *   - appendMessage ne masque plus le typing — c'est onTyping(false) qui le fait
+ *   - Nouveau : Chat.setTyping(active) — API publique pour ws.js
+ *
  * RÈGLE : ne parle jamais à map.js, ui.js, mobile.js directement.
- *         Reçoit ses données via l'API publique (init, appendMessage, etc.)
+ *         Reçoit ses données via l'API publique.
  *         Communique vers l'extérieur uniquement via les callbacks injectés.
  *
  * API publique :
@@ -11,11 +19,11 @@
  *   Chat.open()
  *   Chat.close()
  *   Chat.toggle()
+ *   Chat.showWelcome(text, suggestions, firstVisit)
  *   Chat.appendMessage(role, text)   — 'user' | 'bot'
- *   Chat.showTyping()
- *   Chat.hideTyping()
+ *   Chat.setTyping(active)           — NOUVEAU : piloté par le serveur
  *   Chat.setSuggestions(list)
- *   Chat.setStatus(status)          — 'connecting' | 'open' | 'closed' | 'failed'
+ *   Chat.setStatus(status)           — 'connecting' | 'open' | 'closed' | 'failed'
  *   Chat.isOpen()
  */
 
@@ -48,7 +56,6 @@ export function init({ onSend, onClose } = {}) {
 // ── DOM ───────────────────────────────────────────────────
 
 function _buildDOM() {
-  // FAB bouton flottant
   _fab = document.createElement('button');
   _fab.id        = 'chat-fab';
   _fab.className = 'chat-fab';
@@ -56,7 +63,6 @@ function _buildDOM() {
   _fab.innerHTML = '💬';
   document.body.appendChild(_fab);
 
-  // Fenêtre chat
   const win = document.createElement('div');
   win.id        = 'chat-window';
   win.className = 'chat-window';
@@ -81,11 +87,9 @@ function _buildDOM() {
     </div>
 
     <div class="chat-messages" id="chat-messages" role="log" aria-live="polite" aria-label="Messages">
-      <!-- bulles injectées dynamiquement -->
     </div>
 
     <div class="chat-suggestions" id="chat-suggestions" aria-label="Suggestions rapides">
-      <!-- chips injectées dynamiquement -->
     </div>
 
     <div class="chat-composer">
@@ -110,7 +114,6 @@ function _buildDOM() {
 
   document.body.appendChild(win);
 
-  // Références
   _messagesEl = win.querySelector('#chat-messages');
   _inputEl    = win.querySelector('#chat-input');
   _sendBtn    = win.querySelector('#chat-send-btn');
@@ -120,19 +123,15 @@ function _buildDOM() {
 // ── EVENTS ────────────────────────────────────────────────
 
 function _attachEvents() {
-  // FAB
   _fab.addEventListener('click', toggle);
 
-  // Fermer
   document.getElementById('chat-close-btn')
     .addEventListener('click', close);
 
-  // Input → activer le bouton
   _inputEl.addEventListener('input', () => {
     _sendBtn.disabled = _inputEl.value.trim().length === 0;
   });
 
-  // Envoi sur Enter (pas Shift+Enter)
   _inputEl.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -140,15 +139,12 @@ function _attachEvents() {
     }
   });
 
-  // Envoi sur clic bouton
   _sendBtn.addEventListener('click', _doSend);
 
-  // Fermer sur Escape
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && _isOpen) close();
   });
 
-  // ── Clavier virtuel mobile : repositionner la fenêtre au-dessus du clavier ──
   if (window.visualViewport) {
     const _onViewportChange = () => {
       if (!_isOpen) return;
@@ -159,12 +155,10 @@ function _attachEvents() {
       const keyboardH = window.innerHeight - vv.height - vv.offsetTop;
 
       if (keyboardH > 100) {
-        // Clavier ouvert → fenêtre juste au-dessus du clavier
-        win.style.bottom     = (keyboardH + 8) + 'px';
-        win.style.top        = 'auto';
-        win.style.maxHeight  = (vv.height - 70) + 'px';
+        win.style.bottom    = (keyboardH + 8) + 'px';
+        win.style.top       = 'auto';
+        win.style.maxHeight = (vv.height - 70) + 'px';
       } else {
-        // Clavier fermé → CSS reprend le dessus
         win.style.bottom    = '';
         win.style.maxHeight = '';
       }
@@ -181,10 +175,12 @@ function _doSend() {
   if (!text || text.length > MAX_INPUT_LENGTH) return;
 
   appendMessage('user', text);
-  _inputEl.value   = '';
+  _inputEl.value    = '';
   _sendBtn.disabled = true;
   _clearSuggestions();
-  showTyping();
+
+  // Ne pas appeler showTyping() ici — le serveur envoie { type: "typing", active: true }
+  // juste après avoir reçu le message. C'est onTyping() dans ws.js qui pilote.
 
   _onSend?.(text);
 }
@@ -214,7 +210,6 @@ export function close() {
   const win = document.getElementById('chat-window');
   win.classList.remove('chat-window--open');
 
-  // Attendre la fin de l'animation avant de cacher
   win.addEventListener('transitionend', () => {
     win.hidden = true;
     win.setAttribute('aria-hidden', 'true');
@@ -235,15 +230,28 @@ export function isOpen() {
   return _isOpen;
 }
 
+// ── WELCOME ───────────────────────────────────────────────
+
+/**
+ * Appelé par ws.js onWelcome(text, suggestions, firstVisit).
+ * - firstVisit=true  → affiche la bulle de bienvenue + suggestions
+ * - firstVisit=false → affiche uniquement les suggestions (reconnexion silencieuse)
+ */
+export function showWelcome(text, suggestions = [], firstVisit = false) {
+  if (firstVisit && text) {
+    appendMessage('bot', text);
+  }
+  setSuggestions(suggestions);
+}
+
 // ── MESSAGES ─────────────────────────────────────────────
 
 /**
  * @param {'user'|'bot'} role
- * @param {string} text — peut contenir du Markdown minimal (*bold*, _italic_)
+ * @param {string} text — Markdown minimal (*bold*, _italic_)
  */
 export function appendMessage(role, text) {
-  hideTyping();
-
+  // Ne masque plus le typing ici — c'est setTyping(false) qui s'en charge
   const wrap = document.createElement('div');
   wrap.className = `chat-msg chat-msg--${role}`;
   wrap.setAttribute('role', 'listitem');
@@ -259,9 +267,20 @@ export function appendMessage(role, text) {
 
 // ── TYPING ────────────────────────────────────────────────
 
-export function showTyping() {
+/**
+ * Piloté par { type: "typing", active } venant du serveur.
+ * ws.js appelle Chat.setTyping(active) via le handler onTyping.
+ */
+export function setTyping(active) {
+  if (active) {
+    _showTyping();
+  } else {
+    _hideTyping();
+  }
+}
+
+function _showTyping() {
   if (_typingEl) return;
-  hideTyping();
 
   _typingEl = document.createElement('div');
   _typingEl.className = 'chat-msg chat-msg--bot chat-typing';
@@ -277,12 +296,16 @@ export function showTyping() {
   _scrollToBottom();
 }
 
-export function hideTyping() {
+function _hideTyping() {
   if (_typingEl) {
     _typingEl.remove();
     _typingEl = null;
   }
 }
+
+// Gardées pour compatibilité ascendante si appelées ailleurs
+export const showTyping = () => _showTyping();
+export const hideTyping = () => _hideTyping();
 
 // ── SUGGESTIONS ──────────────────────────────────────────
 
@@ -293,10 +316,10 @@ export function setSuggestions(list = []) {
 
   list.forEach(text => {
     const chip = document.createElement('button');
-    chip.className = 'chat-suggestion-chip';
+    chip.className   = 'chat-suggestion-chip';
     chip.textContent = text;
     chip.addEventListener('click', () => {
-      _inputEl.value = text;
+      _inputEl.value    = text;
       _sendBtn.disabled = false;
       _doSend();
     });
@@ -335,13 +358,6 @@ function _scrollToBottom() {
   });
 }
 
-/**
- * Minimal Markdown → HTML :
- *   *bold*       → <strong>
- *   _italic_     → <em>
- *   \n           → <br>
- *   Liens évités volontairement (contenu non fiable)
- */
 function _formatText(text) {
   return text
     .replace(/&/g, '&amp;')
