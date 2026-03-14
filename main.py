@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request, HTTPException, BackgroundTasks, WebSocket
 from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
+import os
 
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
 from services.whatsapp import parse_incoming_message
@@ -353,6 +354,8 @@ async def _process_message_telegram(
 # V8.2 : history retiré — checkpointer LangGraph gère l'historique
 # ═══════════════════════════════════════════════════════════
 
+
+
 async def _process_message_safe(
     phone: str,
     text: str,
@@ -363,6 +366,8 @@ async def _process_message_safe(
     _tag    = f"[Pipeline]{'[WS]' if _is_web else ''}"
 
     try:
+        import os
+        logger.info(f"{_tag} DB_PASSWORD present: {'DB_PASSWORD' in os.environ}")
         logger.info(f"{_tag} START — id={phone[:24]!r} text={text[:60]!r}")
 
         # ── Validation longueur ──────────────────────────────
