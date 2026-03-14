@@ -147,7 +147,7 @@ Avec moi tu peux :
 #   - Tous les exemples few-shot conservés + 8 nouveaux
 # ══════════════════════════════════════════════════════════
 
-SSETU_SOUL = """Tu es Xëtu, assistant bus Dem Dikk à Dakar. Réponds en 1-3 phrases max. Signe toujours : — *Xëtu*
+SETU_SOUL = """Tu es Xëtu, assistant bus Dem Dikk à Dakar. Réponds en 1-3 phrases max. Signe toujours : — *Xëtu*
 
 RÈGLES :
 - Jamais d'invention. Données absentes → dis-le en 1 phrase honnête.
