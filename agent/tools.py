@@ -1,18 +1,18 @@
 """
-agent/tools.py — V1.3
+agent/tools.py — V1.4
 Skills Xëtu → Tools LangGraph.
 
-FIX V1.3 depuis V1.2 :
-  - report_bus : queries.save_sighting() → queries.save_signalement()
-  - get_recent_sightings : queries.get_recent_sightings() → queries.get_signalements_actifs()
-    (aligné sur les noms réels dans db/queries.py V5.1)
+MIGRATIONS V1.4 depuis V1.3 :
+  - get_recent_sightings : logging détaillé pour diagnostiquer
+    les "Données indisponibles" silencieux
 """
+import logging
 from typing import Optional, Annotated
-from langchain_core.tools import tool
+from langchain_core.tools import tool, InjectedToolArg
 from langchain_core.runnables import RunnableConfig
 
-# Après
-from langchain_core.tools import InjectedToolArg
+logger = logging.getLogger(__name__)
+
 ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
 
 
@@ -44,6 +44,7 @@ async def calculate_route(
         destination: Point d'arrivée (quartier, arrêt ou lieu)
     """
     from agent.graph import get_graph
+    logger.info(f"[calculate_route] origin={origin!r} destination={destination!r}")
     graph = get_graph()
     try:
         result = graph.find_route(origin, destination)
@@ -51,6 +52,7 @@ async def calculate_route(
             return {"status": "not_found", "origin": origin, "destination": destination}
         return {"status": "ok", "result": result}
     except Exception as e:
+        logger.error(f"[calculate_route] ERREUR: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e), "origin": origin, "destination": destination}
 
 
@@ -73,24 +75,27 @@ async def get_recent_sightings(
     from config.settings import VALID_LINES
 
     ligne = str(ligne).upper()
+    logger.info(f"[get_recent_sightings] appelé — ligne={ligne}")
+
     if ligne not in VALID_LINES:
+        logger.warning(f"[get_recent_sightings] ligne inconnue: {ligne!r} | VALID_LINES sample: {list(VALID_LINES)[:5]}")
         return {"status": "unknown_line", "ligne": ligne}
 
     try:
-        # FIX V1.3 : utiliser les fonctions réelles de queries.py
         sightings = queries.get_signalements_actifs(ligne)
+        logger.info(f"[get_recent_sightings] ligne={ligne} → {len(sightings)} signalement(s) actif(s)")
         if not sightings:
             return {"status": "no_data", "ligne": ligne}
-        # Limiter à 3 résultats et formater
         results = []
         for s in sightings[:3]:
             results.append({
-                "position": s.get("position", ""),
+                "position":  s.get("position", ""),
                 "timestamp": s.get("timestamp", ""),
-                "qualite": s.get("qualite"),
+                "qualite":   s.get("qualite"),
             })
         return {"status": "ok", "ligne": ligne, "sightings": results}
     except Exception as e:
+        logger.error(f"[get_recent_sightings] ERREUR ligne={ligne}: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
@@ -119,8 +124,10 @@ async def report_bus(
     from db import queries
 
     phone = _get_phone(config)
+    logger.info(f"[report_bus] ligne={ligne!r} arret={arret!r} phone=…{phone[-4:]}")
 
     if is_blacklisted_signalement(message_original):
+        logger.warning(f"[report_bus] signalement blacklisté: {message_original!r}")
         return {"status": "rejected", "reason": "not_a_real_sighting"}
 
     ligne = str(ligne).upper()
@@ -128,12 +135,13 @@ async def report_bus(
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
     try:
-        # FIX V1.3 : save_sighting() → save_signalement()
         result = queries.save_signalement(ligne, arret, phone)
         if result is None:
             return {"status": "duplicate", "ligne": ligne, "arret": arret}
+        logger.info(f"[report_bus] ✅ signalement enregistré ligne={ligne} arret={arret}")
         return {"status": "ok", "ligne": ligne, "arret": arret}
     except Exception as e:
+        logger.error(f"[report_bus] ERREUR: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
@@ -164,6 +172,7 @@ async def manage_subscription(
 
     phone = _get_phone(config)
     ligne = str(ligne).upper()
+    logger.info(f"[manage_subscription] action={action!r} ligne={ligne} phone=…{phone[-4:]}")
 
     if ligne not in VALID_LINES:
         return {"status": "error", "message": f"Ligne {ligne} inconnue"}
@@ -178,6 +187,7 @@ async def manage_subscription(
         else:
             return {"status": "error", "message": f"Action inconnue : {action}"}
     except Exception as e:
+        logger.error(f"[manage_subscription] ERREUR: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
 
@@ -203,6 +213,7 @@ async def get_bus_info(
     from core.frequencies import format_service
     from rag.retriever import retrieve
 
+    logger.info(f"[get_bus_info] query={query!r} ligne={ligne!r}")
     result = {}
 
     if ligne:
@@ -215,8 +226,8 @@ async def get_bus_info(
         rag_answer = retrieve(query)
         if rag_answer:
             result["rag"] = rag_answer
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"[get_bus_info] RAG erreur: {e}")
 
     return result if result else {"status": "not_found", "query": query}
 
@@ -237,12 +248,13 @@ async def extract_entities(
         text: Message brut de l'utilisateur
     """
     from agent.extractor import extract
+    logger.info(f"[extract_entities] text={text!r}")
     result = extract(text)
     if not result:
         return {"ligne": None, "arret": None}
     return {
-        "ligne": result.ligne,
-        "arret": result.arret,
+        "ligne":      result.ligne,
+        "arret":      result.arret,
         "confidence": getattr(result, "confidence", 1.0),
     }
 
