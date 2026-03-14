@@ -17,9 +17,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 
-from api.push import router as push_router
-app.include_router(push_router)
-
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
 from services.whatsapp import parse_incoming_message
 import services.whatsapp as _whatsapp_service
@@ -113,6 +110,9 @@ async def preflight_handler(rest_of_path: str, request: Request):
 from api.buses       import router as buses_router
 from api.leaderboard import router as leaderboard_router
 from api.report      import router as report_router
+from api.push import router as push_router
+app.include_router(push_router)
+
 
 app.include_router(buses_router)
 app.include_router(leaderboard_router)
