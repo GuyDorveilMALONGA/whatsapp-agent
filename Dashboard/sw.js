@@ -1,5 +1,6 @@
 /**
  * sw.js — Service Worker Xëtu
+ * V2.1 — Fix : filtrage des requêtes non-HTTP (chrome-extension://, etc.)
  * Stratégie :
  *   - Tiles OSM       → cache-first (longue durée)
  *   - CSS / JS / HTML → cache-first (versionnés)
@@ -78,19 +79,25 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
+  const url = request.url;
+
+  // FIX V2.1 : ignorer toutes les requêtes non-HTTP/HTTPS
+  // (chrome-extension://, moz-extension://, etc.)
+  if (!url.startsWith('http://') && !url.startsWith('https://')) return;
 
   // WebSocket → jamais intercepté
-  if (request.url.startsWith('ws://') || request.url.startsWith('wss://')) return;
+  if (url.startsWith('ws://') || url.startsWith('wss://')) return;
+
+  const parsedUrl = new URL(url);
 
   // Tiles OSM → cache-first (très longue durée)
-  if (_isTile(url)) {
+  if (_isTile(parsedUrl)) {
     event.respondWith(_cachFirst_tiles(request));
     return;
   }
 
   // API Railway → network-first avec fallback cache
-  if (_isAPI(url)) {
+  if (_isAPI(parsedUrl)) {
     event.respondWith(_networkFirst_api(request));
     return;
   }
@@ -115,7 +122,6 @@ async function _cachFirst_tiles(request) {
   const cached = await cache.match(request);
 
   if (cached) {
-    // Vérifier l'âge
     const dateHeader = cached.headers.get('date');
     if (dateHeader) {
       const age = Date.now() - new Date(dateHeader).getTime();
@@ -170,7 +176,6 @@ async function _networkFirst_api(request) {
   } catch {
     const cached = await cache.match(request);
     if (cached) {
-      // Ajouter un header custom pour signaler que c'est du cache
       const headers = new Headers(cached.headers);
       headers.set('X-Xetu-Cache', 'stale');
       return new Response(cached.body, { status: 200, headers });
