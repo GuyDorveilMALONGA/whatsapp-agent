@@ -1,17 +1,10 @@
 /**
- * js/app.js — Phase 5.1.1
+ * js/app.js — Phase 5.1.2
  * Point d'entrée unique. Orchestre sans logique de rendu.
  *
- * MIGRATIONS Phase 5.1.1 :
- *   - FIX : suppression du doublon onError dans _initChat() — le second
- *     écrasait le premier, empêchant Chat.setTyping(false) sur erreur.
- *
- * MIGRATIONS Phase 5.1 :
- *   - _initChat() branché sur chat.js V2 + ws.js V2 :
- *     · onWelcome passe firstVisit à Chat.showWelcome()
- *     · onTyping piloté par le serveur via Chat.setTyping()
- *     · hideTyping() retiré de onChatResponse / onError / onReportAck
- *       (c'est onTyping(false) qui s'en charge désormais)
+ * MIGRATIONS Phase 5.1.2 :
+ *   - Push notifications déplacées dans onOpen WebSocket
+ *     pour garantir que getSessionId() est disponible
  */
 
 import * as store      from './store.js';
@@ -25,12 +18,6 @@ import * as Chat       from './chat.js';
 import Toast           from './toast.js';
 import { WA_NUMBER, REFRESH_SEC } from './constants.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
-
-// Au démarrage — proposer les notifications si pas encore abonné
-const alreadySubscribed = await isPushSubscribed();
-if (!alreadySubscribed) {
-  await subscribeToPush();
-}
 
 // ── DEEP LINK ─────────────────────────────────────────────
 (function _applyDeepLink() {
@@ -244,23 +231,30 @@ function _initChat() {
     onSend: (text) => {
       const sent = Ws.sendChat(text);
       if (!sent) {
-        // Connexion fermée — pas de typing attendu, message d'erreur direct
         Chat.appendMessage('bot', '⚠️ Non connecté. Réessaie dans un instant.');
       }
     },
   });
 
   Ws.init({
-    onOpen: () => {
+    onOpen: async () => {
       Chat.setStatus('open');
+
+      // Push notifications — sessionId disponible ici
+      try {
+        const alreadySubscribed = await isPushSubscribed();
+        if (!alreadySubscribed) {
+          await subscribeToPush();
+        }
+      } catch (err) {
+        console.warn('[Push] Erreur init push:', err);
+      }
     },
 
-    // firstVisit piloté par le serveur — chat.js décide d'afficher ou non le texte
     onWelcome: (text, suggestions, firstVisit) => {
       Chat.showWelcome(text, suggestions, firstVisit);
     },
 
-    // Typing piloté serveur — plus de hideTyping() manuel ici
     onTyping: (active) => {
       Chat.setTyping(active);
     },
