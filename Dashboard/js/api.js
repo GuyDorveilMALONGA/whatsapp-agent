@@ -84,7 +84,7 @@ export async function loadRoutes() {
     const res = await fetch('./data/routes_geometry_v13.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    _routesCache = json.routes || {};
+    _routesCache = json.routes || json.lignes || {};
     console.log(`[Api] routes_geometry_v13 chargé — ${Object.keys(_routesCache).length} lignes`);
   } catch (err) {
     console.warn('[Api] Impossible de charger routes_geometry_v13.json :', err.message);
