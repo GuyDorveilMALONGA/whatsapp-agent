@@ -1,14 +1,11 @@
 """
-db/queries.py — V5.0
+db/queries.py — V5.1
 Règle absolue : SEUL fichier qui touche Supabase.
 
-MIGRATIONS V5.0 depuis V4.5 :
-  - FIX D1 : save_signalement utilise upsert avec on_conflict
-    pour éviter la race condition TOCTOU (check-then-insert).
-    L'anti-doublon est désormais garanti côté DB.
-  - FIX D4 : get_abonnes() paginé (max 500 par requête)
-  - FIX H2 : get_abonnements_proactifs_heure() — prend une heure exacte
-  - Tout le reste inchangé (déjà solide)
+MIGRATIONS V5.1 depuis V5.0 :
+  - AJOUT count_messages(conversation_id) — requis par main.py V8.2
+    pour détecter la première visite sans charger l'historique complet.
+    Utilise count="exact" côté Supabase (pas de transfert de lignes).
 """
 from datetime import datetime, timedelta, timezone, date
 import logging
@@ -88,6 +85,27 @@ def get_recent_messages(conversation_id: str, limit: int = 10) -> list[dict]:
              .limit(limit)
              .execute())
     return list(reversed(res.data or []))
+
+
+def count_messages(conversation_id: str) -> int:
+    """
+    NOUVEAU V5.1 — Compte le nombre de messages d'une conversation.
+    Utilise count="exact" pour éviter de rapatrier les lignes.
+    Utilisé par main.py V8.2 pour détecter la première visite :
+        if queries.count_messages(conv_id) == 0:
+            await send_fn(phone, WELCOME_MESSAGE)
+    Fail safe : retourne 1 en cas d'erreur (évite d'envoyer le welcome en boucle).
+    """
+    db = get_client()
+    try:
+        res = (db.table("messages")
+                 .select("id", count="exact")
+                 .eq("conversation_id", conversation_id)
+                 .execute())
+        return res.count or 0
+    except Exception as e:
+        logger.error(f"[count_messages] conv_id={conversation_id} — erreur: {e}")
+        return 1  # fail safe : on suppose qu'il y a déjà des messages
 
 
 # ── Signalements ──────────────────────────────────────────

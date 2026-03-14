@@ -1,10 +1,11 @@
 """
-main.py — V8.1
+main.py — V8.2
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V8.1 depuis V8.0 :
-  - Retrait des print() de debug (CRASH XETU, traceback.print_exc)
-  - Logging propre uniquement via logger.error(exc_info=True)
+MIGRATIONS V8.2 depuis V8.1 :
+  - Retrait du chargement manuel de history= dans _process_message_safe
+  - xetu_run n'accepte plus history= (checkpointer LangGraph gère l'historique)
+  - queries.get_recent_messages() retiré du pipeline principal
 """
 import logging
 import re
@@ -24,16 +25,13 @@ from services import telegram as telegram_service
 from services.websocket import handle_websocket
 from db import queries
 
-# ── MIGRATION V8.0 : agent LangGraph au lieu de router + skills ──────────────
 from agent.xetu_agent import run as xetu_run
-from agent.router import extract_qualites           # conservé pour _handle_enrichissement
-# ─────────────────────────────────────────────────────────────────────────────
-
+from agent.router import extract_qualites
 from agent.normalizer import normalize
 from core.context_builder import build_context
 from core.security import verify_webhook_signature, validate_phone, check_rate_limit
 import core.queue_manager as queue_manager
-import skills.signalement as skill_signalement      # conservé pour notify_abonnes (BackgroundTask)
+import skills.signalement as skill_signalement
 from heartbeat.runner import start_heartbeat
 from memory import user_memory
 from core.session_manager import (
@@ -57,15 +55,15 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V8.1 démarré — Agent LangGraph actif")
+    logger.info("🚌 Xëtu V8.2 démarré — Agent LangGraph + Checkpointer actif")
     yield
-    logger.info("🚌 Xëtu V8.1 arrêté proprement")
+    logger.info("🚌 Xëtu V8.2 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
 
 # ═══════════════════════════════════════════════════════════
-# CORS — FIX Railway proxy
+# CORS
 # ═══════════════════════════════════════════════════════════
 
 ALLOWED_ORIGINS = [
@@ -128,7 +126,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "8.1", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "8.2", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -237,7 +235,7 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPERS — DÉTECTION (inchangés)
+# HELPERS — DÉTECTION
 # ═══════════════════════════════════════════════════════════
 
 def _check_message(text: str) -> str | None:
@@ -352,6 +350,7 @@ async def _process_message_telegram(
 
 # ═══════════════════════════════════════════════════════════
 # PIPELINE SAFE — PARTAGÉ WA + TELEGRAM + WEBSOCKET
+# V8.2 : history retiré — checkpointer LangGraph gère l'historique
 # ═══════════════════════════════════════════════════════════
 
 async def _process_message_safe(
@@ -384,14 +383,13 @@ async def _process_message_safe(
         contact = queries.get_or_create_contact(phone, "fr")
         conv    = queries.get_or_create_conversation(contact["id"])
         conv_id = conv["id"]
-        history = queries.get_recent_messages(conv_id)
-        logger.info(f"{_tag} history OK → {len(history)} messages")
 
         # ── Message de bienvenue (1ère fois) ─────────────────
-        if not history:
+        history_count = queries.count_messages(conv_id)
+        if history_count == 0:
             await send_fn(phone, WELCOME_MESSAGE)
 
-        # ── Détection langue (avant agent, pour routing LLM) ─
+        # ── Détection langue ─────────────────────────────────
         langue = detect_language(text)
         logger.info(f"{_tag} langue détectée → {langue!r}")
 
@@ -410,7 +408,7 @@ async def _process_message_safe(
             response = await _handle_session_active(
                 phone=phone, text=text, langue=langue,
                 session=session, contact=contact,
-                conv_id=conv_id, history=history,
+                conv_id=conv_id, history=[],
                 background_tasks=background_tasks, send_fn=send_fn,
             )
             if response is not None:
@@ -419,12 +417,12 @@ async def _process_message_safe(
                 return
 
         # ── PRIORITÉ 3 : AGENT LANGGRAPH ─────────────────────
+        # V8.2 : history retiré — le checkpointer gère la mémoire
         logger.info(f"{_tag} xetu_run START…")
         response = await xetu_run(
             message=normalized,
             phone=phone,
             langue=langue,
-            history=history,
         )
         logger.info(f"{_tag} xetu_run OK → réponse {len(response)} chars")
 
@@ -532,7 +530,7 @@ async def _handle_session_active(
 
 
 # ═══════════════════════════════════════════════════════════
-# HANDLERS SECONDAIRES (inchangés)
+# HANDLERS SECONDAIRES
 # ═══════════════════════════════════════════════════════════
 
 async def _handle_enrichissement(phone, text, langue, session):
@@ -559,7 +557,7 @@ async def _handle_enrichissement(phone, text, langue, session):
 
 
 # ═══════════════════════════════════════════════════════════
-# HELPERS — RÉPONSES + PROACTIVITÉ (inchangés)
+# HELPERS — RÉPONSES
 # ═══════════════════════════════════════════════════════════
 
 def _reponse_abandon(langue):
