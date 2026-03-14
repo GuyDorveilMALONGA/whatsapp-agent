@@ -1,12 +1,6 @@
 """
-agent/checkpointer.py — V1.2
-Checkpointer PostgreSQL pour LangGraph — persistance Supabase.
-
-MIGRATIONS V1.2 depuis V1.1 :
-  - Paramètres de connexion séparés (pas d'URL) pour éviter les problèmes
-    de parsing avec les caractères spéciaux dans le mot de passe
-  - prepare_threshold=None obligatoire avec pgbouncer/Supavisor (mode transaction)
-  - Mot de passe isolé dans DB_PASSWORD (variable Railway dédiée)
+agent/checkpointer.py — V1.4
+Session Pooler Supabase — IPv4 compatible pour Railway.
 """
 import os
 import logging
@@ -19,12 +13,11 @@ _checkpointer: AsyncPostgresSaver | None = None
 
 
 async def get_checkpointer() -> AsyncPostgresSaver:
-    """Retourne le checkpointer singleton, initialisé au premier appel."""
     global _checkpointer
     if _checkpointer is None:
         conn = await psycopg.AsyncConnection.connect(
-            host="aws-0-eu-west-3.pooler.supabase.com",
-            port=6543,
+            host="aws-1-eu-west-2.pooler.supabase.com",
+            port=5432,
             dbname="postgres",
             user="postgres.hhsahrscdepivpvjoouj",
             password=os.environ["DB_PASSWORD"],
