@@ -1,13 +1,15 @@
 """
-agent/checkpointer.py — V1.6
-Session Pooler Supabase — IPv4 compatible pour Railway.
+agent/checkpointer.py — V1.7
+Session Pooler Supabase — connexion unique partagée.
 
-FIX V1.6 :
-  - Cherche le mot de passe dans : DB_PASSWORD, DBPASSWORD, DATABASE_URL, etc.
-  - Log toutes les variables DB-related si rien trouvé (pour debug Railway)
-  - Reconnexion automatique si connexion PostgreSQL perdue
+FIX V1.7 :
+  - asyncio.Lock pour empêcher les connexions concurrentes
+    (Telegram + WebSocket simultanés → une seule connexion)
+  - Reconnexion automatique si connexion perdue
+  - Cherche DB_PASSWORD dans toutes les variantes possibles
 """
 import os
+import asyncio
 import logging
 import psycopg
 from urllib.parse import urlparse
@@ -17,12 +19,11 @@ logger = logging.getLogger(__name__)
 
 _checkpointer: AsyncPostgresSaver | None = None
 _connection: psycopg.AsyncConnection | None = None
+_lock = asyncio.Lock()
 
 
 def _get_db_password() -> str:
     """Cherche le mot de passe DB dans toutes les sources possibles."""
-
-    # 1. Variables explicites
     for key in ("DB_PASSWORD", "DBPASSWORD", "SUPABASE_DB_PASSWORD",
                 "PG_PASSWORD", "POSTGRES_PASSWORD"):
         val = os.environ.get(key)
@@ -30,7 +31,6 @@ def _get_db_password() -> str:
             logger.info(f"[Checkpointer] Mot de passe trouvé via {key}")
             return val
 
-    # 2. Extraire depuis une URL de connexion
     for url_key in ("DATABASE_URL", "SUPABASE_DB_URL", "POSTGRES_URL"):
         db_url = os.environ.get(url_key, "")
         if db_url and ":" in db_url:
@@ -39,57 +39,65 @@ def _get_db_password() -> str:
                 if parsed.password:
                     logger.info(f"[Checkpointer] Mot de passe extrait de {url_key}")
                     return parsed.password
-            except Exception as e:
-                logger.warning(f"[Checkpointer] Impossible de parser {url_key}: {e}")
+            except Exception:
+                pass
 
-    # 3. Échec — log utile pour debug
     db_vars = {}
     for k, v in os.environ.items():
         k_up = k.upper()
         if any(x in k_up for x in ("DB", "DATABASE", "PG", "POSTGRES", "SUPABASE", "PASSWORD")):
             db_vars[k] = v[:6] + "***" if len(v) > 6 else "***"
-
     logger.error(
         f"[Checkpointer] AUCUN mot de passe DB trouvé !\n"
-        f"  Variables cherchées : DB_PASSWORD, DBPASSWORD, SUPABASE_DB_PASSWORD, "
-        f"PG_PASSWORD, POSTGRES_PASSWORD, DATABASE_URL, SUPABASE_DB_URL, POSTGRES_URL\n"
-        f"  Variables pertinentes dans l'env : {db_vars}"
+        f"  Variables pertinentes : {db_vars}"
     )
-    raise RuntimeError(
-        "Aucune variable d'environnement pour le mot de passe DB. "
-        "Ajoutez DB_PASSWORD dans Railway -> Variables."
-    )
+    raise RuntimeError("DB_PASSWORD manquant dans Railway → Variables.")
 
 
 async def get_checkpointer() -> AsyncPostgresSaver:
     global _checkpointer, _connection
 
-    # Vérifier si la connexion existante est encore vivante
+    # Fast path — connexion déjà active, pas besoin du lock
     if _checkpointer is not None and _connection is not None:
         try:
             if not _connection.closed:
                 return _checkpointer
-            logger.warning("[Checkpointer] Connexion fermee -- reconnexion...")
         except Exception:
-            logger.warning("[Checkpointer] Connexion invalide -- reconnexion...")
+            pass
 
-        _checkpointer = None
-        _connection = None
+    # Slow path — une seule coroutine crée la connexion
+    async with _lock:
+        # Re-check après acquisition du lock (une autre coroutine a pu créer entre-temps)
+        if _checkpointer is not None and _connection is not None:
+            try:
+                if not _connection.closed:
+                    return _checkpointer
+            except Exception:
+                pass
 
-    # Nouvelle connexion
-    password = _get_db_password()
+        # Fermer proprement l'ancienne connexion si elle existe
+        if _connection is not None:
+            try:
+                await _connection.close()
+            except Exception:
+                pass
+            _connection = None
+            _checkpointer = None
 
-    _connection = await psycopg.AsyncConnection.connect(
-        host="aws-1-eu-west-2.pooler.supabase.com",
-        port=5432,
-        dbname="postgres",
-        user="postgres.hhsahrscdepivpvjoouj",
-        password=password,
-        sslmode="require",
-        autocommit=True,
-        prepare_threshold=None,
-    )
-    _checkpointer = AsyncPostgresSaver(_connection)
-    await _checkpointer.setup()
-    logger.info("[Checkpointer] PostgreSQL initialise OK")
-    return _checkpointer
+        password = _get_db_password()
+
+        logger.info("[Checkpointer] Création connexion PostgreSQL...")
+        _connection = await psycopg.AsyncConnection.connect(
+            host="aws-1-eu-west-2.pooler.supabase.com",
+            port=5432,
+            dbname="postgres",
+            user="postgres.hhsahrscdepivpvjoouj",
+            password=password,
+            sslmode="require",
+            autocommit=True,
+            prepare_threshold=None,
+        )
+        _checkpointer = AsyncPostgresSaver(_connection)
+        await _checkpointer.setup()
+        logger.info("[Checkpointer] PostgreSQL initialisé ✅")
+        return _checkpointer
