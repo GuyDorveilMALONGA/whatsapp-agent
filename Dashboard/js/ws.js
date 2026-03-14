@@ -1,6 +1,7 @@
 /**
  * js/ws.js
  * Client WebSocket Xëtu — connexion, protocole JSON, reconnexion.
+ * V1.5 : PING_INTERVAL_MS 50s → 25s pour rester dans le heartbeat 120s
  *
  * PROTOCOLE :
  *   Émis   : { type: "chat", text }
@@ -34,7 +35,7 @@ import { generateUUID } from './utils.js';
 const RECONNECT_BASE_MS   = 1_500;
 const RECONNECT_MAX_MS    = 30_000;
 const RECONNECT_FACTOR    = 1.8;
-const PING_INTERVAL_MS    = 50_000; // serveur timeout = 120s → ping à 50s
+const PING_INTERVAL_MS    = 25_000; // FIX V1.5 : 50s → 25s (serveur timeout = 120s)
 const MAX_RECONNECT_TRIES = 10;
 
 // ── WS URL ────────────────────────────────────────────────
@@ -52,12 +53,6 @@ let _intentionallyClosed = false;
 
 // ── SESSION ID ────────────────────────────────────────────
 
-/**
- * Persiste en sessionStorage pour survivre aux refreshs de page.
- * sessionStorage est vidé à la fermeture de l'onglet — pas de fuite long terme.
- * Sans ça, chaque refresh crée un nouveau thread_id → checkpointer LangGraph
- * perd le contexte conversationnel.
- */
 function _getOrCreateSessionId() {
   if (_sessionId) return _sessionId;
 
@@ -70,7 +65,6 @@ function _getOrCreateSessionId() {
       sessionStorage.setItem('xetu_session_id', _sessionId);
     }
   } catch {
-    // sessionStorage bloqué (iframe sandbox, mode privé strict) → mémoire
     if (!_sessionId) {
       _sessionId = `${SESSION_PREFIX}${generateUUID()}`;
     }
@@ -81,18 +75,6 @@ function _getOrCreateSessionId() {
 
 // ── INIT ─────────────────────────────────────────────────
 
-/**
- * @param {Object} handlers
- *   onOpen(sessionId)
- *   onMessage(payload)        — appelé pour TOUS les types
- *   onWelcome(text, suggestions, firstVisit)
- *   onChatResponse(text)
- *   onTyping(active)          — NOUVEAU : indicator de frappe
- *   onReportAck(payload)
- *   onError(message)
- *   onClose(wasClean)
- *   onReconnecting(attempt)
- */
 export function init(handlers = {}) {
   _handlers            = handlers;
   _intentionallyClosed = false;
@@ -144,8 +126,6 @@ function _onMessage(event) {
 
   switch (payload.type) {
     case 'welcome':
-      // first_visit=true  → afficher le message de bienvenue
-      // first_visit=false → afficher seulement les suggestions (reconnexion)
       _handlers.onWelcome?.(
         payload.text        ?? '',
         payload.suggestions ?? [],
@@ -158,7 +138,6 @@ function _onMessage(event) {
       break;
 
     case 'typing':
-      // { type: "typing", active: true|false }
       _handlers.onTyping?.(payload.active ?? false);
       break;
 
@@ -171,7 +150,6 @@ function _onMessage(event) {
       break;
 
     case 'pong':
-      // Heartbeat OK
       break;
 
     default:
@@ -191,7 +169,6 @@ function _onClose(event) {
 }
 
 function _onError() {
-  // L'event 'error' est toujours suivi d'un 'close' — pas d'action ici
   console.warn('[WS] Erreur WebSocket');
 }
 

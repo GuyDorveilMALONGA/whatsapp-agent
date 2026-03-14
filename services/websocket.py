@@ -1,7 +1,6 @@
 """
-services/websocket.py — V1.4 (clean)
-Retrait de tous les print() de debug.
-Logging propre uniquement via logger.
+services/websocket.py — V1.5
+Fix : _HEARTBEAT_TIMEOUT 60 → 120s + first_visit dans welcome + typing indicators
 """
 
 import json
@@ -20,7 +19,7 @@ _SESSION_ID_RE = re.compile(
 )
 
 _MAX_TEXT_LENGTH    = 500
-_HEARTBEAT_TIMEOUT  = 60
+_HEARTBEAT_TIMEOUT  = 120  # ← FIX V1.5 : 60 → 120s (marge suffisante pour LLM)
 
 _WELCOME_TEXT = (
     "Salam ! Je suis Xëtu 🚌\n"
@@ -58,8 +57,12 @@ async def handle_websocket(websocket, session_id, process_fn, background_tasks=N
     async def send_fn(_phone, text):
         return await _send(websocket, {"type": "chat_response", "text": text})
 
+    # FIX V1.5 : first_visit=True pour afficher le message de bienvenue
     await _send(websocket, {
-        "type": "welcome", "text": _WELCOME_TEXT, "suggestions": _QUICK_SUGGESTIONS,
+        "type": "welcome",
+        "text": _WELCOME_TEXT,
+        "suggestions": _QUICK_SUGGESTIONS,
+        "first_visit": True,
     })
 
     try:
@@ -93,11 +96,19 @@ async def handle_websocket(websocket, session_id, process_fn, background_tasks=N
 
                 logger.info(f"[WS] Chat — session={session_id[:20]} text={text[:60]!r}")
 
+                # FIX V1.5 : envoyer typing=true avant le traitement
+                await _send(websocket, {"type": "typing", "active": True})
+
                 try:
                     await process_fn(phone=session_id, text=text, background_tasks=background_tasks, send_fn=send_fn)
                 except Exception as e:
                     logger.error(f"[WS] Erreur process_fn: {e}", exc_info=True)
+                    await _send(websocket, {"type": "typing", "active": False})
                     await _send(websocket, {"type": "error", "message": "Erreur interne. Réessaie dans un instant."})
+                    continue
+
+                # FIX V1.5 : envoyer typing=false après le traitement
+                await _send(websocket, {"type": "typing", "active": False})
                 continue
 
             if msg_type == "report":
