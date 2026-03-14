@@ -1,29 +1,7 @@
 /**
  * js/ws.js
  * Client WebSocket Xëtu — connexion, protocole JSON, reconnexion.
- * V1.5 : PING_INTERVAL_MS 50s → 25s pour rester dans le heartbeat 120s
- *
- * PROTOCOLE :
- *   Émis   : { type: "chat", text }
- *            { type: "report", ligne, arret, observation }
- *            { type: "ping" }
- *   Reçus  : { type: "welcome", text, suggestions, first_visit }
- *            { type: "chat_response", text }
- *            { type: "typing", active }
- *            { type: "report_ack", success, id?, error? }
- *            { type: "error", message }
- *            { type: "pong" }
- *
- * API publique :
- *   Ws.init(handlers)  — démarre la connexion
- *   Ws.send(payload)   — envoie un message JSON
- *   Ws.sendChat(text)  — envoie un chat
- *   Ws.disconnect()    — ferme proprement
- *   Ws.getStatus()     — 'connecting' | 'open' | 'closed'
- *
- * Dépend de : store.js, constants.js
- * RÈGLE : ne parle jamais à map.js, ui.js, mobile.js, chat.js directement.
- *         Notifie via handlers injectés à l'init.
+ * V1.6 — Fix boucle infinie : code 4002 → régénère session + pas de retry immédiat
  */
 
 import * as store from './store.js';
@@ -35,8 +13,11 @@ import { generateUUID } from './utils.js';
 const RECONNECT_BASE_MS   = 1_500;
 const RECONNECT_MAX_MS    = 30_000;
 const RECONNECT_FACTOR    = 1.8;
-const PING_INTERVAL_MS    = 25_000; // FIX V1.5 : 50s → 25s (serveur timeout = 120s)
+const PING_INTERVAL_MS    = 25_000; // serveur timeout = 120s → ping à 25s
 const MAX_RECONNECT_TRIES = 10;
+
+// Codes serveur qui indiquent une session invalide → régénérer l'ID
+const SESSION_RESET_CODES = new Set([4001, 4002]);
 
 // ── WS URL ────────────────────────────────────────────────
 const WS_BASE = API_BASE.replace(/^https/, 'wss').replace(/^http/, 'ws');
@@ -71,6 +52,20 @@ function _getOrCreateSessionId() {
   }
 
   return _sessionId;
+}
+
+/**
+ * FIX V1.6 : Régénère un nouvel ID de session et le persiste.
+ * Appelé quand le serveur rejette la session (code 4001/4002).
+ */
+function _resetSessionId() {
+  _sessionId = `${SESSION_PREFIX}${generateUUID()}`;
+  try {
+    sessionStorage.setItem('xetu_session_id', _sessionId);
+  } catch {
+    // sessionStorage bloqué — on garde en mémoire
+  }
+  console.info('[WS] Nouvelle session générée :', _sessionId.slice(0, 24));
 }
 
 // ── INIT ─────────────────────────────────────────────────
@@ -165,6 +160,18 @@ function _onClose(event) {
   if (_intentionallyClosed) return;
 
   console.info(`[WS] Connexion fermée (code=${event.code}) — reconnexion...`);
+
+  // FIX V1.6 : codes 4001/4002 = session rejetée par le serveur
+  // → régénérer un nouvel ID avant de reconnecter
+  if (SESSION_RESET_CODES.has(event.code)) {
+    console.warn(`[WS] Session rejetée (code=${event.code}) — nouvelle session dans 1s`);
+    _resetSessionId();
+    _reconnectTry = 0;
+    if (_reconnectTimer) clearTimeout(_reconnectTimer);
+    _reconnectTimer = setTimeout(_connect, 1_000);
+    return;
+  }
+
   _scheduleReconnect();
 }
 
