@@ -248,3 +248,60 @@ self.addEventListener('message', (event) => {
     self.skipWaiting();
   }
 });
+
+// ── PUSH NOTIFICATIONS ────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+
+  let data = {};
+  try {
+    data = event.data.json();
+  } catch {
+    data = { title: 'Xëtu', body: event.data.text() };
+  }
+
+  const title   = data.title   || 'Xëtu 🚌';
+  const options = {
+    body:    data.body    || 'Nouveau signalement bus',
+    icon:    '/assets/icons/icon-192.png',
+    badge:   '/assets/icons/icon-192.png',
+    tag:     data.tag     || 'xetu-notif',
+    renotify: true,
+    data:    { url: data.url || '/' },
+    actions: [
+      { action: 'open',    title: 'Voir sur la carte' },
+      { action: 'dismiss', title: 'Fermer' },
+    ],
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(title, options)
+  );
+});
+
+// ── CLICK NOTIFICATION ────────────────────────────────────
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  if (event.action === 'dismiss') return;
+
+  const url = event.notification.data?.url || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true })
+      .then((clientList) => {
+        // Si l'app est déjà ouverte → focus
+        for (const client of clientList) {
+          if (client.url.includes(self.location.origin) && 'focus' in client) {
+            return client.focus();
+          }
+        }
+        // Sinon → ouvre un nouvel onglet
+        if (clients.openWindow) {
+          return clients.openWindow(url);
+        }
+      })
+  );
+});

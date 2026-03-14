@@ -14,6 +14,7 @@ _scheduler: AsyncIOScheduler | None = None
 def start_heartbeat():
     global _scheduler
     from heartbeat.checklist import run_checklist
+    from heartbeat.push_notifier import run_push_notifications  # ← AJOUT
     from memory.daily_distiller import run_distillation
     from core.session_manager import cleanup_inactive_sessions
 
@@ -27,6 +28,16 @@ def start_heartbeat():
         id="heartbeat",
         max_instances=1,
         misfire_grace_time=60,
+    )
+
+    # Push notifications toutes les 5 min        ← AJOUT
+    _scheduler.add_job(
+        run_push_notifications,
+        trigger="interval",
+        minutes=5,
+        id="push_notifier",
+        max_instances=1,
+        misfire_grace_time=30,
     )
 
     # V2 : distillation nocturne à 2h00
@@ -49,7 +60,7 @@ def start_heartbeat():
     )
 
     _scheduler.start()
-    logger.info(f"✅ Heartbeat démarré — toutes les {HEARTBEAT_INTERVAL_MIN} min | Distiller: 2h00")
+    logger.info(f"✅ Heartbeat démarré — toutes les {HEARTBEAT_INTERVAL_MIN} min | Distiller: 2h00 | Push: 5min")
 
 
 def stop_heartbeat():

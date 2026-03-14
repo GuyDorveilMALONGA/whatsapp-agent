@@ -604,3 +604,89 @@ def get_stats_communaute() -> dict:
         "all_time":         res_all.count or 0,
         "nb_contributeurs": res_contacts.count or 0,
     }
+
+# ═══════════════════════════════════════════════════════════
+# PUSH NOTIFICATIONS
+# ═══════════════════════════════════════════════════════════
+
+def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
+    """Enregistre ou met à jour un abonnement push PWA."""
+    try:
+        supabase.table("push_subscriptions").upsert({
+            "phone":    phone,
+            "endpoint": endpoint,
+            "p256dh":   p256dh,
+            "auth":     auth,
+        }, on_conflict="endpoint").execute()
+    except Exception as e:
+        logger.error(f"[Push] save_push_subscription erreur: {e}")
+        raise
+
+
+def delete_push_subscription(phone: str, endpoint: str):
+    """Supprime un abonnement push PWA."""
+    try:
+        supabase.table("push_subscriptions")\
+            .delete()\
+            .eq("phone", phone)\
+            .eq("endpoint", endpoint)\
+            .execute()
+    except Exception as e:
+        logger.error(f"[Push] delete_push_subscription erreur: {e}")
+        raise
+
+
+def get_push_subscriptions_by_phone(phone: str) -> list:
+    """Récupère tous les abonnements push d'un utilisateur."""
+    try:
+        result = supabase.table("push_subscriptions")\
+            .select("*")\
+            .eq("phone", phone)\
+            .execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"[Push] get_push_subscriptions_by_phone erreur: {e}")
+        return []
+
+
+def get_push_subscriptions_by_ligne(ligne: str) -> list:
+    """
+    Récupère tous les abonnements push des utilisateurs
+    abonnés à une ligne donnée.
+    Joint abonnements + push_subscriptions via phone.
+    """
+    try:
+        # Récupère les phones abonnés à cette ligne
+        abonnes = supabase.table("abonnements")\
+            .select("phone")\
+            .eq("ligne", ligne)\
+            .eq("actif", True)\
+            .execute()
+
+        phones = [a["phone"] for a in (abonnes.data or [])]
+        if not phones:
+            return []
+
+        # Récupère leurs abonnements push
+        result = supabase.table("push_subscriptions")\
+            .select("*")\
+            .in_("phone", phones)\
+            .execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"[Push] get_push_subscriptions_by_ligne erreur: {e}")
+        return []
+    
+def get_signalements_recents(minutes: int = 5) -> list:
+    """Signalements créés dans les X dernières minutes."""
+    try:
+        from datetime import datetime, timezone, timedelta
+        since = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
+        result = supabase.table("signalements")\
+            .select("ligne, position")\
+            .gte("timestamp", since)\
+            .execute()
+        return result.data or []
+    except Exception as e:
+        logger.error(f"[Push] get_signalements_recents erreur: {e}")
+        return []

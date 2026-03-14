@@ -17,6 +17,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import BaseHTTPMiddleware
 import os
 
+from api.push import router as push_router
+app.include_router(push_router)
+
 from config.settings import VERIFY_TOKEN, WELCOME_MESSAGE, VALID_LINES
 from services.whatsapp import parse_incoming_message
 import services.whatsapp as _whatsapp_service
@@ -25,6 +28,7 @@ from services import whisper
 from services import telegram as telegram_service
 from services.websocket import handle_websocket
 from db import queries
+
 
 from agent.xetu_agent import run as xetu_run
 from agent.router import extract_qualites
@@ -47,6 +51,7 @@ logger = logging.getLogger(__name__)
 
 _MAX_MESSAGE_LENGTH = 500
 _MIN_MESSAGE_LENGTH = 1
+
 
 
 # ═══════════════════════════════════════════════════════════

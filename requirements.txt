@@ -22,9 +22,13 @@ langdetect==1.0.9
 rapidfuzz>=3.0.0
 langgraph-checkpoint-postgres>=2.0
 psycopg[binary]>=3.1
+pywebpush>=2.0
 
 
 # ── Résilience & observabilité ────────────────────
 tenacity>=8.0
 structlog>=24.0
 apscheduler==3.10.4
+
+
+

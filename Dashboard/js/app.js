@@ -24,6 +24,13 @@ import * as Ws         from './ws.js';
 import * as Chat       from './chat.js';
 import Toast           from './toast.js';
 import { WA_NUMBER, REFRESH_SEC } from './constants.js';
+import { subscribeToPush, isPushSubscribed } from './push.js';
+
+// Au démarrage — proposer les notifications si pas encore abonné
+const alreadySubscribed = await isPushSubscribed();
+if (!alreadySubscribed) {
+  await subscribeToPush();
+}
 
 // ── DEEP LINK ─────────────────────────────────────────────
 (function _applyDeepLink() {
