@@ -20,6 +20,8 @@ langchain-google-genai>=2.0,<3.0
 # ── NLP & utilitaires ────────────────────────────
 langdetect==1.0.9
 rapidfuzz>=3.0.0
+langgraph-checkpoint-postgres>=2.0
+
 
 # ── Résilience & observabilité ────────────────────
 tenacity>=8.0

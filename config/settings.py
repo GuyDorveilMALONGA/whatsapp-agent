@@ -48,6 +48,7 @@ WHATSAPP_APP_SECRET = _require("WHATSAPP_APP_SECRET")
 # ── Supabase ──────────────────────────────────────────────
 SUPABASE_URL         = _require("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = _require("SUPABASE_SERVICE_KEY")
+DATABASE_URL = _require("DATABASE_URL")
 
 # ── LLM ───────────────────────────────────────────────────
 GROQ_API_KEY   = _require("GROQ_API_KEY")
