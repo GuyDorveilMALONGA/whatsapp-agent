@@ -111,12 +111,13 @@ from api.buses       import router as buses_router
 from api.leaderboard import router as leaderboard_router
 from api.report      import router as report_router
 from api.push import router as push_router
-app.include_router(push_router)
 
 
 app.include_router(buses_router)
 app.include_router(leaderboard_router)
 app.include_router(report_router)
+app.include_router(push_router)
+
 
 
 # ═══════════════════════════════════════════════════════════
