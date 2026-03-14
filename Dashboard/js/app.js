@@ -255,19 +255,14 @@ function _initChat() {
     },
 
     onChatResponse: (text) => {
-      // typing déjà masqué par onTyping(false) envoyé juste avant par le serveur
-      Chat.appendMessage('bot', text);
-    },
+  Chat.setTyping(false);
+  Chat.appendMessage('bot', text);
+  },
 
-    onReportAck: (payload) => {
-      if (payload.success) {
-        Chat.appendMessage('bot', '✅ Signalement enregistré ! Merci 🙏');
-        _bumpReportsCount();
-      } else {
-        Chat.appendMessage('bot', `❌ ${payload.error || 'Erreur lors du signalement.'}`);
-      }
-    },
-
+    onError: (message) => {
+  Chat.setTyping(false);
+  Chat.appendMessage('bot', `⚠️ ${message}`);
+  },
     onError: (message) => {
       Chat.appendMessage('bot', `⚠️ ${message}`);
     },
