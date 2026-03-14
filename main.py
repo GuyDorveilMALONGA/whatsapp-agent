@@ -439,8 +439,11 @@ async def _process_message_safe(
         logger.info(f"{_tag} END OK")
 
     except Exception as e:
-        logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}", exc_info=True)
-        await send_fn(phone, "Une erreur s'est produite. Réessaie dans un moment. 🙏")
+        import traceback
+        tb = traceback.format_exc()
+        logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}\n{tb}")
+        debug_msg = f"🐛 DEBUG:\n{type(e).__name__}: {e}\n\n{tb[-500:]}"
+        await send_fn(phone, debug_msg)
 
 # ═══════════════════════════════════════════════════════════
 # HANDLER SESSION ACTIVE (inchangé)

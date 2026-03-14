@@ -1,27 +1,20 @@
 """
-agent/tools.py — V1.2 (fix)
+agent/tools.py — V1.3
 Skills Xëtu → Tools LangGraph.
-Le numéro de téléphone est injecté via RunnableConfig,
-pas extrait par le LLM — zéro risque de fuite ou d'erreur.
 
-FIX V1.2 :
-  - RunnableConfig récupéré via InjectedToolArg (LangGraph 1.0.x)
-    → Le LLM ne voit PAS le paramètre config dans le schema
-    → Injection automatique par LangGraph
-  - Fallback si InjectedToolArg n'existe pas (anciennes versions)
+FIX V1.3 depuis V1.2 :
+  - report_bus : queries.save_sighting() → queries.save_signalement()
+  - get_recent_sightings : queries.get_recent_sightings() → queries.get_signalements_actifs()
+    (aligné sur les noms réels dans db/queries.py V5.1)
 """
 from typing import Optional, Annotated
 from langchain_core.tools import tool
 from langchain_core.runnables import RunnableConfig
 
-# ── Import InjectedToolArg (LangGraph 1.0.x) ─────────────
-# Masque le paramètre `config` du schema JSON envoyé au LLM.
-# Si l'import échoue (ancienne version), on utilise un fallback.
 try:
     from langchain_core.tools import InjectedToolArg
     ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
 except ImportError:
-    # Fallback — anciennes versions de langchain-core
     ConfigDep = RunnableConfig
 
 
@@ -86,10 +79,19 @@ async def get_recent_sightings(
         return {"status": "unknown_line", "ligne": ligne}
 
     try:
-        sightings = queries.get_recent_sightings(ligne, limit=3)
+        # FIX V1.3 : utiliser les fonctions réelles de queries.py
+        sightings = queries.get_signalements_actifs(ligne)
         if not sightings:
             return {"status": "no_data", "ligne": ligne}
-        return {"status": "ok", "ligne": ligne, "sightings": sightings}
+        # Limiter à 3 résultats et formater
+        results = []
+        for s in sightings[:3]:
+            results.append({
+                "position": s.get("position", ""),
+                "timestamp": s.get("timestamp", ""),
+                "qualite": s.get("qualite"),
+            })
+        return {"status": "ok", "ligne": ligne, "sightings": results}
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
@@ -128,7 +130,10 @@ async def report_bus(
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
     try:
-        queries.save_sighting(phone, ligne, arret)
+        # FIX V1.3 : save_sighting() → save_signalement()
+        result = queries.save_signalement(ligne, arret, phone)
+        if result is None:
+            return {"status": "duplicate", "ligne": ligne, "arret": arret}
         return {"status": "ok", "ligne": ligne, "arret": arret}
     except Exception as e:
         return {"status": "error", "message": str(e)}
