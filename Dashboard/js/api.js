@@ -1,12 +1,10 @@
 /**
- * js/api.js
+ * js/api.js — V6.1
  * Couche données — fetch Railway + mapping + fallback mock.
- * Dépend de : constants.js, utils.js
  *
- * V6.0 — Migration routes_geometry_v13.json
- *   - loadRoutes() : charge routes_geometry_v13.json (77 lignes · 3129 arrêts)
- *   - Accès via json.routes (structure v13) au lieu de json.routes (inchangé)
- *   - Cache mémoire maintenu
+ * V6.1 :
+ *   - getLineData() retourne line_id dans l'objet pour que map.js
+ *     puisse récupérer la couleur correcte de la ligne dans l'overlay.
  */
 
 import { API_BASE, LIGNE_NAMES } from './constants.js';
@@ -33,8 +31,6 @@ const MOCK_LEADERBOARD = [
   { rank:4, name:'Aissatou Ba',    zone:'Grand Yoff · Castor', count:84,  badges:['Régulier'],                    avatar:'👩🏾' },
   { rank:5, name:'Omar Ndiaye',    zone:'Plateau · Centre',    count:71,  badges:['Centrevillain'],               avatar:'👨🏾' },
 ];
-
-const MOCK_STATS = { signalements_today: 247, contributors: 89 };
 
 // ── ID stable par ligne ───────────────────────────────────
 let _busIdCounter = 1;
@@ -100,11 +96,14 @@ export async function loadRoutes() {
 
 /**
  * Retourne les données d'une ligne spécifique depuis le cache v13.
- * { stops: [{name, lat, lon, confidence}], geometry: [[lat,lon],...] | null }
+ * Inclut line_id pour que map.js récupère la bonne couleur dans l'overlay.
  */
 export async function getLineData(lineId) {
   const routes = await loadRoutes();
-  return routes[String(lineId).toUpperCase()] || null;
+  const key    = String(lineId).toUpperCase();
+  const route  = routes[key] || routes[String(lineId)] || null;
+  if (!route) return null;
+  return { ...route, line_id: String(lineId) };
 }
 
 // ── FONCTIONS PUBLIQUES ───────────────────────────────────
