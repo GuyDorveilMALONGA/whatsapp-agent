@@ -146,7 +146,7 @@ async function _drawAllTraces() {
   if (!routes || Object.keys(routes).length === 0) return;
 
   for (const [ligneId, route] of Object.entries(routes)) {
-    const geometry = (route.geometry || []).filter(_pointValide);
+    const geometry = (route.geometry || route.trace?.map(p => ({ lat: p[0], lon: p[1] })) || []).filter(_pointValide);
     if (geometry.length < 2) continue;
 
     const color  = _getLineColor(ligneId);
@@ -412,7 +412,7 @@ export function showLineOverlay(lineData) {
   clearLineOverlay();
   if (!lineData) return;
 
-  const stops = (lineData.stops || []).filter(s => (s.confidence ?? 1) >= 0.5);
+  const stops = (lineData.stops || lineData.arrets || []).filter(s => (s.confidence ?? 1) >= 0.5);
   const color  = _getLineColor(lineData.line_id || '');
 
   // Arrêts
@@ -430,7 +430,7 @@ export function showLineOverlay(lineData) {
       fillOpacity,
     })
     .addTo(_map)
-    .bindTooltip(stop.name, {
+    .bindTooltip(stop.nom || stop.name, {
       direction:  'top',
       offset:     [0, -radius - 2],
       className:  'stop-tooltip',
