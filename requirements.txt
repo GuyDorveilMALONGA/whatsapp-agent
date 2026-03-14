@@ -21,6 +21,7 @@ langchain-google-genai>=2.0,<3.0
 langdetect==1.0.9
 rapidfuzz>=3.0.0
 langgraph-checkpoint-postgres>=2.0
+psycopg[binary]>=3.1
 
 
 # ── Résilience & observabilité ────────────────────
