@@ -1,11 +1,9 @@
 """
-db/queries.py — V5.1
+db/queries.py — V5.2
 Règle absolue : SEUL fichier qui touche Supabase.
 
-MIGRATIONS V5.1 depuis V5.0 :
-  - AJOUT count_messages(conversation_id) — requis par main.py V8.2
-    pour détecter la première visite sans charger l'historique complet.
-    Utilise count="exact" côté Supabase (pas de transfert de lignes).
+MIGRATIONS V5.2 depuis V5.1 :
+  - FIX : fonctions push utilisaient `supabase` directement → remplacé par get_client()
 """
 from datetime import datetime, timedelta, timezone, date
 import logging
@@ -605,14 +603,16 @@ def get_stats_communaute() -> dict:
         "nb_contributeurs": res_contacts.count or 0,
     }
 
+
 # ═══════════════════════════════════════════════════════════
-# PUSH NOTIFICATIONS
+# PUSH NOTIFICATIONS — V5.2 FIX : get_client() partout
 # ═══════════════════════════════════════════════════════════
 
 def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
     """Enregistre ou met à jour un abonnement push PWA."""
     try:
-        supabase.table("push_subscriptions").upsert({
+        db = get_client()
+        db.table("push_subscriptions").upsert({
             "phone":    phone,
             "endpoint": endpoint,
             "p256dh":   p256dh,
@@ -626,7 +626,8 @@ def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
 def delete_push_subscription(phone: str, endpoint: str):
     """Supprime un abonnement push PWA."""
     try:
-        supabase.table("push_subscriptions")\
+        db = get_client()
+        db.table("push_subscriptions")\
             .delete()\
             .eq("phone", phone)\
             .eq("endpoint", endpoint)\
@@ -639,7 +640,8 @@ def delete_push_subscription(phone: str, endpoint: str):
 def get_push_subscriptions_by_phone(phone: str) -> list:
     """Récupère tous les abonnements push d'un utilisateur."""
     try:
-        result = supabase.table("push_subscriptions")\
+        db = get_client()
+        result = db.table("push_subscriptions")\
             .select("*")\
             .eq("phone", phone)\
             .execute()
@@ -656,8 +658,8 @@ def get_push_subscriptions_by_ligne(ligne: str) -> list:
     Joint abonnements + push_subscriptions via phone.
     """
     try:
-        # Récupère les phones abonnés à cette ligne
-        abonnes = supabase.table("abonnements")\
+        db = get_client()
+        abonnes = db.table("abonnements")\
             .select("phone")\
             .eq("ligne", ligne)\
             .eq("actif", True)\
@@ -667,8 +669,7 @@ def get_push_subscriptions_by_ligne(ligne: str) -> list:
         if not phones:
             return []
 
-        # Récupère leurs abonnements push
-        result = supabase.table("push_subscriptions")\
+        result = db.table("push_subscriptions")\
             .select("*")\
             .in_("phone", phones)\
             .execute()
@@ -676,13 +677,14 @@ def get_push_subscriptions_by_ligne(ligne: str) -> list:
     except Exception as e:
         logger.error(f"[Push] get_push_subscriptions_by_ligne erreur: {e}")
         return []
-    
+
+
 def get_signalements_recents(minutes: int = 5) -> list:
     """Signalements créés dans les X dernières minutes."""
     try:
-        from datetime import datetime, timezone, timedelta
+        db = get_client()
         since = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
-        result = supabase.table("signalements")\
+        result = db.table("signalements")\
             .select("ligne, position")\
             .gte("timestamp", since)\
             .execute()
