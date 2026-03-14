@@ -1,23 +1,8 @@
 /**
- * js/modal.js  — V2.0
- * Modal de signalement — deux modes : confirmation rapide + signalement complet.
- *
- * MODE CONFIRMATION (depuis popup "Confirmer") :
- *   → POST direct, pas de modal, toast + pulseMarker
- *
- * MODE SIGNALEMENT (depuis sidebar "Signaler") :
- *   → Modal complet : ligne (dropdown) + arrêt (autocomplete) + observation
- *
- * V2.0 — AUTOCOMPLETE DYNAMIQUE :
- *   → _arretIndex construit depuis routes_geometry_v13.json (3 129 arrêts réels)
- *   → ARRETS_CONNUS statique n'est plus utilisé pour l'autocomplete
- *   → Préchargement silencieux dans init(), avant toute ouverture du modal
- *   → Score : exact (50) > début (30) > contient (20), +10 si arrêt sur la ligne choisie
- *
- * FIX : closeModal() reset le formulaire + réactive le bouton submit
- *
- * Dépend de : store.js, constants.js, utils.js, toast.js, api.js
- * RÈGLE : ne touche jamais map.js ou ui.js directement — passe par store ou callbacks.
+ * js/modal.js  — V2.1
+ * FIX : _loadArretIndex lisait routes.features (GeoJSON)
+ *       alors que loadRoutes() retourne { ligne: { stops, ... } } (v13 dict).
+ *       Remplacé par Object.entries(routes) → lineData.stops
  */
 
 import * as store from './store.js';
@@ -39,7 +24,6 @@ let _focusTrigger = null;
 let _autocompleteTimeout = null;
 
 // ── Index des arrêts (construit dynamiquement) ────────────
-// Structure : [{ name: string, normalName: string, lines: string[] }]
 let _arretIndex = [];
 let _arretIndexReady = false;
 let _arretIndexLoading = false;
@@ -59,8 +43,6 @@ export function init(callbacks = {}) {
   _onReportSuccess  = callbacks.onReportSuccess  || null;
   _buildDOM();
   _attachEvents();
-
-  // Préchargement silencieux de l'index d'arrêts
   _loadArretIndex();
 }
 
@@ -71,21 +53,15 @@ async function _loadArretIndex() {
   _arretIndexLoading = true;
 
   try {
-    const routes = await loadRoutes(); // retourne le GeoJSON complet
+    // loadRoutes() retourne { "1": { stops, ... }, "15": { stops, ... }, ... }
+    // PAS un GeoJSON avec .features
+    const routes = await loadRoutes();
     const map = new Map(); // normalName → { name, lines: Set }
 
-    for (const feature of routes.features) {
-      const ligne = feature.properties?.ligne;
-      if (!ligne) continue;
-
-      // Stops peuvent être dans properties.stops (array) ou properties.arrets
-      const stops =
-        feature.properties?.stops ||
-        feature.properties?.arrets ||
-        [];
+    for (const [ligne, lineData] of Object.entries(routes)) {
+      const stops = lineData?.stops || [];
 
       for (const stop of stops) {
-        // stop peut être une string ou un objet { name, ... }
         const raw = typeof stop === 'string' ? stop : stop?.name;
         if (!raw || raw.trim().length < 2) continue;
 
@@ -107,11 +83,12 @@ async function _loadArretIndex() {
     }));
 
     _arretIndexReady = true;
+    console.log(`[modal] Index arrêts prêt — ${_arretIndex.length} arrêts uniques`);
+
   } catch (err) {
     console.warn('[modal] Impossible de charger l\'index d\'arrêts :', err);
-    // Fallback silencieux — l'autocomplete sera simplement vide
     _arretIndex = [];
-    _arretIndexReady = true; // on ne bloque pas l'UI
+    _arretIndexReady = true;
   } finally {
     _arretIndexLoading = false;
   }
@@ -172,7 +149,6 @@ export function openModal(prefill = {}, triggerEl = null) {
   _elModal.setAttribute('aria-hidden', 'false');
   document.body.style.overflow = 'hidden';
 
-  // Si l'index n'est pas encore prêt, on le lance (2e tentative silencieuse)
   if (!_arretIndexReady) _loadArretIndex();
 
   requestAnimationFrame(() => {
@@ -183,10 +159,7 @@ export function openModal(prefill = {}, triggerEl = null) {
 }
 
 export function closeModal() {
-  // FIX : reset immédiat à la fermeture — formulaire propre pour la prochaine ouverture
-  // et bouton "Envoyer" réactivé si on ferme pendant un envoi
   _resetForm();
-
   _elModal.hidden   = true;
   _elOverlay.hidden = true;
   _elModal.setAttribute('aria-hidden', 'true');
@@ -275,7 +248,6 @@ function _buildDOM() {
         </select>
       </div>
 
-      <!-- Honeypot anti-bot -->
       <input type="text" name="website" tabindex="-1"
              aria-hidden="true" style="display:none" autocomplete="off" />
 
@@ -369,7 +341,7 @@ function _handleKeydown(e) {
 }
 
 // ═══════════════════════════════════════════════════════════
-// AUTOCOMPLETE ARRÊTS — INDEX DYNAMIQUE
+// AUTOCOMPLETE
 // ═══════════════════════════════════════════════════════════
 
 let _activeSuggestionIndex = -1;
@@ -415,18 +387,6 @@ function _highlightSuggestion(items) {
   }
 }
 
-/**
- * Recherche dans _arretIndex (3 129 arrêts réels).
- *
- * Scoring :
- *   +50  nom normalisé === query exacte
- *   +30  nom normalisé commence par query
- *   +20  nom normalisé contient query
- *   +10  alias normalisé contient query (si pas déjà matché sur nom)
- *   +10  bonus : arrêt appartient à la ligne sélectionnée
- *
- * Retourne les 6 meilleurs résultats, ligne sélectionnée en tête.
- */
 function _searchArrets(query, selectedLigne) {
   if (!_arretIndexReady || !_arretIndex.length) return [];
 
@@ -441,14 +401,13 @@ function _searchArrets(query, selectedLigne) {
     if (arret.normalName === q)               s = 50;
     else if (arret.normalName.startsWith(q))  s = 30;
     else if (arret.normalName.includes(q))    s = 20;
-    else continue; // pas de match
+    else continue;
 
     if (selectedLigne && arret.lines.includes(selectedLigne)) s += 10;
 
     scored.push({ arret, s });
   }
 
-  // Tri : score desc, puis ligne sélectionnée en tête, puis alpha
   scored.sort((a, b) => {
     if (b.s !== a.s) return b.s - a.s;
     const aOnLine = selectedLigne && a.arret.lines.includes(selectedLigne) ? 0 : 1;
@@ -466,13 +425,12 @@ function _renderSuggestions(results) {
 
   if (!results.length) { _hideSuggestions(); return; }
 
-  const query          = normalizeText(_elArret.value);
-  const selectedLigne  = _elLigne.value;
+  const query         = normalizeText(_elArret.value);
+  const selectedLigne = _elLigne.value;
 
   _elSuggestions.innerHTML = results.map((arret, i) => {
     const highlighted = _highlightMatch(arret.name, query);
 
-    // Badges : ligne sélectionnée en premier, max 4 badges
     const sortedLines = selectedLigne
       ? [
           ...arret.lines.filter(l => l === selectedLigne),
@@ -565,18 +523,11 @@ async function _handleSubmit(e) {
   _setSubmitting(true);
 
   try {
-    await _postReport({
-      ligne,
-      arret,
-      observation: observation || undefined,
-      source: 'web_dashboard',
-    });
-
+    await _postReport({ ligne, arret, observation: observation || undefined, source: 'web_dashboard' });
     Toast.success(`✅ Signalement enregistré — Bus ${ligne} à ${arret} !`);
     _bumpReportsCount();
     closeModal();
     if (_onReportSuccess) _onReportSuccess();
-
   } catch (err) {
     _handlePostError(err, _elSubmitBtn, ligne, arret);
   } finally {
@@ -636,9 +587,7 @@ function _handlePostError(err, retryBtn, ligne, arret) {
 function _setSubmitting(state) {
   _isSubmitting         = state;
   _elSubmitBtn.disabled = state;
-  _elSubmitLabel.textContent = state
-    ? '⏳ Envoi en cours…'
-    : '📡 Envoyer le signalement';
+  _elSubmitLabel.textContent = state ? '⏳ Envoi en cours…' : '📡 Envoyer le signalement';
 }
 
 function _showError(id, msg) {
