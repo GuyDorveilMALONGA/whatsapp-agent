@@ -1,8 +1,14 @@
 """
-core/network.py — V5.0
+core/network.py — V5.1
 Singleton JSON réseau Dem Dikk — source de vérité unique.
 
-MIGRATION V5.0 depuis V4 :
+MIGRATIONS V5.1 depuis V5.0 :
+  - Logs de diagnostic au démarrage (CWD, JSON_PATH, os.path.exists)
+    pour détecter immédiatement les FileNotFoundError silencieux sur Railway.
+  - JSON_PATH vient de config.settings qui utilise pathlib depuis V8.1
+    → chemin absolu garanti, plus de dépendance au CWD.
+
+MIGRATIONS V5.0 depuis V4 :
   - Source : routes_geometry_v4.json → routes_geometry_v13.json
   - JSON_PATH lu depuis config.settings (variable d'env NETWORK_JSON_PATH)
   - 77 lignes · 3129 arrêts · score moyen 89.5
@@ -29,8 +35,16 @@ _RAW: dict = {}
 _ARRETS_INDEX: dict[str, str] = {}   # lower → officiel
 _GRAPH_DATA: dict | None = None       # format attendu par agent/graph._build()
 
+# ── Logs de diagnostic Railway ────────────────────────────
+logger.info(f"[Network] CWD       = {os.getcwd()}")
+logger.info(f"[Network] JSON_PATH = {JSON_PATH}")
+logger.info(f"[Network] Existe    = {os.path.exists(JSON_PATH)}")
 try:
-    logger.info(f"[Network] CWD={os.getcwd()} JSON_PATH={JSON_PATH}")
+    logger.info(f"[Network] Contenu CWD = {os.listdir('.')[:15]}")
+except Exception:
+    pass
+
+try:
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         _RAW = json.load(f)
 
@@ -86,6 +100,7 @@ def get_graph_data() -> dict:
 
 
 def get_stops(ligne: str) -> list[dict]:
+    """Retourne les arrêts d'une ligne. Insensible à la casse."""
     return NETWORK.get(str(ligne).upper(), {}).get("stops", [])
 
 

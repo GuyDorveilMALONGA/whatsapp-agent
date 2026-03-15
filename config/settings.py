@@ -1,6 +1,11 @@
 """
-config/settings.py — V8.0
+config/settings.py — V8.1
 Point central — variables d'environnement, constantes, configuration globale.
+
+MIGRATIONS V8.1 depuis V8.0 :
+  - JSON_PATH : chemin absolu via pathlib.Path(__file__) pour Railway
+    Le CWD sur Railway n'est pas garanti — __file__ l'est toujours.
+    Plus de FileNotFoundError silencieux au cold start.
 
 MIGRATIONS V8.0 depuis V7.0 :
   - VALID_LINES : généré dynamiquement depuis routes_geometry_v13.json
@@ -13,6 +18,7 @@ import re
 import time
 import json
 import logging
+import pathlib
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -79,14 +85,23 @@ ALERTE_PROACTIVE_AVANT  = 15
 HISTORIQUE_MESSAGES     = 10
 
 # ── Sécurité ──────────────────────────────────────────────
-RATE_LIMIT_PER_PHONE_PER_MIN = 10
-RATE_LIMIT_GLOBAL_PER_MIN    = 200
+# (RATE_LIMIT_PER_PHONE_PER_MIN défini une seule fois en haut)
 
 # ── Business ──────────────────────────────────────────────
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Xëtu")
 
 # ── Chemin JSON réseau ────────────────────────────────────
-JSON_PATH = os.getenv("NETWORK_JSON_PATH", "routes_geometry_v13.json")
+# V8.1 : chemin absolu depuis la racine du projet via __file__
+# config/settings.py → parent = config/ → parent = racine/
+_BASE_DIR = pathlib.Path(__file__).parent.parent.resolve()
+JSON_PATH = os.getenv(
+    "NETWORK_JSON_PATH",
+    str(_BASE_DIR / "routes_geometry_v13.json")
+)
+
+logger.info(f"[Settings] JSON_PATH résolu → {JSON_PATH}")
+logger.info(f"[Settings] Fichier existe  → {pathlib.Path(JSON_PATH).exists()}")
+
 
 # ══════════════════════════════════════════════════════════
 # SOURCE UNIQUE DE VÉRITÉ — LIGNES DEM DIKK
