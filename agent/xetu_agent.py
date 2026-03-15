@@ -16,11 +16,14 @@ from langchain_groq import ChatGroq
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage
 
+
 from config.settings import (
     GROQ_API_KEY, GROQ_MODEL,
     GEMINI_API_KEY, GEMINI_MODEL,
-    SETU_SOUL,
 )
+
+from agent.soul import SETU_SOUL
+
 from agent.tools import ALL_TOOLS
 
 logger = logging.getLogger(__name__)
