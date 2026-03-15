@@ -17,7 +17,8 @@ from core.network import get_stops
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-logger.info(f"[buses] Prêt — get_stops() depuis core.network")
+from core.network import NETWORK
+logger.info(f"[buses] Prêt — NETWORK={len(NETWORK)} lignes")
 
 # ── Constantes ─────────────────────────────────────────────
 

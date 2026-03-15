@@ -73,6 +73,9 @@ except FileNotFoundError:
 except Exception as e:
     logger.error(f"[Network] ❌ Erreur critique chargement JSON : {e}")
 
+print(f"[Network] FIN CHARGEMENT — NETWORK={len(NETWORK)} lignes", flush=True, file=sys.stderr)
+
+
 
 def _build_graph_data() -> dict:
     global _GRAPH_DATA
