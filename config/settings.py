@@ -108,7 +108,7 @@ def _load_valid_lines(path: str) -> set[str]:
     try:
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
-        lines = {str(k).upper() for k in data.get("routes", {}).keys()}
+        lines = {str(k).upper() for k in (data.get("routes") or data.get("lignes", {})).keys()}
         if not lines:
             raise ValueError("routes vide")
         logger.info(f"[Settings] ✅ VALID_LINES chargé depuis {path} — {len(lines)} lignes")

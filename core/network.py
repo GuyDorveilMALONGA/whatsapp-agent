@@ -34,7 +34,7 @@ try:
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         _RAW = json.load(f)
 
-    for _line_id, _line in _RAW.get("routes", {}).items():
+    for _line_id, _line in (_RAW.get("routes") or _RAW.get("lignes", {})).items():
         num = str(_line_id).upper()
         if not num:
             continue
