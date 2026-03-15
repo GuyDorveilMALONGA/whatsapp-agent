@@ -153,6 +153,23 @@ async def get_buses():
         pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
         conf = _confiance(minutes_ecoules)
 
+        pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
+        conf = _confiance(minutes_ecoules)
+        # Fallback GPS — si l'arrêt estimé n'a pas de coordonnées,
+        # prendre le premier stop de la ligne qui en a
+        if not pos.get("lat"):
+                for s in stops:
+                            if s.get("lat"):
+                                pos["lat"] = s["lat"]
+                                pos["lon"] = s["lon"]
+                                pos["nom"] = s.get("name", pos.get("nom", arret_signale))
+                                break
+                            logger.warning(
+                                f"[/api/buses] GPS manquant pour {arret_signale} "
+                                f"ligne={ligne} → fallback sur {pos.get('nom')}"
+                            )
+
+
         repart_dans = None
         if pos["au_terminus"]:
             repart_dans = max(0, int(intervalle - (minutes_ecoules % intervalle)))
