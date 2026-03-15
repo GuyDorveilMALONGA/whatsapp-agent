@@ -30,12 +30,9 @@ router = APIRouter()
 # core.network est déjà chargé au démarrage — zéro I/O ici.
 # numéro de ligne → liste d'arrêts [{name, lat, lon, ...}]
 
-_LINES_INDEX: dict[str, list[dict]] = {
-    line_id: line_data.get("stops", [])
-    for line_id, line_data in NETWORK.items()
-}
-
-logger.info(f"[buses] Index construit depuis core.network — {len(_LINES_INDEX)} lignes")
+def _get_stops(ligne: str) -> list[dict]:
+    from core.network import NETWORK
+    return NETWORK.get(ligne, {}).get("stops", [])
 
 
 # ── Constantes ─────────────────────────────────────────────
@@ -177,7 +174,7 @@ async def get_buses():
 
     buses = []
     for ligne, sig in seen_lignes.items():
-        stops = _LINES_INDEX.get(ligne)
+        stops = _get_stops(ligne)
         if not stops:
             logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau v13")
             continue
