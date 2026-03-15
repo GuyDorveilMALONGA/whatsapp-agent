@@ -21,6 +21,10 @@ MIGRATIONS V5.0 depuis V4 :
 Usage :
   from core.network import NETWORK, VALID_LINES, get_stops, get_line_info
 """
+
+import sys, os
+print(f"[Network] DÉMARRAGE — PID={os.getpid()}", flush=True, file=sys.stderr)
+
 import json
 import logging
 import os
