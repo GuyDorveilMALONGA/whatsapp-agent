@@ -150,6 +150,7 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
         "ligne":      ligne,
         "position":   arret,
         "phone":      phone,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at.isoformat()
     }).execute()
     return res.data[0]
@@ -692,3 +693,45 @@ def get_signalements_recents(minutes: int = 5) -> list:
     except Exception as e:
         logger.error(f"[Push] get_signalements_recents erreur: {e}")
         return []
+    
+def get_fiabilite_ligne(ligne: str) -> dict:
+    """
+    Score de fiabilité d'une ligne basé sur les 7 derniers jours.
+    Retourne : { score: float 0-1, nb_signalements: int, pct_valides: float, label: str }
+    """
+    try:
+        db    = get_client()
+        since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
+        res   = (db.table("signalements")
+                   .select("valide, qualite")
+                   .eq("ligne", ligne)
+                   .gte("timestamp", since)
+                   .execute())
+        rows = res.data or []
+        nb   = len(rows)
+        if nb == 0:
+            return {"score": 0.0, "nb_signalements": 0, "pct_valides": 0.0, "label": "❓ Pas de données"}
+
+        nb_valides  = sum(1 for r in rows if r.get("valide") is True)
+        nb_enrichis = sum(1 for r in rows if r.get("qualite"))
+        pct_valides = nb_valides / nb
+        pct_enrichis = nb_enrichis / nb
+
+        score = round((pct_valides * 0.6) + (pct_enrichis * 0.2) + min(nb / 20, 1.0) * 0.2, 2)
+
+        if score >= 0.75:
+            label = "🟢 Fiable"
+        elif score >= 0.45:
+            label = "🟡 Partielle"
+        else:
+            label = "🔴 Peu de données"
+
+        return {
+            "score":           score,
+            "nb_signalements": nb,
+            "pct_valides":     round(pct_valides, 2),
+            "label":           label,
+        }
+    except Exception as e:
+        logger.error(f"[get_fiabilite_ligne] ligne={ligne} erreur: {e}")
+        return {"score": 0.0, "nb_signalements": 0, "pct_valides": 0.0, "label": "❓ Erreur"}
