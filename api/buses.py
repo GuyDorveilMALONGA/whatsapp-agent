@@ -1,19 +1,10 @@
 """
-api/buses.py — V4.0
+api/buses.py — V4.1
 GET /api/buses — Position estimée des bus actifs.
 
-Algorithme Dead Reckoning dakarois :
-  1. Récupère les signalements actifs depuis Supabase
-  2. Calcule la position estimée selon le temps écoulé
-  3. Détecte si le bus est au terminus
-  4. Attribue un score de confiance (vert/jaune/rouge)
-
-MIGRATION V4.0 depuis V3 :
-  - _load_network() supprimé — plus de lecture directe du JSON
-  - _LINES_INDEX construit depuis core.network.NETWORK (singleton)
-  - Plus de désynchronisation possible avec les autres modules
-  - 77 lignes · 3129 arrêts disponibles sans I/O supplémentaire
-  - Champ arrêt : "name" (inchangé depuis v3)
+MIGRATION V4.1 depuis V4.0 :
+  - _get_stops() remplacé par get_stops() de core.network (uppercase-safe)
+  - Suppression import NETWORK direct
 """
 
 import logging
@@ -21,19 +12,12 @@ from datetime import datetime, timezone
 from fastapi import APIRouter
 
 from db import queries
-from core.network import NETWORK
+from core.network import get_stops
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# ── Index depuis le singleton ──────────────────────────────
-# core.network est déjà chargé au démarrage — zéro I/O ici.
-# numéro de ligne → liste d'arrêts [{name, lat, lon, ...}]
-
-def _get_stops(ligne: str) -> list[dict]:
-    from core.network import NETWORK
-    return NETWORK.get(ligne, {}).get("stops", [])
-
+logger.info(f"[buses] Prêt — get_stops() depuis core.network")
 
 # ── Constantes ─────────────────────────────────────────────
 
@@ -68,23 +52,14 @@ def _position_estimee(
     minutes_ecoulees: float,
     intervalle_min: float,
 ) -> dict:
-    """
-    Calcule la position estimée du bus à partir du dernier arrêt signalé.
-    Champ arrêt : "name" (v4+).
-
-    V4.0 : utilise travel_time_to_next_sec si disponible dans les stops v13
-    pour une estimation plus précise que l'intervalle moyen fixe.
-    """
     arret_lower = arret_signale.lower().strip()
 
-    # Trouver l'index de l'arrêt signalé
     idx_depart = None
     for i, s in enumerate(stops):
         if s.get("name", "").lower().strip() == arret_lower:
             idx_depart = i
             break
 
-    # Arrêt non trouvé → premier arrêt avec GPS
     if idx_depart is None:
         for s in stops:
             if s.get("lat"):
@@ -98,13 +73,10 @@ def _position_estimee(
         return {"nom": arret_signale, "lat": None, "lon": None,
                 "idx": 0, "au_terminus": False}
 
-    # V4.0 : estimation par travel_time_to_next_sec (OSRM réel) si disponible
-    # Sinon fallback sur intervalle_min / nb_stops
     secondes_ecoulees = minutes_ecoulees * 60
     idx_estime        = idx_depart
 
     if stops[idx_depart].get("travel_time_to_next_sec") is not None:
-        # Parcours les temps réels OSRM
         temps_cumul = 0.0
         for i in range(idx_depart, len(stops) - 1):
             t = stops[i].get("travel_time_to_next_sec") or intervalle_min * 60
@@ -113,14 +85,12 @@ def _position_estimee(
                 break
             idx_estime = i + 1
     else:
-        # Fallback : nb arrêts parcourus selon intervalle moyen
         arrets_parcourus = int(minutes_ecoulees / max(intervalle_min, 1))
         idx_estime = min(idx_depart + arrets_parcourus, len(stops) - 1)
 
-    idx_estime = min(idx_estime, len(stops) - 1)
+    idx_estime  = min(idx_estime, len(stops) - 1)
     au_terminus = (idx_estime >= len(stops) - 1)
 
-    # Cherche l'arrêt estimé avec GPS (reculer si null)
     for i in range(idx_estime, -1, -1):
         s = stops[i]
         if s.get("lat"):
@@ -140,16 +110,12 @@ def _position_estimee(
 
 @router.get("/api/buses")
 async def get_buses():
-    """
-    Retourne la liste des bus actifs avec leur position estimée.
-    """
     try:
         all_sigs = queries.get_all_signalements_actifs()
     except Exception as e:
         logger.error(f"[/api/buses] Erreur Supabase: {e}")
         return {"buses": [], "error": "db_error"}
 
-    # Network memory pour les intervalles réels
     network_memory = {}
     try:
         nm = queries.get_network_memory()
@@ -158,7 +124,6 @@ async def get_buses():
     except Exception:
         pass
 
-    # Garder uniquement le signalement le plus récent par ligne
     seen_lignes: dict[str, dict] = {}
     for sig in all_sigs:
         ligne = sig.get("ligne")
@@ -174,7 +139,7 @@ async def get_buses():
 
     buses = []
     for ligne, sig in seen_lignes.items():
-        stops = _get_stops(ligne)
+        stops = get_stops(ligne)
         if not stops:
             logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau v13")
             continue
