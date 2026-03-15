@@ -17,6 +17,7 @@ Usage :
 """
 import json
 import logging
+import os
 from config.settings import JSON_PATH
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,7 @@ _ARRETS_INDEX: dict[str, str] = {}   # lower → officiel
 _GRAPH_DATA: dict | None = None       # format attendu par agent/graph._build()
 
 try:
+    logger.info(f"[Network] CWD={os.getcwd()} JSON_PATH={JSON_PATH}")
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         _RAW = json.load(f)
 
@@ -55,16 +57,11 @@ except Exception as e:
 
 
 def _build_graph_data() -> dict:
-    """
-    Adaptateur v13 → format attendu par agent/graph.DemDikkGraph._build().
-    graph.py itère sur data["categories"][cat] → lines → line["stops"][{"nom"}]
-    On expose une structure compatible sans toucher graph.py.
-    """
+    global _GRAPH_DATA
     lines_list = []
     for line_id, line in NETWORK.items():
         stops_compat = []
         for s in line.get("stops", []):
-            # graph.py attend "nom", network v13 a "name"
             stops_compat.append({
                 "nom": s.get("name", ""),
                 "lat": s.get("lat"),
@@ -82,7 +79,6 @@ def _build_graph_data() -> dict:
 
 
 def get_graph_data() -> dict:
-    """Retourne les données au format attendu par DemDikkGraph._build()."""
     global _GRAPH_DATA
     if _GRAPH_DATA is None:
         _GRAPH_DATA = _build_graph_data()
@@ -90,22 +86,18 @@ def get_graph_data() -> dict:
 
 
 def get_stops(ligne: str) -> list[dict]:
-    """Retourne la liste des stops (dicts avec name/lat/lon)."""
     return NETWORK.get(str(ligne).upper(), {}).get("stops", [])
 
 
 def get_stop_names(ligne: str) -> list[str]:
-    """Retourne les noms d'arrêts en minuscules pour matching."""
     return [s["name"].lower() for s in get_stops(ligne) if s.get("name")]
 
 
 def get_line_info(ligne: str) -> dict:
-    """Retourne toutes les infos d'une ligne ou {} si inconnue."""
     return NETWORK.get(str(ligne).upper(), {})
 
 
 def all_stop_names() -> dict[str, str]:
-    """Retourne l'index complet lower → officiel."""
     return _ARRETS_INDEX
 
 
@@ -114,10 +106,6 @@ def is_valid_line(ligne: str) -> bool:
 
 
 def ambiguous_lines(prefix: str) -> list[str]:
-    """
-    Détecte l'ambiguïté : "16" → ["16A", "16B"]
-    Retourne [] si le numéro est unique ou introuvable.
-    """
     prefix = str(prefix).upper()
     matches = [l for l in VALID_LINES if l != prefix and l.startswith(prefix)]
     if matches and prefix not in VALID_LINES:
