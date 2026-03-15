@@ -1,12 +1,12 @@
 """
-agent/tools.py — V1.5
-Skills Xëtu → Tools LangGraph.
+agent/tools.py — V1.6-test
+Docstrings réduites au minimum pour période de test (~137 tokens vs 431).
+Logique interne inchangée.
+Restaurer docstrings complètes avant production.
 
-MIGRATIONS V1.5 depuis V1.4 :
-  - report_bus : anti-fraude complet (spam + distance + confidence)
-  - report_bus : notifications abonnés via asyncio.create_task
-  - report_bus : corroboration avant save
-  - report_bus : status needs_confirmation si confiance trop basse
+MIGRATIONS V1.5 → V1.6-test :
+  - Docstrings compressées uniquement
+  - Zéro modification logique
 """
 import logging
 from typing import Optional, Annotated
@@ -35,14 +35,11 @@ async def calculate_route(
     destination: str,
     config: ConfigDep,
 ) -> dict:
-    """Calcule un itinéraire en bus à Dakar entre deux points.
-    À utiliser UNIQUEMENT quand l'utilisateur a fourni un point de départ
-    ET une destination explicites dans son message.
-    NE PAS utiliser si le point de départ est absent ou supposé.
+    """Itinéraire Dakar. Utiliser si départ ET destination présents.
 
     Args:
-        origin: Point de départ explicitement fourni par l'utilisateur (quartier ou arrêt)
-        destination: Point d'arrivée (quartier, arrêt ou lieu)
+        origin: départ (quartier ou arrêt)
+        destination: arrivée (quartier ou arrêt)
     """
     from agent.graph import get_graph
     logger.info(f"[calculate_route] origin={origin!r} destination={destination!r}")
@@ -66,11 +63,10 @@ async def get_recent_sightings(
     ligne: str,
     config: ConfigDep,
 ) -> dict:
-    """Récupère les signalements récents d'une ligne de bus.
-    À utiliser quand l'utilisateur demande où est un bus ou s'il est passé.
+    """Signalements récents d'une ligne. Utiliser si l'user demande où est un bus.
 
     Args:
-        ligne: Numéro de ligne (ex: '7', '15', '16A')
+        ligne: numéro de ligne (ex: '15', '16A')
     """
     from db import queries
     from config.settings import VALID_LINES
@@ -111,15 +107,13 @@ async def report_bus(
     message_original: str,
     config: ConfigDep,
 ) -> dict:
-    """Enregistre un signalement : un utilisateur a VU un bus à un arrêt maintenant.
-    À utiliser UNIQUEMENT quand l'utilisateur signale avoir vu un bus.
-    NE PAS utiliser si l'utilisateur dit 'j'attends', 'je prends', ou pose une question.
-    Si status=needs_confirmation → demander confirmation à l'usager avant de rappeler.
+    """Enregistre qu'un user a VU un bus. PAS pour questions ou attente.
+    needs_confirmation → demander confirmation avant de rappeler.
 
     Args:
-        ligne: Numéro de ligne vu (ex: '7', '15')
-        arret: Arrêt où le bus a été observé
-        message_original: Texte brut du message pour validation anti-fraude
+        ligne: numéro vu (ex: '15')
+        arret: où le bus a été vu
+        message_original: texte brut pour anti-fraude
     """
     import asyncio
     from core.anti_fraud import (
@@ -136,29 +130,24 @@ async def report_bus(
     phone = _get_phone(config)
     logger.info(f"[report_bus] ligne={ligne!r} arret={arret!r} phone=…{phone[-4:]}")
 
-    # ── 1. Blacklist ──────────────────────────────────────
     if is_blacklisted_signalement(message_original):
         logger.warning(f"[report_bus] blacklisté: {message_original!r}")
         return {"status": "rejected", "reason": "not_a_real_sighting"}
 
-    # ── 2. Validation ligne ───────────────────────────────
     ligne = str(ligne).upper()
     if ligne not in VALID_LINES:
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
-    # ── 3. Spam ───────────────────────────────────────────
     if is_spam_pattern(phone, ligne):
         logger.warning(f"[report_bus] spam {phone[-4:]}")
         queries.penalise_spam(phone)
         return {"status": "rejected", "reason": "spam"}
 
-    # ── 4. Cohérence distance ─────────────────────────────
     if not check_distance_coherence(phone, ligne, arret):
         logger.warning(f"[report_bus] distance incohérente {phone[-4:]}")
         queries.penalise_spam(phone)
         return {"status": "rejected", "reason": "distance_incoherence"}
 
-    # ── 5. Score de confiance ─────────────────────────────
     confidence = compute_signalement_confidence(
         phone=phone, ligne=ligne, arret=arret,
         source="signalement_fort",
@@ -174,7 +163,6 @@ async def report_bus(
             "confidence": round(confidence, 2),
         }
 
-    # ── 6. Corroboration ──────────────────────────────────
     try:
         sigs_actifs = queries.get_signalements_actifs(ligne)
         corrobore = any(
@@ -187,7 +175,6 @@ async def report_bus(
     except Exception as e:
         logger.warning(f"[report_bus] corroboration erreur: {e}")
 
-    # ── 7. Enregistrement ─────────────────────────────────
     try:
         result = queries.save_signalement(ligne, arret, phone)
     except Exception as e:
@@ -197,13 +184,11 @@ async def report_bus(
     if result is None:
         return {"status": "duplicate", "ligne": ligne, "arret": arret}
 
-    # ── 8. Notifications (fire-and-forget) ────────────────
     try:
         asyncio.create_task(notify_abonnes(ligne, arret, phone))
     except Exception as e:
         logger.warning(f"[report_bus] notify erreur: {e}")
 
-    # ── 9. Comptage abonnés ───────────────────────────────
     try:
         abonnes = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
@@ -231,15 +216,13 @@ async def manage_subscription(
     arret: Optional[str] = None,
     heure: Optional[str] = None,
 ) -> dict:
-    """Crée ou supprime une alerte bus pour l'utilisateur.
-    À utiliser quand l'utilisateur veut être notifié quand un bus passe,
-    ou veut annuler une alerte existante.
+    """Crée/supprime alerte bus.
 
     Args:
-        action: 'subscribe' pour créer, 'unsubscribe' pour annuler
-        ligne: Numéro de ligne (ex: '7', '15')
-        arret: Arrêt de référence (optionnel)
-        heure: Heure d'alerte format HH:MM (optionnel)
+        action: subscribe | unsubscribe
+        ligne: numéro de ligne
+        arret: arrêt (optionnel)
+        heure: HH:MM (optionnel)
     """
     from config.settings import VALID_LINES
     from db import queries
@@ -275,13 +258,11 @@ async def get_bus_info(
     config: ConfigDep,
     ligne: Optional[str] = None,
 ) -> dict:
-    """Répond aux questions sur le réseau Dem Dikk :
-    arrêts d'une ligne, fréquences, horaires de service.
-    À utiliser pour toute question informative sur le réseau.
+    """Info réseau Dem Dikk : arrêts, horaires, fréquences.
 
     Args:
-        query: Question posée par l'utilisateur
-        ligne: Numéro de ligne si déjà identifié (optionnel)
+        query: question
+        ligne: numéro de ligne (optionnel)
     """
     from core.network import NETWORK, get_stop_names
     from core.frequencies import format_service
@@ -315,11 +296,10 @@ async def extract_entities(
     text: str,
     config: ConfigDep,
 ) -> dict:
-    """Extrait le numéro de ligne et le nom d'arrêt depuis un message.
-    À appeler en premier sur tout message mentionnant un bus ou un arrêt.
+    """Extrait ligne et arrêt d'un message flou.
 
     Args:
-        text: Message brut de l'utilisateur
+        text: message brut
     """
     from agent.extractor import extract
     logger.info(f"[extract_entities] text={text!r}")

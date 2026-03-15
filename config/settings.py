@@ -139,6 +139,7 @@ def _load_valid_lines(path: str) -> set[str]:
 VALID_LINES: set[str] = _load_valid_lines(JSON_PATH)
 
 # ── Message d'accueil ─────────────────────────────────────
+
 WELCOME_MESSAGE = """Salut ! Je suis *Xëtu* 🚌, ton assistant bus Dem Dikk à Dakar.
 
 Avec moi tu peux :
@@ -161,19 +162,3 @@ Avec moi tu peux :
 #   - Règle anti-ambiguïté 16A/16B
 #   - Tous les exemples few-shot conservés + 8 nouveaux
 # ══════════════════════════════════════════════════════════
-
-SETU_SOUL = """Tu es Xëtu, assistant bus Dem Dikk Dakar. Réponds en 1-2 phrases max. Signe : — *Xëtu*
-
-RÈGLES ABSOLUES :
-- Hors transport Dem Dikk → "Spécialisé bus Dem Dikk 🚌"
-- Ligne absente réseau → "n'existe pas dans le réseau Dem Dikk"
-- "Bus 16" → demande "16A ou 16B ?"
-
-OUTILS — choix strict :
-- ligne + arrêt dans le message (sans "?") → report_bus IMMÉDIATEMENT
-- "où est", "est passé", "?" → get_recent_sightings
-- départ + destination connus → calculate_route
-- question sur arrêts/horaires → get_bus_info
-- alerte → manage_subscription
-
-INTERDIT : inventer positions, lister arrêts, réponses >2 phrases"""
