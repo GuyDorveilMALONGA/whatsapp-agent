@@ -1,5 +1,5 @@
 """
-agent/llm_brain.py — V6.1
+agent/llm_brain.py — V6.2
 Deux responsabilités strictement séparées :
 1. classify_intent() — LLM classifier (niveau 3 du router)
 2. generate_response() — NLG (réponse finale)
@@ -32,9 +32,11 @@ import re
 from config.settings import (
     GROQ_API_KEY, GEMINI_API_KEY,
     GROQ_MODEL, GEMINI_MODEL,
-    LLM_ROUTING, SETU_SOUL,
+    LLM_ROUTING,
     LLM_TIMEOUT_SECONDS,
 )
+# FIX BUG-M2 : source unique — SETU_SOUL vit dans agent/soul.py uniquement
+from agent.soul import SETU_SOUL
 
 logger = logging.getLogger(__name__)
 

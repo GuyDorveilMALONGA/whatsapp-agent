@@ -1,12 +1,19 @@
 """
-agent/checkpointer.py — V1.7
+agent/checkpointer.py — V2.0
 Session Pooler Supabase — connexion unique partagée.
 
-FIX V1.7 :
-  - asyncio.Lock pour empêcher les connexions concurrentes
-    (Telegram + WebSocket simultanés → une seule connexion)
-  - Reconnexion automatique si connexion perdue
-  - Cherche DB_PASSWORD dans toutes les variantes possibles
+MIGRATIONS V2.0 depuis V1.7 :
+  - FIX BUG-C4 : Race condition fast path supprimée.
+    L'ancienne version vérifiait _connection.closed HORS du lock →
+    deux coroutines pouvaient passer le fast path simultanément,
+    l'une ferme la connexion pendant que l'autre l'utilise → crash.
+    Fix : plus de fast path hors lock. On entre toujours dans le lock,
+    mais on sort immédiatement si la connexion est saine (_is_ready flag).
+    Le flag est mis à False atomiquement dans le lock dès qu'un problème
+    est détecté → une seule coroutine reconstruit la connexion.
+  - _is_ready : booléen simple, mis à jour uniquement dans le lock.
+  - Reconnexion automatique si connexion perdue (inchangé).
+  - Cherche DB_PASSWORD dans toutes les variantes (inchangé).
 """
 import os
 import asyncio
@@ -18,7 +25,8 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 logger = logging.getLogger(__name__)
 
 _checkpointer: AsyncPostgresSaver | None = None
-_connection: psycopg.AsyncConnection | None = None
+_connection:   psycopg.AsyncConnection | None = None
+_is_ready:     bool = False   # True uniquement quand connexion vérifiée dans le lock
 _lock = asyncio.Lock()
 
 
@@ -55,27 +63,23 @@ def _get_db_password() -> str:
 
 
 async def get_checkpointer() -> AsyncPostgresSaver:
-    global _checkpointer, _connection
+    global _checkpointer, _connection, _is_ready
 
-    # Fast path — connexion déjà active, pas besoin du lock
-    if _checkpointer is not None and _connection is not None:
-        try:
-            if not _connection.closed:
-                return _checkpointer
-        except Exception:
-            pass
-
-    # Slow path — une seule coroutine crée la connexion
+    # Toujours entrer dans le lock — pas de fast path hors lock (FIX BUG-C4)
     async with _lock:
-        # Re-check après acquisition du lock (une autre coroutine a pu créer entre-temps)
-        if _checkpointer is not None and _connection is not None:
+
+        # Vérifier l'état de la connexion dans le lock (atomique)
+        if _is_ready and _checkpointer is not None and _connection is not None:
             try:
                 if not _connection.closed:
                     return _checkpointer
             except Exception:
                 pass
+            # Connexion détectée comme morte — on reconstruit
+            _is_ready = False
+            logger.warning("[Checkpointer] Connexion perdue — reconnexion...")
 
-        # Fermer proprement l'ancienne connexion si elle existe
+        # Fermer proprement l'ancienne connexion
         if _connection is not None:
             try:
                 await _connection.close()
@@ -83,6 +87,7 @@ async def get_checkpointer() -> AsyncPostgresSaver:
                 pass
             _connection = None
             _checkpointer = None
+            _is_ready = False
 
         password = _get_db_password()
 
@@ -99,5 +104,6 @@ async def get_checkpointer() -> AsyncPostgresSaver:
         )
         _checkpointer = AsyncPostgresSaver(_connection)
         await _checkpointer.setup()
+        _is_ready = True
         logger.info("[Checkpointer] PostgreSQL initialisé ✅")
         return _checkpointer

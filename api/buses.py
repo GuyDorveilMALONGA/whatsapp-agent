@@ -55,9 +55,11 @@ def _position_estimee(
 ) -> dict:
     arret_lower = arret_signale.lower().strip()
 
+    # FIX BUG-I4 : JSON v13 utilise "nom", pas "name"
     idx_depart = None
     for i, s in enumerate(stops):
-        if s.get("name", "").lower().strip() == arret_lower:
+        nom_stop = s.get("nom", s.get("name", "")).lower().strip()
+        if nom_stop == arret_lower:
             idx_depart = i
             break
 
@@ -65,7 +67,7 @@ def _position_estimee(
         for s in stops:
             if s.get("lat"):
                 return {
-                    "nom":         s["name"],
+                    "nom":         s.get("nom", s.get("name", arret_signale)),
                     "lat":         s["lat"],
                     "lon":         s["lon"],
                     "idx":         0,
@@ -153,21 +155,19 @@ async def get_buses():
         pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
         conf = _confiance(minutes_ecoules)
 
-        pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
-        conf = _confiance(minutes_ecoules)
         # Fallback GPS — si l'arrêt estimé n'a pas de coordonnées,
         # prendre le premier stop de la ligne qui en a
         if not pos.get("lat"):
-                for s in stops:
-                            if s.get("lat"):
-                                pos["lat"] = s["lat"]
-                                pos["lon"] = s["lon"]
-                                pos["nom"] = s.get("name", pos.get("nom", arret_signale))
-                                break
-                            logger.warning(
-                                f"[/api/buses] GPS manquant pour {arret_signale} "
-                                f"ligne={ligne} → fallback sur {pos.get('nom')}"
-                            )
+            for s in stops:
+                if s.get("lat"):
+                    pos["lat"] = s["lat"]
+                    pos["lon"] = s["lon"]
+                    pos["nom"] = s.get("nom", s.get("name", pos.get("nom", arret_signale)))
+                    break
+            logger.warning(
+                f"[/api/buses] GPS manquant pour {arret_signale} "
+                f"ligne={ligne} → fallback sur {pos.get('nom')}"
+            )
 
 
         repart_dans = None

@@ -1,5 +1,5 @@
 """
-services/websocket.py — V1.5
+services/websocket.py — V1.6
 Fix : _HEARTBEAT_TIMEOUT 60 → 120s + first_visit dans welcome + typing indicators
 """
 
@@ -13,8 +13,10 @@ from starlette.background import BackgroundTasks
 
 logger = logging.getLogger(__name__)
 
+# FIX BUG-M3 : regex assouplie — accepte tout ID alphanumérique 8-64 chars
+# (l'ancienne imposait strictement UUID v4 → rejetait les variantes légitimes)
 _SESSION_ID_RE = re.compile(
-    r"^web_[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$",
+    r"^web_[0-9a-zA-Z_-]{8,64}$",
     re.IGNORECASE
 )
 
@@ -100,7 +102,15 @@ async def handle_websocket(websocket, session_id, process_fn, background_tasks=N
                 await _send(websocket, {"type": "typing", "active": True})
 
                 try:
-                    await process_fn(phone=session_id, text=text, background_tasks=background_tasks, send_fn=send_fn)
+                    # FIX BUG-C6 : sérialiser via queue_manager (comme WhatsApp/Telegram)
+                    import core.queue_manager as queue_manager
+                    async with queue_manager.process(session_id):
+                        await process_fn(phone=session_id, text=text, background_tasks=background_tasks, send_fn=send_fn)
+                except TimeoutError:
+                    logger.warning(f"[WS] Queue timeout pour session={session_id[:20]}")
+                    await _send(websocket, {"type": "typing", "active": False})
+                    await _send(websocket, {"type": "error", "message": "Trop de messages simultanés. Réessaie."})
+                    continue
                 except Exception as e:
                     logger.error(f"[WS] Erreur process_fn: {e}", exc_info=True)
                     await _send(websocket, {"type": "typing", "active": False})

@@ -151,7 +151,8 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
         "position":   arret,
         "phone":      phone,
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "expires_at": expires_at.isoformat()
+        "expires_at": expires_at.isoformat(),
+        "valide":     True,  
     }).execute()
     return res.data[0]
 

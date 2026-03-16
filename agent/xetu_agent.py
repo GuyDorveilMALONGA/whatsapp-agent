@@ -1,6 +1,9 @@
 """
-agent/xetu_agent.py — V1.7
+agent/xetu_agent.py — V1.8
 Agent ReAct LangGraph — cœur de Xëtu.
+
+MIGRATIONS V1.8 depuis V1.7 :
+  - FIX BUG-I3 : thread_id fallback Gemini séparé (évite historique croisé)
 
 MIGRATIONS V1.7 depuis V1.6 :
   - _is_retryable_error simplifié : fallback Gemini uniquement sur rate limit (429)
@@ -120,7 +123,10 @@ async def _try_get_checkpointer():
             f"  → Ajoutez DB_PASSWORD dans Railway pour activer la persistance."
         )
         import asyncio
-        asyncio.get_event_loop().call_later(60, _reset_checkpointer_flag)
+        try:
+            asyncio.get_running_loop().call_later(60, _reset_checkpointer_flag)
+        except RuntimeError:
+            pass  # Pas de loop active — le flag restera False jusqu'au prochain appel
         return None
 
 
@@ -181,7 +187,9 @@ async def run(
                 )
                 try:
                     fallback = _get_agent_with_checkpointer(checkpointer, "gemini-fallback")
-                    return await _invoke_agent(fallback, message, config)
+                    # FIX BUG-I3 : thread_id distinct pour éviter historique croisé groq/gemini
+                    fb_config = {**config, "configurable": {**config["configurable"], "thread_id": f"{phone}_fb"}}
+                    return await _invoke_agent(fallback, message, fb_config)
                 except Exception as fb_err:
                     logger.error(f"[xetu_run] Fallback Gemini échoué: {fb_err}")
                     return "Le service est temporairement surchargé. Réessaie dans un moment. 🙏"

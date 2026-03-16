@@ -218,6 +218,18 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
+    # FIX SEC-1 : vérifier le secret_token Telegram (X-Telegram-Bot-Api-Secret-Token)
+    # Ce header est envoyé par Telegram si secret_token a été défini dans setWebhook.
+    # Si TELEGRAM_WEBHOOK_SECRET est absent de l'env, la vérification est skippée
+    # (mode dégradé — configurer le secret dans Railway + set_webhook.py).
+    import os
+    tg_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    if tg_secret:
+        token_header = request.headers.get("X-Telegram-Bot-Api-Secret-Token", "")
+        if token_header != tg_secret:
+            logger.warning("[Telegram] Secret token invalide — requête rejetée")
+            raise HTTPException(status_code=403, detail="Token invalide")
+
     try:
         payload = await request.json()
     except Exception:
@@ -453,8 +465,7 @@ async def _process_message_safe(
         import traceback
         tb = traceback.format_exc()
         logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}\n{tb}")
-        debug_msg = f"🐛 DEBUG:\n{type(e).__name__}: {e}\n\n{tb[-500:]}"
-        await send_fn(phone, debug_msg)
+        await send_fn(phone, "Une erreur inattendue s'est produite. Réessaie dans un moment. 🙏")
 
 # ═══════════════════════════════════════════════════════════
 # HANDLER SESSION ACTIVE (inchangé)

@@ -157,21 +157,33 @@ def _detect_message_type(message: dict) -> str:
 # ENREGISTREMENT DU WEBHOOK
 # ═══════════════════════════════════════════════════════════
 
-async def set_webhook(public_url: str) -> bool:
+async def set_webhook(public_url: str, secret_token: str | None = None) -> bool:
     """
     Enregistre l'URL du webhook auprès de Telegram.
-    À appeler une seule fois au démarrage (ou manuellement).
+    À appeler une seule fois après chaque changement d'URL ou de secret.
 
     Args:
-        public_url: URL publique HTTPS de ton service,
-                    ex: "https://xetu.railway.app"
+        public_url  : URL publique HTTPS de ton service
+        secret_token: secret choisi librement (32-256 chars alphanum).
+                      Telegram l'enverra dans X-Telegram-Bot-Api-Secret-Token.
+                      Doit correspondre à TELEGRAM_WEBHOOK_SECRET dans Railway.
     """
+    import os
     webhook_url = f"{public_url.rstrip('/')}/telegram/webhook"
+    # Lire depuis l'env si non passé en argument
+    if not secret_token:
+        secret_token = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
+    payload: dict = {"url": webhook_url}
+    if secret_token:
+        payload["secret_token"] = secret_token
+        logger.info(f"[Telegram] setWebhook avec secret_token ✅")
+    else:
+        logger.warning("[Telegram] setWebhook sans secret_token — endpoint non sécurisé")
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             res = await client.post(
                 _api_url("setWebhook"),
-                json={"url": webhook_url}
+                json=payload
             )
             data = res.json()
             if data.get("ok"):

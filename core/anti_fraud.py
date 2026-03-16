@@ -57,7 +57,7 @@ def is_blacklisted_signalement(text: str) -> bool:
 # Calcul pour un nouvel usager (fiabilite=0.5) + source forte :
 #   fiab=0.5×0.4=0.20 | src=0.95×0.3=0.285 | ent=0.9×0.2=0.18 → total=0.665
 #   Avec 0.60 : passe. Mais fiabilite_score réel parfois < 0.5 → bloqué.
-CONFIDENCE_THRESHOLD = 0.35  # TEST — remettre 0.60 en prod
+CONFIDENCE_THRESHOLD = 0.60
 
 
 def compute_signalement_confidence(

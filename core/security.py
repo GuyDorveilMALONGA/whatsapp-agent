@@ -99,30 +99,75 @@ def validate_phone(phone: str | None) -> bool:
 
 
 # ══════════════════════════════════════════════════════════
-# 3. RATE LIMITING (en mémoire — migrer vers Redis si multi-instance)
+# 3. RATE LIMITING — Redis si disponible, mémoire locale sinon
 # ══════════════════════════════════════════════════════════
+# Redis (multi-worker safe) : INCR + EXPIRE sur clés phone/global.
+# Fallback local (1 worker) : liste de timestamps en mémoire.
 
-# Stocke les timestamps des messages par phone
 _phone_timestamps: dict[str, list[float]] = defaultdict(list)
 _global_timestamps: list[float] = []
-
-# Nettoyage automatique toutes les 60s
 _last_cleanup: float = 0.0
 _CLEANUP_INTERVAL = 60.0
-_WINDOW = 60.0  # fenêtre de 1 minute
+_WINDOW = 60.0
+
+_rl_redis       = None
+_rl_redis_failed = False
+
+
+def _get_rl_redis():
+    global _rl_redis, _rl_redis_failed
+    if _rl_redis_failed:
+        return None
+    if _rl_redis is not None:
+        return _rl_redis
+    try:
+        import os
+        import redis
+        url = os.environ.get("REDIS_URL") or os.environ.get("REDISCLOUD_URL")
+        if not url:
+            _rl_redis_failed = True
+            return None
+        _rl_redis = redis.from_url(url, decode_responses=True)
+        _rl_redis.ping()
+        return _rl_redis
+    except Exception:
+        _rl_redis_failed = True
+        return None
+
+
+def _check_rate_limit_redis(r, phone: str) -> bool:
+    """Rate limit via Redis INCR/EXPIRE — multi-worker safe."""
+    import time as _time
+    window = int(_WINDOW)
+    try:
+        pipe = r.pipeline()
+        key_phone  = f"xetu:rl:phone:{phone}"
+        key_global = "xetu:rl:global"
+        pipe.incr(key_phone)
+        pipe.expire(key_phone, window)
+        pipe.incr(key_global)
+        pipe.expire(key_global, window)
+        results = pipe.execute()
+        count_phone, _, count_global, _ = results
+        if count_global > RATE_LIMIT_GLOBAL_PER_MIN:
+            logger.warning(f"[RateLimit] Global Redis ({count_global}/{RATE_LIMIT_GLOBAL_PER_MIN}/min)")
+            return False
+        if count_phone > RATE_LIMIT_PER_PHONE_PER_MIN:
+            logger.warning(f"[RateLimit] Phone {phone[-4:]} Redis ({count_phone}/{RATE_LIMIT_PER_PHONE_PER_MIN}/min)")
+            return False
+        return True
+    except Exception as e:
+        logger.warning(f"[RateLimit] Redis erreur, fallback local: {e}")
+        return None  # None = fallback
 
 
 def _cleanup_old_entries():
-    """Nettoie les timestamps > 1 minute pour libérer la RAM."""
     global _last_cleanup, _global_timestamps
     now = time.monotonic()
-
     if now - _last_cleanup < _CLEANUP_INTERVAL:
         return
-
     cutoff = now - _WINDOW
     _global_timestamps = [t for t in _global_timestamps if t > cutoff]
-
     to_delete = []
     for phone, timestamps in _phone_timestamps.items():
         fresh = [t for t in timestamps if t > cutoff]
@@ -130,38 +175,39 @@ def _cleanup_old_entries():
             _phone_timestamps[phone] = fresh
         else:
             to_delete.append(phone)
-
     for phone in to_delete:
         del _phone_timestamps[phone]
-
     _last_cleanup = now
 
 
 def check_rate_limit(phone: str) -> bool:
     """
-    Retourne True si le message est autorisé, False si rate-limité.
-    Vérifie deux niveaux :
-      1. Par phone : max N messages / minute
-      2. Global : max M messages / minute
+    Retourne True si autorisé, False si rate-limité.
+    Redis si disponible (multi-worker), mémoire locale sinon.
     """
+    # Essayer Redis d'abord
+    r = _get_rl_redis()
+    if r:
+        result = _check_rate_limit_redis(r, phone)
+        if result is not None:
+            return result
+        # Redis a échoué → fallback local ci-dessous
+
+    # Fallback mémoire locale
     now = time.monotonic()
     cutoff = now - _WINDOW
-
     _cleanup_old_entries()
 
-    # Check global
     recent_global = [t for t in _global_timestamps if t > cutoff]
     if len(recent_global) >= RATE_LIMIT_GLOBAL_PER_MIN:
-        logger.warning(f"[RateLimit] Global limit atteint ({RATE_LIMIT_GLOBAL_PER_MIN}/min)")
+        logger.warning(f"[RateLimit] Global local ({RATE_LIMIT_GLOBAL_PER_MIN}/min)")
         return False
 
-    # Check per-phone
     recent_phone = [t for t in _phone_timestamps[phone] if t > cutoff]
     if len(recent_phone) >= RATE_LIMIT_PER_PHONE_PER_MIN:
-        logger.warning(f"[RateLimit] Phone {phone[-4:]} limité ({RATE_LIMIT_PER_PHONE_PER_MIN}/min)")
+        logger.warning(f"[RateLimit] Phone {phone[-4:]} local ({RATE_LIMIT_PER_PHONE_PER_MIN}/min)")
         return False
 
-    # Autorisé — enregistre le timestamp
     _global_timestamps.append(now)
     _phone_timestamps[phone].append(now)
     return True
