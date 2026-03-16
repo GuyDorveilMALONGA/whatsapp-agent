@@ -98,7 +98,7 @@ def _position_estimee(
         s = stops[i]
         if s.get("lat"):
             return {
-                "nom":         s["name"],
+                "nom":         s.get("nom", s.get("name", arret_signale)),
                 "lat":         s["lat"],
                 "lon":         s["lon"],
                 "idx":         i,
