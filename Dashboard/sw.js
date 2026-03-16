@@ -36,6 +36,7 @@ const PRECACHE_ASSETS = [
   '/js/chat.js',
   '/assets/icons/icon-192.png',
   '/assets/icons/icon-512.png',
+  '/js/geoloc.js',
   // Leaflet depuis CDN — on les met aussi en cache
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
   'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',

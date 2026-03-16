@@ -10,6 +10,7 @@ import { LIGNES_CONNUES, LIGNE_NAMES, API_BASE } from './constants.js';
 import { normalizeText, safeFetch, generateUUID } from './utils.js';
 import { loadRoutes } from './api.js';
 import * as Toast from './toast.js';
+import { captureAndSnap, GeolocError } from './geoloc.js';
 
 // ── Callbacks injectés depuis app.js ──────────────────────
 let _onConfirmSuccess = null;
@@ -20,6 +21,7 @@ const SESSION_ID = `web_${generateUUID()}`;
 
 // ── État interne du modal ─────────────────────────────────
 let _isSubmitting = false;
+let _geolocData    = null;   // { lat, lon, nearest_stop, distance_m, snapped }
 let _focusTrigger = null;
 let _autocompleteTimeout = null;
 
@@ -33,6 +35,7 @@ let _elModal, _elOverlay, _elForm;
 let _elLigne, _elArret, _elObservation;
 let _elSuggestions, _elSubmitBtn, _elSubmitLabel;
 let _elWaLink, _elTgLink;
+let _elGeolocBtn, _elGeolocStatus;
 
 // ═══════════════════════════════════════════════════════════
 // INIT
@@ -214,6 +217,11 @@ function _buildDOM() {
         <label for="modal-arret" class="form-label">
           Arrêt <span class="required" aria-hidden="true">*</span>
         </label>
+        <button type="button" id="modal-geoloc-btn" class="btn-geoloc"
+                aria-label="Utiliser ma position GPS">
+          📍 Utiliser ma position
+        </button>
+        <div id="modal-geoloc-status" class="geoloc-status" hidden></div>
         <div class="autocomplete-wrapper">
           <input
             id="modal-arret"
@@ -282,6 +290,8 @@ function _buildDOM() {
   _elSubmitLabel = _elModal.querySelector('#modal-submit-label');
   _elWaLink      = _elModal.querySelector('#modal-wa-link');
   _elTgLink      = _elModal.querySelector('#modal-tg-link');
+  _elGeolocBtn   = _elModal.querySelector('#modal-geoloc-btn');
+  _elGeolocStatus= _elModal.querySelector('#modal-geoloc-status');
 }
 
 function _buildLigneOptions() {
@@ -317,6 +327,8 @@ function _attachEvents() {
 
   _elLigne.addEventListener('change', () => _clearError('ligne-error'));
   _elArret.addEventListener('input',  () => _clearError('arret-error'));
+
+  _elGeolocBtn.addEventListener('click', _handleGeolocClick);
 }
 
 function _handleKeydown(e) {
@@ -492,6 +504,60 @@ function _hideSuggestions() {
   _activeSuggestionIndex = -1;
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// GÉOLOCALISATION
+// ═══════════════════════════════════════════════════════════
+
+async function _handleGeolocClick() {
+  const ligne = _elLigne.value;
+
+  _elGeolocBtn.disabled     = true;
+  _elGeolocBtn.textContent  = '⏳ Localisation…';
+  _elGeolocStatus.hidden    = true;
+  _geolocData               = null;
+
+  try {
+    const result = await captureAndSnap(ligne || null);
+    _geolocData  = result;
+
+    if (result.snapped && result.nearest_stop) {
+      // Arrêt proche trouvé → pré-remplir le champ
+      _elArret.value = result.nearest_stop;
+      _updateWaLink(ligne, result.nearest_stop);
+      _clearError('arret-error');
+      _showGeolocStatus(
+        `📍 ${result.nearest_stop} (à ${result.distance_m} m)`,
+        'success'
+      );
+    } else if (result.distance_m !== null) {
+      // Position capturée mais arrêt trop loin — coords envoyées quand même
+      _showGeolocStatus(
+        `📍 Position capturée — arrêt le plus proche à ${result.distance_m} m`,
+        'warn'
+      );
+    } else {
+      // Pas de stops dans le JSON pour cette ligne
+      _showGeolocStatus('📍 Position capturée — sélectionne l'arrêt manuellement', 'warn');
+    }
+
+    _elGeolocBtn.textContent = '📍 Position mise à jour';
+
+  } catch (err) {
+    _geolocData = null;
+    const msg = err instanceof GeolocError ? err.message : 'Impossible d'obtenir la position.';
+    _showGeolocStatus(`⚠️ ${msg}`, 'error');
+    _elGeolocBtn.disabled    = false;
+    _elGeolocBtn.textContent = '📍 Utiliser ma position';
+  }
+}
+
+function _showGeolocStatus(text, type) {
+  _elGeolocStatus.textContent = text;
+  _elGeolocStatus.className   = `geoloc-status geoloc-status--${type}`;
+  _elGeolocStatus.hidden      = false;
+}
+
 // ═══════════════════════════════════════════════════════════
 // SOUMISSION
 // ═══════════════════════════════════════════════════════════
@@ -548,6 +614,11 @@ async function _postReport({ ligne, arret, observation, source }) {
     session_id: SESSION_ID,
   };
   if (observation) payload.observation = observation;
+  // Coordonnées GPS si capturées via le bouton 📍
+  if (_geolocData?.lat) {
+    payload.lat = _geolocData.lat;
+    payload.lon = _geolocData.lon;
+  }
 
   return safeFetch(`${API_BASE}/api/report`, {
     method:  'POST',
@@ -604,6 +675,7 @@ function _resetForm() {
   if (_elForm) _elForm.reset();
   _hideSuggestions();
   _isSubmitting         = false;
+  _geolocData           = null;
   _elSubmitBtn.disabled = false;
   _elSubmitLabel.textContent = '📡 Envoyer le signalement';
   document.querySelectorAll('.form-error').forEach(el => {

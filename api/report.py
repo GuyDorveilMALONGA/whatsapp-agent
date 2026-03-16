@@ -1,6 +1,13 @@
 """
-api/report.py — V1.0
+api/report.py — V1.1
 Endpoint POST /api/report — signalement depuis le dashboard web.
+
+MIGRATION V1.1 depuis V1.0 :
+  - ReportPayload : champs lat / lon optionnels (coordonnées GPS passager)
+  - nearest_stop  : champ optionnel (nom arrêt snapé côté client)
+  - save_signalement() reçoit lat/lon si présents → stocké dans la table
+  - source "web_geoloc" ajouté aux sources autorisées
+  - Logs enrichis avec lat/lon quand présents
 
 Sécurité :
   • Rate limit : 5 signalements / IP / 10 min (in-memory)
@@ -23,6 +30,7 @@ import re
 import time
 import hashlib
 from collections import defaultdict, deque
+from typing import Optional
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -36,11 +44,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # ── Rate limiting in-memory ───────────────────────────────
-# Pour multi-instances Railway → migrer vers Redis (GUIDE_XETU V7 §2.1.A)
-
 _rate_windows: dict[str, deque] = defaultdict(deque)
-_RATE_LIMIT_SHORT = (5,  600)   # 5 req / 10 min par IP
-_RATE_LIMIT_LONG  = (30, 3600)  # 30 req / heure par IP
+_RATE_LIMIT_SHORT = (5,  600)
+_RATE_LIMIT_LONG  = (30, 3600)
 
 # ── Déduplication 30s ─────────────────────────────────────
 _recent_submissions: dict[str, float] = {}
@@ -48,18 +54,22 @@ _DEDUP_WINDOW_SEC = 30
 
 # ── Nettoyage périodique ──────────────────────────────────
 _last_cleanup = time.time()
-_CLEANUP_INTERVAL = 300  # 5 min
+_CLEANUP_INTERVAL = 300
 
 
 # ── Payload ───────────────────────────────────────────────
 
 class ReportPayload(BaseModel):
-    ligne:       str
-    arret:       str
-    observation: str | None = None
-    source:      str | None = "web_dashboard"
-    client_ts:   str | None = None
-    session_id:  str | None = None
+    ligne:        str
+    arret:        str
+    observation:  Optional[str]   = None
+    source:       Optional[str]   = "web_dashboard"
+    client_ts:    Optional[str]   = None
+    session_id:   Optional[str]   = None
+    # ── V1.1 : coordonnées GPS passager (optionnelles) ──
+    lat:          Optional[float] = None
+    lon:          Optional[float] = None
+    nearest_stop: Optional[str]   = None   # arrêt snapé côté client
 
     @field_validator('ligne')
     @classmethod
@@ -81,7 +91,7 @@ class ReportPayload(BaseModel):
 
     @field_validator('observation')
     @classmethod
-    def validate_observation(cls, v: str | None) -> str | None:
+    def validate_observation(cls, v: Optional[str]) -> Optional[str]:
         if v is None:
             return None
         v = _sanitize(v, max_len=200)
@@ -89,12 +99,39 @@ class ReportPayload(BaseModel):
 
     @field_validator('source')
     @classmethod
-    def validate_source(cls, v: str | None) -> str:
+    def validate_source(cls, v: Optional[str]) -> str:
         allowed = {
             "web_dashboard", "web_popup_confirm",
             "web_modal", "web_sheet",
+            "web_geoloc",     # V1.1 — signalement avec coordonnées GPS
         }
         return v if v in allowed else "web_dashboard"
+
+    @field_validator('lat')
+    @classmethod
+    def validate_lat(cls, v: Optional[float]) -> Optional[float]:
+        if v is None:
+            return None
+        # Bounding box Sénégal élargie : lat 12–16, lon -17.7 à -11
+        if not (12.0 <= v <= 16.0):
+            raise ValueError(f"Latitude hors du Sénégal : {v}")
+        return round(v, 6)
+
+    @field_validator('lon')
+    @classmethod
+    def validate_lon(cls, v: Optional[float]) -> Optional[float]:
+        if v is None:
+            return None
+        if not (-17.7 <= v <= -11.0):
+            raise ValueError(f"Longitude hors du Sénégal : {v}")
+        return round(v, 6)
+
+    @field_validator('nearest_stop')
+    @classmethod
+    def validate_nearest_stop(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        return _sanitize(v, max_len=80) or None
 
 
 # ── Endpoint ──────────────────────────────────────────────
@@ -148,20 +185,24 @@ async def post_report(request: Request, payload: ReportPayload):
     try:
         phone_anon = f"web_{ip[:16]}"
 
-        result = queries.save_signalement(
+        # V1.1 — passer lat/lon à save_signalement si disponibles
+        save_kwargs = dict(
             ligne=payload.ligne,
             arret=payload.arret,
             phone=phone_anon,
         )
+        if payload.lat is not None and payload.lon is not None:
+            save_kwargs["lat"] = payload.lat
+            save_kwargs["lon"] = payload.lon
 
-        # Doublon DB (save_signalement retourne None si doublon)
+        result = queries.save_signalement(**save_kwargs)
+
         if result is None:
             return JSONResponse(
                 status_code=200,
                 content={"status": "already_recorded"},
             )
 
-        # Enrichissement qualitatif si observation fournie
         if payload.observation:
             try:
                 queries.enrichir_signalement(
@@ -171,18 +212,18 @@ async def post_report(request: Request, payload: ReportPayload):
                     phone=phone_anon,
                 )
             except Exception as e:
-                # Non bloquant
                 logger.warning(f"[Report] Enrichissement échoué: {e}")
 
-        # Enregistrer dans les fenêtres de rate limit + dedup
         _record_rate(ip, now)
         _recent_submissions[dedup_key] = now
 
         report_id = f"rpt_{result.get('id', 'ok')}" if isinstance(result, dict) else "rpt_ok"
 
+        # Log enrichi V1.1
+        gps_info = f" lat={payload.lat} lon={payload.lon}" if payload.lat else " (pas de GPS)"
         logger.info(
             f"[Report] ✅ ligne={payload.ligne} arret={payload.arret} "
-            f"obs={payload.observation} source={payload.source} "
+            f"obs={payload.observation} source={payload.source}{gps_info} "
             f"session={payload.session_id} ip={ip[:20]}"
         )
 

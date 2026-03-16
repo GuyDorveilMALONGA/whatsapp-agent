@@ -1,0 +1,65 @@
+/* ── Géolocalisation — à ajouter dans css/components.css ──────────────────
+   Thème : dark #0A0F1E + accent orange #FF6B35
+   S'intègre dans le modal existant, juste après le label "Arrêt"
+   ──────────────────────────────────────────────────────────────────────── */
+
+/* Bouton principal "📍 Utiliser ma position" */
+.btn-geoloc {
+  display:         inline-flex;
+  align-items:     center;
+  gap:             6px;
+  margin-bottom:   8px;
+  padding:         7px 14px;
+  background:      transparent;
+  border:          1.5px solid var(--color-orange, #FF6B35);
+  border-radius:   8px;
+  color:           var(--color-orange, #FF6B35);
+  font-size:       13px;
+  font-weight:     500;
+  cursor:          pointer;
+  transition:      background 0.15s, opacity 0.15s;
+  white-space:     nowrap;
+}
+
+.btn-geoloc:hover:not(:disabled) {
+  background: rgba(255, 107, 53, 0.12);
+}
+
+.btn-geoloc:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.btn-geoloc:disabled {
+  opacity: 0.55;
+  cursor:  not-allowed;
+}
+
+/* Bandeau de statut sous le bouton */
+.geoloc-status {
+  font-size:     12px;
+  padding:       6px 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  line-height:   1.4;
+}
+
+/* Arrêt trouvé et snapé avec succès */
+.geoloc-status--success {
+  background: rgba(0, 214, 127, 0.12);
+  color:       #00D67F;
+  border:      1px solid rgba(0, 214, 127, 0.25);
+}
+
+/* Position capturée mais arrêt loin / pas de stop */
+.geoloc-status--warn {
+  background: rgba(255, 209, 102, 0.12);
+  color:       #FFD166;
+  border:      1px solid rgba(255, 209, 102, 0.25);
+}
+
+/* Erreur géoloc (refus, timeout…) */
+.geoloc-status--error {
+  background: rgba(255, 71, 87, 0.12);
+  color:       #FF4757;
+  border:      1px solid rgba(255, 71, 87, 0.25);
+}
