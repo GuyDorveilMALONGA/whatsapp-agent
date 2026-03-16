@@ -1,5 +1,5 @@
 """
-agent/xetu_agent.py — V1.8
+agent/xetu_agent.py — V1.9
 Agent ReAct LangGraph — cœur de Xëtu.
 
 MIGRATIONS V1.8 depuis V1.7 :
@@ -90,6 +90,22 @@ def _is_retryable_error(exc: Exception) -> bool:
 _agents_with_checkpointer: dict = {}
 
 
+# PERF-1 : limite l'historique LangGraph à 8 messages (évite context window croissant)
+# trim_messages garde les N derniers messages — le prompt système est toujours conservé
+def _make_messages_modifier(max_messages: int = 8):
+    """Crée un modifier qui tronque l'historique aux N derniers messages."""
+    from langchain_core.messages import trim_messages
+    return trim_messages(
+        max_tokens=max_messages,
+        token_counter=len,          # compte les messages, pas les tokens
+        strategy="last",            # garde les plus récents
+        include_system=True,        # conserve toujours le system prompt
+        allow_partial=False,
+    )
+
+_messages_modifier = _make_messages_modifier(max_messages=8)
+
+
 def _get_agent_with_checkpointer(checkpointer, name: str):
     """Retourne un agent avec checkpointer, mis en cache par nom."""
     if name not in _agents_with_checkpointer:
@@ -99,6 +115,7 @@ def _get_agent_with_checkpointer(checkpointer, name: str):
             tools=ALL_TOOLS,
             prompt=SETU_SOUL,
             checkpointer=checkpointer,
+            messages_modifier=_messages_modifier,  # PERF-1
         )
         logger.info(f"[xetu_run] Agent '{name}' créé avec checkpointer ✅")
     return _agents_with_checkpointer[name]
@@ -162,7 +179,7 @@ async def run(
 
     # ── Choix de l'agent ─────────────────────────────────
     agent_name = "gemini" if langue == "wolof" else "groq"
-    logger.info(f"[xetu_run] langue={langue!r} | phone={phone[:8]}… | agent={agent_name}")
+    logger.info(f"[xetu_run] langue={langue!r} | phone=…{phone[-4:]!r} | agent={agent_name}")
 
     config = {
         "configurable": {
@@ -170,6 +187,21 @@ async def run(
             "thread_id": phone,
         }
     }
+
+    # ── PERF-3 : Intent cache — court-circuit pour patterns fréquents ──
+    # Patterns simples (salutations, questions répétées) → pas d'appel LLM
+    from agent import intent_cache as _ic
+    from agent.normalizer import normalize_for_cache
+    try:
+        cached = _ic.get(normalize_for_cache(message))
+        if cached:
+            logger.info(f"[xetu_run] Cache HIT → {cached!r}")
+            # Le cache retourne une réponse directe pour les patterns ultra-simples
+            # Pour les intents complexes on laisse l'agent gérer
+            if cached in ("greeting",):
+                return "Salam ! Dis-moi pour quel bus tu as besoin. 🚌 — *Xëtu*"
+    except Exception:
+        pass  # Cache indisponible → continuer normalement
 
     # ── Tentative avec checkpointer ───────────────────────
     checkpointer = await _try_get_checkpointer()

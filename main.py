@@ -386,7 +386,7 @@ async def _process_message_safe(
     try:
         import os
         logger.info(f"{_tag} DB_PASSWORD present: {'DB_PASSWORD' in os.environ}")
-        logger.info(f"{_tag} START — id={phone[:24]!r} text={text[:60]!r}")
+        logger.info(f"{_tag} START — id=…{phone[-4:]!r} text={text[:60]!r}")
 
         # ── Validation longueur ──────────────────────────────
         error_msg = _check_message(text)

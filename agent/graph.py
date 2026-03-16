@@ -1,5 +1,5 @@
 """
-agent/graph.py — V3.3
+agent/graph.py — V3.4
 Walk-Aware Routing — branché sur routes_geometry_v13.json
 
 V3.3 vs V3.2 :
@@ -463,14 +463,51 @@ class DemDikkGraph:
                 "dest_display": dest_display}
 
 
-# ── Singleton ─────────────────────────────────────────────
+# ── Singleton avec cache disque ───────────────────────────
+# ARC-6 : Le graphe est sérialisé en pickle au premier démarrage.
+# Les cold starts suivants chargent le cache en ~50ms au lieu de ~500ms.
 
 _graph: Optional[DemDikkGraph] = None
+_CACHE_PATH = "/tmp/xetu_graph_cache.pkl"
 
 
 def get_graph() -> DemDikkGraph:
     global _graph
-    if _graph is None:
-        from core.network import get_graph_data
-        _graph = DemDikkGraph(get_graph_data())
+    if _graph is not None:
+        return _graph
+
+    import pickle, os, hashlib, json
+
+    # Calculer un hash du JSON source pour invalider le cache si le JSON change
+    try:
+        from config.settings import JSON_PATH
+        with open(JSON_PATH, "rb") as f:
+            json_hash = hashlib.md5(f.read()).hexdigest()[:8]
+        cache_path = f"{_CACHE_PATH}.{json_hash}"
+    except Exception:
+        cache_path = _CACHE_PATH
+        json_hash  = "unknown"
+
+    # Essayer de charger depuis le cache disque
+    if os.path.exists(cache_path):
+        try:
+            with open(cache_path, "rb") as f:
+                _graph = pickle.load(f)
+            logger.info(f"[Graph] Cache disque chargé ✅ ({json_hash}) — {len(_graph.line_stops)} lignes")
+            return _graph
+        except Exception as e:
+            logger.warning(f"[Graph] Cache invalide ({e}) — recalcul...")
+
+    # Construire le graphe depuis le JSON
+    from core.network import get_graph_data
+    _graph = DemDikkGraph(get_graph_data())
+
+    # Sauvegarder le cache pour les prochains démarrages
+    try:
+        with open(cache_path, "wb") as f:
+            pickle.dump(_graph, f)
+        logger.info(f"[Graph] Cache disque sauvegardé → {cache_path}")
+    except Exception as e:
+        logger.warning(f"[Graph] Impossible de sauvegarder le cache: {e}")
+
     return _graph

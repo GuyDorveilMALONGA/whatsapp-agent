@@ -1,5 +1,5 @@
 """
-core/context_builder.py — V6.1
+core/context_builder.py — V6.2
 L'innovation principale de Xëtu.
 
 MIGRATIONS V6.1 depuis V6.0 :
@@ -56,8 +56,9 @@ def build_context(
         ligne = str(ligne).upper()
         if ligne in VALID_LINES:
             info  = NETWORK.get(ligne, {})
-            stops = info.get("stops", [])
-            desc  = info.get("name", info.get("description", ""))
+            # FIX BUG-M1 + PERF-4 : JSON v13 → "arrets" pas "stops", "nom" pas "name"
+            stops = info.get("arrets", info.get("stops", []))
+            desc  = info.get("nom",  info.get("name", info.get("description", "")))
             blocks.append(
                 f"[LIGNE] Bus {ligne} — {desc} ({len(stops)} arrêts au total)"
             )
