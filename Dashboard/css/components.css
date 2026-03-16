@@ -150,6 +150,33 @@
    ÉCRAN SIGNALEMENT
 ══════════════════════════════ */
 
+/* Topbar écran signalement */
+.signal-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.btn-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  transition: color var(--t-fast);
+}
+.btn-back:hover { color: var(--orange); }
+.signal-topbar-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+
 .signal-map-wrap {
   height: 180px;
   flex-shrink: 0;
