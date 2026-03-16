@@ -90,17 +90,6 @@ def _is_retryable_error(exc: Exception) -> bool:
 _agents_with_checkpointer: dict = {}
 
 
-# PERF-1 : limite l'historique à 8 messages — stable dans LangGraph 1.0+
-def _trim_messages(state: dict) -> dict:
-    """Garde les 8 derniers messages + le system prompt."""
-    messages = state.get("messages", [])
-    from langchain_core.messages import SystemMessage
-    system = [m for m in messages if isinstance(m, SystemMessage)]
-    others = [m for m in messages if not isinstance(m, SystemMessage)]
-    trimmed = others[-8:] if len(others) > 8 else others
-    return {**state, "messages": system + trimmed}
-
-
 def _get_agent_with_checkpointer(checkpointer, name: str):
     """Retourne un agent avec checkpointer, mis en cache par nom."""
     if name not in _agents_with_checkpointer:
@@ -110,7 +99,6 @@ def _get_agent_with_checkpointer(checkpointer, name: str):
             tools=ALL_TOOLS,
             prompt=SETU_SOUL,
             checkpointer=checkpointer,
-            state_modifier=_trim_messages,  # PERF-1 : LangGraph 1.0+
         )
         logger.info(f"[xetu_run] Agent '{name}' créé avec checkpointer ✅")
     return _agents_with_checkpointer[name]
