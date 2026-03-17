@@ -1,7 +1,6 @@
 /**
- * js/chat.js — V1.1
- * Sprint UI : message de bienvenue plaqué en HTML (zéro token WS).
- * showWelcome() ne fait plus rien — le message est dans index.html.
+ * js/chat.js — V2.0 Sprint Final
+ * FIX bug 3 messages : le welcome WS est ignoré, message en HTML uniquement.
  */
 
 import * as store from './store.js';
@@ -22,11 +21,9 @@ function _attachEvents() {
   input.addEventListener('input', () => {
     sendBtn.disabled = input.value.trim().length === 0;
   });
-
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); _doSend(); }
   });
-
   sendBtn.addEventListener('click', _doSend);
 
   if (window.visualViewport) {
@@ -42,7 +39,6 @@ function _doSend() {
   if (!input) return;
   const text = input.value.trim();
   if (!text || text.length > MAX_INPUT) return;
-
   appendMessage('user', text);
   input.value = '';
   document.getElementById('chat-send-btn').disabled = true;
@@ -53,8 +49,7 @@ function _doSend() {
 export function appendMessage(role, text) {
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return;
-
-  const wrap   = document.createElement('div');
+  const wrap = document.createElement('div');
   wrap.className = `chat-msg chat-msg--${role}`;
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
@@ -67,8 +62,7 @@ export function appendMessage(role, text) {
 let _typingEl = null;
 
 export function setTyping(active) {
-  if (active) _showTyping();
-  else        _hideTyping();
+  active ? _showTyping() : _hideTyping();
 }
 
 function _showTyping() {
@@ -77,12 +71,9 @@ function _showTyping() {
   if (!msgs) return;
   _typingEl = document.createElement('div');
   _typingEl.className = 'chat-msg chat-msg--bot';
-  _typingEl.innerHTML = `
-    <div class="chat-bubble chat-bubble--typing">
-      <span class="typing-dot"></span>
-      <span class="typing-dot"></span>
-      <span class="typing-dot"></span>
-    </div>`;
+  _typingEl.innerHTML = `<div class="chat-bubble chat-bubble--typing">
+    <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+  </div>`;
   msgs.appendChild(_typingEl);
   _scrollToBottom();
 }
@@ -92,9 +83,9 @@ function _hideTyping() {
 }
 
 export function setSuggestions(list = []) {
-  const container = document.getElementById('chat-suggestions');
-  if (!container) return;
-  container.innerHTML = '';
+  const c = document.getElementById('chat-suggestions');
+  if (!c) return;
+  c.innerHTML = '';
   list.forEach(text => {
     const chip = document.createElement('button');
     chip.className   = 'chat-suggestion-chip';
@@ -105,7 +96,7 @@ export function setSuggestions(list = []) {
       document.getElementById('chat-send-btn').disabled = false;
       _doSend();
     });
-    container.appendChild(chip);
+    c.appendChild(chip);
   });
 }
 
@@ -133,11 +124,13 @@ function _subscribeStore() {
   store.subscribe('lastBotMessage', (text) => {
     if (text) { _hideTyping(); appendMessage('bot', text); }
   });
-  store.subscribe('chatTyping',  (active) => setTyping(active));
-  // showWelcome ignoré — message déjà dans le HTML, zéro token dépensé
-  store.subscribe('chatWelcome', ({ suggestions }) => {
-    if (suggestions?.length) setSuggestions(suggestions);
+  store.subscribe('chatTyping', (active) => setTyping(active));
+
+  // Suggestions uniquement — le message welcome est déjà dans le HTML
+  store.subscribe('chatSuggestions', (list) => {
+    if (list?.length) setSuggestions(list);
   });
+
   store.subscribe('wsStatus', (status) => setStatus(status));
 }
 
