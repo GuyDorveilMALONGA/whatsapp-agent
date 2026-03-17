@@ -23,6 +23,39 @@ const NAV_SCREENS = ['home', 'itin', 'mylines'];
 const _navBtns = document.querySelectorAll('.nav-btn');
 const _screens = document.querySelectorAll('.screen');
 
+// ── Menu hamburger ────────────────────────────────────────
+
+function _initMenu() {
+  const overlay = document.getElementById('menu-overlay');
+  const btnOpen = document.getElementById('btn-menu');
+  const btnClose= document.getElementById('menu-close');
+  if (!overlay || !btnOpen) return;
+
+  btnOpen.addEventListener('click', () => { overlay.hidden = false; });
+  btnClose?.addEventListener('click', () => { overlay.hidden = true; });
+  // Fermer en cliquant sur le fond
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) overlay.hidden = true;
+  });
+
+  // Partager
+  document.getElementById('menu-partager')?.addEventListener('click', async () => {
+    overlay.hidden = true;
+    if (navigator.share) {
+      await navigator.share({ title: 'Xëtu', text: 'Suis les bus Dem Dikk en temps réel à Dakar', url: window.location.href });
+    } else {
+      navigator.clipboard?.writeText(window.location.href);
+      Toast.info('Lien copié !');
+    }
+  });
+
+  // Avis — ouvre le store
+  document.getElementById('menu-avis')?.addEventListener('click', () => {
+    overlay.hidden = true;
+    window.open('https://play.google.com/store/apps/', '_blank');
+  });
+}
+
 // ── Navigation principale ─────────────────────────────────
 
 export function goTo(screenId) {
@@ -141,7 +174,10 @@ async function _loadData() {
 
 document.addEventListener('DOMContentLoaded', async () => {
 
-  // 1. Écrans
+  // 1. Menu hamburger
+  _initMenu();
+
+  // 2. Écrans
   initHome({ onSeeBus: () => goTo('signal') });
   initSignal({ onSuccess: () => { goTo('home'); _loadData(); } });
   initChat();

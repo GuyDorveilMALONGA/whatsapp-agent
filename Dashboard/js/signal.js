@@ -1,19 +1,17 @@
 /**
- * js/signal.js — V1.0
- * Écran Signalement : carte GPS, grille lignes, arrêt, qualité, envoi.
+ * js/signal.js — V1.1
+ * Sprint UI : grille 3 favoris + bouton +, chips carrés, CartoCDN.
  */
 
 import * as store  from './store.js';
 import * as Toast  from './toast.js';
 import { captureAndSnap, GeolocError } from './geoloc.js';
-import { loadRoutes } from './api.js';
 import { API_BASE, LIGNES_CONNUES, LIGNE_NAMES, SESSION_PREFIX } from './constants.js';
 import { generateUUID } from './utils.js';
 
-// ── Lignes affichées dans la grille (top 11 + Autres) ────
-const LIGNES_GRID = ['1','2','4','5','6','7','8','9','10','11','13','15','16A','TAF TAF','TO1'];
+const MAX_SNAP_M = 800;
 
-// ── State ────────────────────────────────────────────────
+// ── State ─────────────────────────────────────────────────
 let _selectedLigne = null;
 let _selectedQual  = null;
 let _geolocData    = null;
@@ -23,13 +21,13 @@ let _mapReady      = false;
 
 const SESSION_ID = `${SESSION_PREFIX}${generateUUID()}`;
 
-// ── Init ─────────────────────────────────────────────────
+// ── Init ──────────────────────────────────────────────────
 
 export function initSignal({ onSuccess }) {
   _buildLigneGrid();
   _attachEvents(onSuccess);
 
-  // Initialiser la carte au premier affichage de l'écran
+  // Init carte au premier affichage
   const observer = new IntersectionObserver((entries) => {
     if (entries[0].isIntersecting && !_mapReady) {
       _initMap();
@@ -39,17 +37,20 @@ export function initSignal({ onSuccess }) {
   });
   const screen = document.getElementById('screen-signal');
   if (screen) observer.observe(screen);
+
+  // Re-construire la grille quand les favoris changent
+  store.subscribe('favLines', () => _buildLigneGrid());
 }
 
-// ── Carte mini ────────────────────────────────────────────
+// ── Carte ─────────────────────────────────────────────────
 
 function _initMap() {
   _mapSignal = L.map('map-signal', { zoomControl: false, attributionControl: false })
     .setView([14.716, -17.467], 14);
 
   L.tileLayer(
-    'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-    { maxZoom: 19 }
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { maxZoom: 19, subdomains: 'abcd' }
   ).addTo(_mapSignal);
 }
 
@@ -58,10 +59,10 @@ function _updateUserMarker(lat, lon) {
   if (_userMarker) _mapSignal.removeLayer(_userMarker);
 
   const icon = L.divIcon({
-    html: `<div style="width:14px;height:14px;border-radius:50%;
+    html: `<div style="width:16px;height:16px;border-radius:50%;
       background:#3b82f6;border:3px solid #fff;
-      box-shadow:0 2px 8px rgba(59,130,246,0.6)"></div>`,
-    iconAnchor: [7, 7],
+      box-shadow:0 2px 8px rgba(59,130,246,0.7)"></div>`,
+    iconAnchor: [8, 8],
     className: '',
   });
 
@@ -69,30 +70,40 @@ function _updateUserMarker(lat, lon) {
   _mapSignal.setView([lat, lon], 15);
 }
 
-// ── Grille lignes ─────────────────────────────────────────
+// ── Grille : 3 favoris + bouton + ─────────────────────────
 
 function _buildLigneGrid() {
   const grid = document.getElementById('ligne-grid');
   if (!grid) return;
 
-  const chips = LIGNES_GRID.slice(0, 11).map(l =>
-    `<button class="ligne-chip" data-ligne="${l}">${l}</button>`
+  // Récupérer les 3 favoris depuis localStorage
+  let favs = [];
+  try {
+    favs = JSON.parse(localStorage.getItem('xetu_fav_lines') || '[]').slice(0, 3);
+  } catch { favs = []; }
+
+  // Si pas encore de favoris, afficher les 3 premières lignes populaires
+  if (!favs.length) favs = ['4', '15', '7'];
+
+  const chips = favs.map(l =>
+    `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`
   ).join('');
 
   grid.innerHTML = chips +
-    `<button class="ligne-chip" data-action="more" style="font-size:11px;font-weight:500">Autres</button>`;
+    `<button class="ligne-chip ligne-chip--plus" data-action="more">+</button>`;
 
+  // Chips favoris
   grid.querySelectorAll('[data-ligne]').forEach(btn => {
     btn.addEventListener('click', () => {
       grid.querySelectorAll('.ligne-chip').forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
       _selectedLigne = btn.dataset.ligne;
-      // Sauvegarder dans les lignes favorites
       _saveFavoriteLine(_selectedLigne);
       _updateSendBtn();
     });
   });
 
+  // Bouton + → afficher toutes les lignes
   grid.querySelector('[data-action="more"]')?.addEventListener('click', _showAllLines);
 }
 
@@ -107,8 +118,7 @@ function _showAllLines() {
   });
 
   grid.innerHTML = all.map(l =>
-    `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}"
-      data-ligne="${l}">${l}</button>`
+    `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`
   ).join('');
 
   grid.querySelectorAll('[data-ligne]').forEach(btn => {
@@ -136,15 +146,14 @@ async function _handleGPS() {
 
   try {
     const result = await captureAndSnap(_selectedLigne || null);
-    _geolocData   = result;
+    _geolocData = result;
 
     _updateUserMarker(result.lat, result.lon);
 
-    // Mettre à jour label carte
     const dot   = document.getElementById('signal-pos-dot');
     const label = document.getElementById('signal-map-label');
-    if (dot)   { dot.className = 'pos-dot pos-dot--active'; }
-    if (label) { label.innerHTML = `<span class="pos-dot pos-dot--active"></span> Ta position GPS`; }
+    if (dot)   dot.className = 'pos-dot pos-dot--active';
+    if (label) label.innerHTML = `<span class="pos-dot pos-dot--active"></span> Ta position GPS`;
 
     if (result.snapped && result.nearest_stop) {
       document.getElementById('arret-input').value = result.nearest_stop;
@@ -153,13 +162,12 @@ async function _handleGPS() {
     } else if (result.distance_m !== null) {
       _showGeoStatus(`📍 Position capturée · arrêt le plus proche à ${result.distance_m} m`, 'geo-warn');
       btn.textContent = '📍 GPS';
-      btn.disabled    = false;
+      btn.disabled = false;
     } else {
       _showGeoStatus('📍 Position capturée · saisis l\'arrêt manuellement', 'geo-warn');
       btn.textContent = '📍 GPS';
-      btn.disabled    = false;
+      btn.disabled = false;
     }
-
     _updateSendBtn();
 
   } catch (err) {
@@ -197,17 +205,14 @@ function _initQualityTags() {
 function _updateSendBtn() {
   const arret = document.getElementById('arret-input')?.value.trim() || '';
   const ok    = !!_selectedLigne && arret.length >= 2;
-
-  const btn  = document.getElementById('btn-send');
-  const hint = document.getElementById('send-hint');
+  const btn   = document.getElementById('btn-send');
+  const hint  = document.getElementById('send-hint');
   if (btn)  btn.disabled    = !ok;
   if (hint) hint.textContent = !_selectedLigne
     ? 'Sélectionne une ligne pour continuer'
     : arret.length < 2
     ? 'Indique l\'arrêt où tu vois le bus'
-    : _geolocData
-    ? '📍 Position GPS sera envoyée'
-    : 'Signalement sans GPS';
+    : _geolocData ? '📍 Position GPS sera envoyée' : 'Signalement sans GPS';
 }
 
 // ── Envoi ─────────────────────────────────────────────────
@@ -217,7 +222,7 @@ async function _handleSend(onSuccess) {
   if (!_selectedLigne || arret.length < 2) return;
 
   const btn = document.getElementById('btn-send');
-  if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi en cours…'; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Envoi en cours…'; }
 
   const payload = {
     ligne:      _selectedLigne,
@@ -226,7 +231,7 @@ async function _handleSend(onSuccess) {
     client_ts:  new Date().toISOString(),
     session_id: SESSION_ID,
   };
-  if (_selectedQual)   payload.observation = _selectedQual;
+  if (_selectedQual)    payload.observation = _selectedQual;
   if (_geolocData?.lat) { payload.lat = _geolocData.lat; payload.lon = _geolocData.lon; }
 
   try {
@@ -247,14 +252,14 @@ async function _handleSend(onSuccess) {
     }
   } catch (err) {
     Toast.error('❌ Envoi échoué. Vérifie ta connexion.');
-    console.error('[Signal] Erreur envoi:', err);
+    console.error('[Signal] Erreur:', err);
   } finally {
-    if (btn) { btn.disabled = false; btn.textContent = '📡 Envoyer le signalement'; }
+    if (btn) { btn.disabled = false; btn.textContent = 'Envoyer le signalement'; }
     _updateSendBtn();
   }
 }
 
-// ── Reset formulaire ──────────────────────────────────────
+// ── Reset ─────────────────────────────────────────────────
 
 function _reset() {
   _selectedLigne = null;
@@ -270,7 +275,6 @@ function _reset() {
   const gpsBtn = document.getElementById('btn-gps');
   if (gpsBtn) { gpsBtn.disabled = false; gpsBtn.textContent = '📍 GPS'; }
 
-  document.querySelectorAll('.ligne-chip').forEach(b => b.classList.remove('selected'));
   document.querySelectorAll('.quality-tag').forEach(b => b.classList.remove('selected'));
 
   if (_mapSignal && _userMarker) {
@@ -283,6 +287,7 @@ function _reset() {
   if (dot)   dot.className = 'pos-dot pos-dot--wait';
   if (label) label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Position en attente`;
 
+  _buildLigneGrid();
   _updateSendBtn();
 }
 
@@ -294,24 +299,18 @@ function _saveFavoriteLine(ligne) {
     const favs = JSON.parse(raw);
     if (!favs.includes(ligne)) {
       favs.unshift(ligne);
-      localStorage.setItem('xetu_fav_lines', JSON.stringify(favs.slice(0, 3)));
-      // Notifier mylines
-      store.set('favLines', favs.slice(0, 3));
+      const newFavs = favs.slice(0, 3);
+      localStorage.setItem('xetu_fav_lines', JSON.stringify(newFavs));
+      store.set('favLines', newFavs);
     }
   } catch { /* localStorage bloqué */ }
 }
 
-// ── Attach events ─────────────────────────────────────────
+// ── Events ────────────────────────────────────────────────
 
 function _attachEvents(onSuccess) {
-  document.getElementById('btn-gps')
-    ?.addEventListener('click', _handleGPS);
-
-  document.getElementById('arret-input')
-    ?.addEventListener('input', _updateSendBtn);
-
-  document.getElementById('btn-send')
-    ?.addEventListener('click', () => _handleSend(onSuccess));
-
+  document.getElementById('btn-gps')?.addEventListener('click', _handleGPS);
+  document.getElementById('arret-input')?.addEventListener('input', _updateSendBtn);
+  document.getElementById('btn-send')?.addEventListener('click', () => _handleSend(onSuccess));
   _initQualityTags();
 }

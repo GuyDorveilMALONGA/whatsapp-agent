@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — Reset + layout shell PWA
+   css/base.css — Sprint UI Pro
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -14,8 +14,8 @@ html, body {
   overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-body);
-  font-size: 15px;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
 }
@@ -28,65 +28,141 @@ html, body {
   overflow: hidden;
 }
 
-/* ── Header ── */
+/* ── Header simplifié — statut + menu seulement ── */
 #app-header {
   height: var(--header-h);
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  padding: 0 14px;
+  padding: 0 16px;
   gap: 10px;
   flex-shrink: 0;
   z-index: var(--z-header);
 }
 
-.logo { display: flex; align-items: center; gap: 10px; }
-.logo-icon { border-radius: 8px; flex-shrink: 0; }
-.logo-text { font-family: var(--font-head); font-size: 16px; font-weight: 700; color: var(--text); line-height: 1; }
-.logo-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
-
-.header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
-
-/* Bouton statut WS (remplace EN DIRECT) */
-.ws-status-btn {
-  display: flex; align-items: center; gap: 5px;
-  border: 1px solid; border-radius: var(--radius-full);
-  padding: 4px 10px; font-size: 11px; font-weight: 600;
-  cursor: default; transition: all var(--t-fast);
+/* Statut WS — juste le point coloré, sans texte ni badge */
+.ws-status-dot-only {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
 }
-.ws-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
-.ws-status--open       { background: var(--green-dim);  border-color: rgba(0,214,127,0.25);  color: var(--green);  }
-.ws-status--open .ws-dot { background: var(--green); animation: pulse 1.5s infinite; }
-.ws-status--connecting { background: var(--yellow-dim); border-color: rgba(255,209,102,0.25); color: var(--yellow); }
+.ws-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.ws-status--open .ws-dot       { background: var(--green);  animation: pulse 1.5s infinite; }
 .ws-status--connecting .ws-dot { background: var(--yellow); }
-.ws-status--closed     { background: var(--red-dim);    border-color: rgba(255,71,87,0.25);   color: var(--red);    }
-.ws-status--closed .ws-dot { background: var(--red); }
+.ws-status--closed .ws-dot     { background: var(--red); }
 
 @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-.refresh-timer { font-size: 12px; color: var(--muted); }
+.refresh-timer { font-size: 11px; color: var(--muted); }
 
-/* ── Stats bar ── */
-.stats-bar {
-  height: var(--stats-h);
+/* Hamburger */
+.btn-menu {
+  background: none;
+  border: none;
+  cursor: pointer;
   display: flex;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
+  flex-direction: column;
+  gap: 5px;
+  padding: 4px;
+  margin-left: auto;
 }
-.stat-item { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; padding: 0 4px; }
-.stat-icon { font-size: 15px; }
-.stat-val { font-family: var(--font-head); font-size: 15px; font-weight: 700; color: var(--orange); line-height: 1; }
-.stat-val.updated { animation: statPop 0.3s var(--t-spring); }
-.stat-label { font-size: 10px; color: var(--muted); margin-top: 1px; }
-@keyframes statPop { 0%{transform:scale(1.3)} 100%{transform:scale(1)} }
+.btn-menu span {
+  display: block;
+  width: 22px;
+  height: 2px;
+  background: var(--text-dim);
+  border-radius: 2px;
+  transition: background var(--t-fast);
+}
+.btn-menu:hover span { background: var(--orange); }
+
+/* ── Menu overlay plein écran ── */
+.menu-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  justify-content: flex-end;
+  animation: fadeIn 0.2s ease;
+}
+.menu-overlay[hidden] { display: none; }
+
+.menu-panel {
+  width: 80%;
+  max-width: 300px;
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 0;
+  animation: slideInRight 0.25s ease;
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(100%); }
+  to   { transform: translateX(0); }
+}
+
+.menu-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  padding: 8px 20px;
+  display: flex;
+  align-self: flex-end;
+  margin-bottom: 12px;
+  transition: color var(--t-fast);
+}
+.menu-close:hover { color: var(--text); }
+
+.menu-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 24px;
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--text-dim);
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  text-decoration: none;
+  font-family: 'Inter', sans-serif;
+  transition: color var(--t-fast), background var(--t-fast);
+  text-align: left;
+}
+.menu-item:hover { color: var(--text); background: var(--surface2); }
+.menu-item:last-child { border-bottom: none; }
+
+.menu-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.menu-item:hover .menu-icon { color: var(--orange); }
 
 /* ── Screens ── */
 #screens {
   flex: 1;
   overflow: hidden;
   position: relative;
+  min-height: 0; /* fix bug bottom nav qui monte */
 }
 
 .screen {
@@ -98,14 +174,20 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav ── */
+/* ── Bottom nav — fix bug double clic ── */
 .bottom-nav {
   height: var(--nav-h);
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex-shrink: 0;
+  /* Fix bug montée sur double clic — ne jamais être dans le flux relatif */
+  position: relative;
+  z-index: var(--z-header);
   padding-bottom: env(safe-area-inset-bottom, 0);
+  /* Empêche tout redimensionnement */
+  min-height: var(--nav-h);
+  max-height: var(--nav-h);
 }
 
 .nav-btn {
@@ -119,37 +201,30 @@ html, body {
   background: none;
   color: var(--muted);
   font-size: 10px;
-  font-family: var(--font-body);
+  font-family: 'Inter', sans-serif;
   cursor: pointer;
   transition: color var(--t-fast);
-  padding-bottom: 2px;
+  /* Fix bug : empêche le bouton de changer de taille */
+  padding: 0;
+  min-width: 0;
+  overflow: hidden;
 }
-.nav-btn svg { width: 22px; height: 22px; transition: stroke var(--t-fast); }
+.nav-btn svg {
+  width: 22px;
+  height: 22px;
+  stroke: currentColor;
+  fill: none;
+  flex-shrink: 0;
+  transition: stroke var(--t-fast);
+}
 .nav-btn.active { color: var(--orange); }
 .nav-btn.active svg { stroke: var(--orange); }
-
-/* Bouton Signaler mis en avant */
-.nav-btn--signal {
-  color: var(--orange);
-  position: relative;
-}
-.nav-btn--signal svg { stroke: var(--orange); }
-.nav-btn--signal::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  width: 44px;
-  height: 44px;
-  border-radius: 50%;
-  background: var(--orange-dim);
-  border: 1px solid var(--orange-border);
-}
 
 /* ── Scrollbar invisible ── */
 * { scrollbar-width: none; }
 *::-webkit-scrollbar { display: none; }
 
-/* ── Animations communes ── */
-@keyframes slideUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-@keyframes fadeIn  { from{opacity:0} to{opacity:1} }
+/* ── Animations ── */
+@keyframes slideUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
 .anim-up { animation: slideUp 0.25s ease both; }

@@ -1,6 +1,6 @@
 /**
- * js/home.js — V1.0
- * Écran Accueil : carte bus, liste bus actifs, top signaleurs, toggle.
+ * js/home.js — V1.1
+ * Sprint UI : marqueurs cercles, CartoCDN dark, icône bus supprimée.
  */
 
 import * as store from './store.js';
@@ -8,9 +8,9 @@ import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './util
 
 const AVATARS = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
 
-let _map         = null;
-let _busMarkers  = {};
-let _activeCol   = 'buses';
+let _map        = null;
+let _busMarkers = {};
+let _activeCol  = 'buses';
 
 // ── Init ──────────────────────────────────────────────────
 
@@ -27,9 +27,10 @@ function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
     .setView([14.716, -17.467], 13);
 
+  // CartoCDN dark — gratuit, sans clé, adapté au thème
   L.tileLayer(
-    'https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png',
-    { maxZoom: 19 }
+    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { maxZoom: 19, subdomains: 'abcd' }
   ).addTo(_map);
 }
 
@@ -41,19 +42,23 @@ function _updateMarkers(buses) {
 
   buses.forEach(b => {
     if (!b.lat || !b.lng) return;
-    const color = b.minutes_ago <= 5 ? '#00D67F'
+
+    const color = b.minutes_ago <= 5  ? '#00D67F'
                 : b.minutes_ago <= 15 ? '#FFD166'
                 : '#FF4757';
 
+    // Cercle comme demandé dans le PDF
     const icon = L.divIcon({
       html: `<div style="
-        background:${color};color:#fff;
-        font-family:'Syne',sans-serif;font-size:10px;font-weight:700;
-        padding:3px 7px;border-radius:6px;border:2px solid #fff;
-        box-shadow:0 2px 8px rgba(0,0,0,0.5);white-space:nowrap">
+        width: 36px; height: 36px; border-radius: 50%;
+        background: ${color}; border: 3px solid #fff;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.5);
+        display: flex; align-items: center; justify-content: center;
+        font-family: Inter, sans-serif; font-size: 11px; font-weight: 700;
+        color: #fff; line-height: 1;">
         ${b.ligne}
       </div>`,
-      iconAnchor: [20, 14],
+      iconAnchor: [18, 18],
       className: '',
     });
 
@@ -89,14 +94,9 @@ function _initTabs() {
 }
 
 function _renderCols() {
-  const busCols = document.querySelectorAll('.home-col');
-  busCols.forEach(c => c.classList.remove('active'));
-
-  if (_activeCol === 'buses') {
-    document.getElementById('col-buses').classList.add('active');
-  } else {
-    document.getElementById('col-top').classList.add('active');
-  }
+  document.querySelectorAll('.home-col').forEach(c => c.classList.remove('active'));
+  const target = _activeCol === 'buses' ? 'col-buses' : 'col-top';
+  document.getElementById(target)?.classList.add('active');
 }
 
 // ── Rendu bus ─────────────────────────────────────────────
@@ -155,8 +155,8 @@ function _renderTop(leaderboard) {
 // ── Bouton "Je vois un bus ici" ───────────────────────────
 
 function _initSeeBus(onSeeBus) {
-  const btn = document.getElementById('btn-see-bus');
-  if (btn) btn.addEventListener('click', onSeeBus);
+  document.getElementById('btn-see-bus')
+    ?.addEventListener('click', onSeeBus);
 }
 
 // ── Store subscriptions ───────────────────────────────────
@@ -167,7 +167,6 @@ function _subscribeStore() {
     _renderBuses(buses);
     _renderCols();
   });
-
   store.subscribe('leaderboard', (lb) => {
     _renderTop(lb);
   });

@@ -12,11 +12,12 @@
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
-<title>Xëtu — Bus Dakar</title>
+<title>Xëtu</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<!-- Inter — police claire et simple -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
 <link rel="stylesheet" href="css/variables.css">
 <link rel="stylesheet" href="css/base.css">
 <link rel="stylesheet" href="css/components.css">
@@ -26,45 +27,68 @@
 <body>
 <div id="app">
 
+  <!-- HEADER — statut + menu seulement, pas de nom -->
   <header id="app-header">
-    <div class="logo">
-      <img src="/assets/icons/icon-192.png" class="logo-icon" alt="Xëtu" width="32" height="32">
-      <div>
-        <div class="logo-text">Xëtu</div>
-        <div class="logo-sub" id="header-sub">Bus Dem Dikk · Dakar</div>
-      </div>
+    <!-- Statut connexion (gauche) -->
+    <div id="ws-status-btn" class="ws-status-dot-only ws-status--connecting" aria-label="Statut connexion">
+      <span class="ws-dot"></span>
     </div>
-    <div class="header-right">
-      <div id="ws-status-btn" class="ws-status-btn ws-status--connecting">
-        <span class="ws-dot"></span>
-        <span class="ws-label">Connexion…</span>
-      </div>
-      <div class="refresh-timer" id="timer">30s</div>
-    </div>
+    <!-- Timer -->
+    <div class="refresh-timer" id="timer">30s</div>
+    <!-- Spacer -->
+    <div style="flex:1"></div>
+    <!-- Hamburger menu -->
+    <button class="btn-menu" id="btn-menu" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
   </header>
 
-  <div class="stats-bar">
-    <div class="stat-item">
-      <span class="stat-icon">🚌</span>
-      <div><div class="stat-val" id="stat-bus">—</div><div class="stat-label">Bus actifs</div></div>
-    </div>
-    <div class="stat-item">
-      <span class="stat-icon">📍</span>
-      <div><div class="stat-val" id="stat-sig">—</div><div class="stat-label">Signalements</div></div>
-    </div>
-    <div class="stat-item">
-      <span class="stat-icon">👥</span>
-      <div><div class="stat-val" id="stat-contrib">—</div><div class="stat-label">Contributeurs</div></div>
+  <!-- MENU PLEIN ÉCRAN -->
+  <div class="menu-overlay" id="menu-overlay" hidden>
+    <div class="menu-panel">
+      <button class="menu-close" id="menu-close" aria-label="Fermer">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+      </button>
+      <nav class="menu-list">
+        <a class="menu-item" href="https://t.me/XetuBot" target="_blank" rel="noopener">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248l-2.03 9.562c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L6.054 14.99l-2.944-.924c-.64-.203-.653-.64.136-.948l11.5-4.432c.533-.194 1.001.13.816.562z"/></svg>
+          Telegram
+        </a>
+        <a class="menu-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+          WhatsApp
+        </a>
+        <button class="menu-item" id="menu-avis">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+          Avis
+        </button>
+        <button class="menu-item" id="menu-partager">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+          Partager
+        </button>
+        <button class="menu-item" id="menu-cgu">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          Conditions d'utilisation
+        </button>
+        <button class="menu-item" id="menu-contact">
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          Nous contacter
+        </button>
+      </nav>
     </div>
   </div>
 
+  <!-- ÉCRANS -->
   <main id="screens">
 
     <!-- ACCUEIL -->
     <section class="screen active" id="screen-home">
       <div id="map-home"></div>
+
+      <!-- SIGNALER UN BUS -->
       <div class="see-bus-wrap">
-        <button class="btn-see-bus" id="btn-see-bus">
+        <div class="see-bus-label">SIGNALER UN BUS</div>
+        <button class="btn-see-bus btn-see-bus--glow" id="btn-see-bus">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
             <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
@@ -73,6 +97,7 @@
           Je vois un bus ici
         </button>
       </div>
+
       <div class="home-bottom">
         <div class="home-cols-header">
           <div class="home-col-tabs">
@@ -87,7 +112,7 @@
       </div>
     </section>
 
-    <!-- SIGNALEMENT — ouvert par "Je vois un bus ici", PAS dans la nav -->
+    <!-- SIGNALEMENT -->
     <section class="screen" id="screen-signal">
       <div class="signal-topbar">
         <button class="btn-back" id="btn-back-signal">
@@ -107,6 +132,7 @@
       <div class="signal-body">
         <div class="form-section">
           <div class="form-section-title">Quelle ligne ?</div>
+          <!-- 3 favoris + bouton + seulement -->
           <div class="ligne-grid" id="ligne-grid"></div>
         </div>
         <div class="form-section">
@@ -126,7 +152,7 @@
             <button class="quality-tag" data-val="déjà parti">💨 Déjà parti</button>
           </div>
         </div>
-        <button class="btn-send" id="btn-send" disabled>📡 Envoyer le signalement</button>
+        <button class="btn-send" id="btn-send" disabled>Envoyer le signalement</button>
         <p class="send-hint" id="send-hint">Sélectionne une ligne pour continuer</p>
       </div>
     </section>
@@ -134,7 +160,6 @@
     <!-- ITINÉRAIRE = chat Xëtu -->
     <section class="screen" id="screen-itin">
       <div class="chat-header-bar">
-        <div class="chat-header-avatar">🚌</div>
         <div>
           <div class="chat-header-name">Xëtu</div>
           <div class="chat-header-status">
@@ -143,7 +168,15 @@
           </div>
         </div>
       </div>
-      <div class="chat-messages" id="chat-messages" role="log" aria-live="polite"></div>
+      <!-- Message de bienvenue plaqué en HTML — ne passe PAS par WS -->
+      <div class="chat-messages" id="chat-messages" role="log" aria-live="polite">
+        <div class="chat-msg chat-msg--bot">
+          <div class="chat-bubble">
+            Salam ! Je suis Xëtu 🚌<br>
+            Pose-moi une question sur les bus de Dakar ou signale une position directement ici.
+          </div>
+        </div>
+      </div>
       <div class="chat-suggestions" id="chat-suggestions"></div>
       <div class="chat-composer">
         <input class="chat-input" id="chat-input" type="text" placeholder="Comment aller à Sandaga ?…" maxlength="500" autocomplete="off">
@@ -165,7 +198,7 @@
 
   </main>
 
-  <!-- BOTTOM NAV — 3 onglets uniquement -->
+  <!-- BOTTOM NAV — 3 onglets, icônes corrigées -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-screen="home">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -174,16 +207,18 @@
       </svg>
       Accueil
     </button>
+    <!-- Itinéraire — icône épingle comme la maquette -->
     <button class="nav-btn" data-screen="itin">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+        <circle cx="12" cy="10" r="4"/>
+        <path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/>
       </svg>
       Itinéraire
     </button>
+    <!-- Mes lignes — icône étoile/favoris comme la maquette -->
     <button class="nav-btn" data-screen="mylines">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/>
-        <circle cx="3" cy="6" r="1" fill="currentColor"/><circle cx="3" cy="12" r="1" fill="currentColor"/><circle cx="3" cy="18" r="1" fill="currentColor"/>
+        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
       </svg>
       Mes lignes
     </button>

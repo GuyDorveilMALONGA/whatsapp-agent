@@ -14,6 +14,15 @@
   flex-shrink: 0;
 }
 
+.see-bus-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+/* Hover permanent — toujours orange, jamais gris */
 .btn-see-bus {
   width: 100%;
   display: flex;
@@ -21,19 +30,19 @@
   justify-content: center;
   gap: 8px;
   padding: 11px;
-  background: transparent;
-  border: 1.5px solid var(--border);
+  background: var(--orange-dim);
+  border: 1.5px solid var(--orange-border);
   border-radius: var(--radius-lg);
-  color: var(--text-dim);
+  color: var(--orange);
   font-size: 14px;
-  font-family: var(--font-body);
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
   cursor: pointer;
-  transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
+  transition: background var(--t-fast), box-shadow var(--t-fast);
 }
 .btn-see-bus:hover, .btn-see-bus:active {
-  border-color: var(--orange-border);
-  color: var(--orange);
-  background: var(--orange-dim);
+  background: rgba(255, 107, 53, 0.25);
+  box-shadow: 0 0 0 3px rgba(255, 107, 53, 0.15);
 }
 
 /* Bas de l'écran accueil */
@@ -219,16 +228,17 @@
 }
 .optional { text-transform: none; font-weight: 400; color: var(--muted); opacity: 0.7; }
 
-/* Grille lignes */
-.ligne-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+/* Grille lignes — 4 colonnes */
+.ligne-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+
 .ligne-chip {
   background: var(--surface2);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 10px 4px;
+  border-radius: var(--radius-sm); /* carré, pas trop arrondi */
+  padding: 14px 4px;               /* pas trop petit */
   text-align: center;
-  font-family: var(--font-head);
-  font-size: 13px;
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
   font-weight: 700;
   color: var(--muted);
   cursor: pointer;
@@ -236,6 +246,15 @@
 }
 .ligne-chip:hover { border-color: var(--orange-border); color: var(--text); }
 .ligne-chip.selected { background: var(--orange); border-color: var(--orange); color: #fff; }
+
+/* Bouton + */
+.ligne-chip--plus {
+  font-size: 20px;
+  font-weight: 400;
+  color: var(--muted);
+  border-style: dashed;
+}
+.ligne-chip--plus:hover { border-color: var(--orange-border); color: var(--orange); background: var(--orange-dim); }
 
 /* Champ arrêt */
 .arret-wrap { position: relative; }
@@ -310,12 +329,13 @@
   border-radius: var(--radius-lg);
   color: #fff;
   font-size: 15px;
-  font-weight: 700;
-  font-family: var(--font-head);
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
   cursor: pointer;
   box-shadow: var(--shadow-orange);
   transition: opacity var(--t-fast), transform var(--t-fast);
   margin-top: 4px;
+  letter-spacing: 0.02em;
 }
 .btn-send:active { transform: scale(0.98); }
 .btn-send:disabled { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
