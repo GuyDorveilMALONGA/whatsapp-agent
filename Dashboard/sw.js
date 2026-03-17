@@ -1,312 +1,133 @@
 /**
- * sw.js — Service Worker Xëtu
- * V2.1 — Fix : filtrage des requêtes non-HTTP (chrome-extension://, etc.)
- * Stratégie :
- *   - Tiles OSM       → cache-first (longue durée)
- *   - CSS / JS / HTML → cache-first (versionnés)
- *   - /api/*          → network-first avec fallback cache
- *   - Navigation      → index.html depuis cache
+ * sw.js — Xëtu PWA Service Worker
+ * VERSION BUMP → force la mise à jour sur les appareils qui ont installé la PWA
+ * Chaque sprint : incrémenter CACHE_VERSION
  */
 
-const CACHE_VERSION   = 'xetu-v2';
-const CACHE_STATIC    = `${CACHE_VERSION}-static`;
-const CACHE_TILES     = `${CACHE_VERSION}-tiles`;
-const CACHE_API       = `${CACHE_VERSION}-api`;
+const CACHE_VERSION = 'xetu-v3'; // ← incrémente à chaque sprint
+const CACHE_NAME    = CACHE_VERSION;
 
-// Fichiers à précacher au install
-const PRECACHE_ASSETS = [
+const PRECACHE_URLS = [
   '/',
   '/index.html',
+  '/manifest.json',
   '/css/variables.css',
   '/css/base.css',
-  '/css/layout.css',
   '/css/components.css',
   '/css/map.css',
   '/js/app.js',
-  '/js/store.js',
-  '/js/constants.js',
-  '/js/utils.js',
-  '/js/toast.js',
-  '/js/api.js',
-  '/js/map.js',
-  '/js/ui.js',
-  '/js/mobile.js',
-  '/js/modal.js',
-  '/js/ws.js',
-  '/js/chat.js',
-  '/assets/icons/icon-192.png',
-  '/assets/icons/icon-512.png',
-  '/js/geoloc.js',
+  '/js/home.js',
   '/js/signal.js',
+  '/js/chat.js',
+  '/js/mylines.js',
+  '/js/api.js',
+  '/js/store.js',
+  '/js/utils.js',
+  '/js/ws.js',
   '/js/push.js',
-  '/css/geoloc.css',
-  '/css/overlay-styles.css',
-  // Leaflet depuis CDN — on les met aussi en cache
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css',
-  'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js',
+  '/js/geoloc.js',
+  '/js/toast.js',
+  '/js/constants.js',
 ];
 
-// Durée max du cache tiles (7 jours)
-const TILES_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-// Max entrées dans le cache tiles
-const TILES_MAX_ENTRIES = 500;
-
-// ── INSTALL ───────────────────────────────────────────────
+// ── Install ───────────────────────────────────────────────
 
 self.addEventListener('install', (event) => {
+  // Forcer l'activation immédiate sans attendre la fermeture des onglets
+  self.skipWaiting();
+
   event.waitUntil(
-    caches.open(CACHE_STATIC)
-      .then(cache => cache.addAll(PRECACHE_ASSETS))
-      .then(() => self.skipWaiting())
-      .catch(err => console.warn('[SW] Précache partiel :', err))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_URLS).catch((err) => {
+        console.warn('[SW] Précache partiel:', err);
+      });
+    })
   );
 });
 
-// ── ACTIVATE ──────────────────────────────────────────────
+// ── Activate — purger les anciens caches ──────────────────
 
 self.addEventListener('activate', (event) => {
-  const currentCaches = [CACHE_STATIC, CACHE_TILES, CACHE_API];
   event.waitUntil(
-    caches.keys()
-      .then(keys => Promise.all(
-        keys
-          .filter(key => !currentCaches.includes(key))
-          .map(key => {
-            console.log('[SW] Purge ancien cache :', key);
-            return caches.delete(key);
-          })
-      ))
-      .then(() => self.clients.claim())
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
+      )
+    ).then(() => {
+      // Prendre le contrôle de tous les clients immédiatement
+      return self.clients.claim();
+    })
   );
 });
 
-// ── FETCH ─────────────────────────────────────────────────
+// ── Fetch — Network first, cache fallback ─────────────────
 
 self.addEventListener('fetch', (event) => {
-  const { request } = event;
-  const url = request.url;
+  const url = new URL(event.request.url);
 
-  // FIX V2.1 : ignorer toutes les requêtes non-HTTP/HTTPS
-  // (chrome-extension://, moz-extension://, etc.)
-  if (!url.startsWith('http://') && !url.startsWith('https://')) return;
-
-  // WebSocket → jamais intercepté
-  if (url.startsWith('ws://') || url.startsWith('wss://')) return;
-
-  const parsedUrl = new URL(url);
-
-  // Tiles OSM → cache-first (très longue durée)
-  if (_isTile(parsedUrl)) {
-    event.respondWith(_cachFirst_tiles(request));
+  // Ne pas intercepter les requêtes API Railway
+  if (url.hostname.includes('railway.app') || url.hostname.includes('supabase.co')) {
+    return;
+  }
+  // Ne pas intercepter les WebSocket
+  if (event.request.url.startsWith('ws://') || event.request.url.startsWith('wss://')) {
+    return;
+  }
+  // Ne pas intercepter les tuiles de carte
+  if (url.hostname.includes('cartocdn.com') || url.hostname.includes('stadiamaps.com')) {
     return;
   }
 
-  // API Railway → network-first avec fallback cache
-  if (_isAPI(parsedUrl)) {
-    event.respondWith(_networkFirst_api(request));
-    return;
-  }
-
-  // Navigation (HTML) → index.html depuis cache
-  if (request.mode === 'navigate') {
-    event.respondWith(_navigationHandler(request));
-    return;
-  }
-
-  // Tout le reste (CSS, JS, fonts CDN) → cache-first
-  event.respondWith(_cacheFirst_static(request));
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        // Mettre en cache la réponse réseau
+        if (response.ok && event.request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => {
+        // Fallback cache si hors ligne
+        return caches.match(event.request).then(cached => {
+          if (cached) return cached;
+          // Page offline par défaut
+          if (event.request.mode === 'navigate') {
+            return caches.match('/index.html');
+          }
+        });
+      })
+  );
 });
 
-// ── STRATÉGIES ────────────────────────────────────────────
-
-/**
- * Cache-first pour les tiles OSM avec gestion de la taille du cache.
- */
-async function _cachFirst_tiles(request) {
-  const cache = await caches.open(CACHE_TILES);
-  const cached = await cache.match(request);
-
-  if (cached) {
-    const dateHeader = cached.headers.get('date');
-    if (dateHeader) {
-      const age = Date.now() - new Date(dateHeader).getTime();
-      if (age < TILES_MAX_AGE_MS) return cached;
-    } else {
-      return cached;
-    }
-  }
-
-  try {
-    const response = await fetch(request);
-    if (response.ok) {
-      await _trimCache(CACHE_TILES, TILES_MAX_ENTRIES);
-      cache.put(request, response.clone());
-    }
-    return response;
-  } catch {
-    return cached || new Response('Tile indisponible offline', { status: 503 });
-  }
-}
-
-/**
- * Cache-first pour les fichiers statiques (CSS, JS, fonts).
- */
-async function _cacheFirst_static(request) {
-  const cache  = await caches.open(CACHE_STATIC);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-
-  try {
-    const response = await fetch(request);
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  } catch {
-    return new Response('Ressource indisponible offline', { status: 503 });
-  }
-}
-
-/**
- * Network-first pour l'API — fallback sur cache si réseau KO.
- */
-async function _networkFirst_api(request) {
-  const cache = await caches.open(CACHE_API);
-
-  try {
-    const response = await Promise.race([
-      fetch(request),
-      _timeout(6000),
-    ]);
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  } catch {
-    const cached = await cache.match(request);
-    if (cached) {
-      const headers = new Headers(cached.headers);
-      headers.set('X-Xetu-Cache', 'stale');
-      return new Response(cached.body, { status: 200, headers });
-    }
-    return new Response(
-      JSON.stringify({ error: 'offline', buses: [], leaderboard: [], stats: {} }),
-      { status: 200, headers: { 'Content-Type': 'application/json', 'X-Xetu-Cache': 'empty' } }
-    );
-  }
-}
-
-/**
- * Navigation : toujours servir index.html depuis le cache.
- */
-async function _navigationHandler(request) {
-  const cache = await caches.open(CACHE_STATIC);
-
-  try {
-    const response = await Promise.race([
-      fetch(request),
-      _timeout(4000),
-    ]);
-    if (response.ok) cache.put(request, response.clone());
-    return response;
-  } catch {
-    const cached = await cache.match('/index.html') || await cache.match('/');
-    return cached || new Response('<h1>Xëtu — Hors ligne</h1><p>Reconnecte-toi pour accéder au radar.</p>', {
-      status: 200,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' },
-    });
-  }
-}
-
-// ── HELPERS ───────────────────────────────────────────────
-
-function _isTile(url) {
-  return (
-    url.hostname.includes('tile.openstreetmap.org') ||
-    url.hostname.includes('tiles.') ||
-    url.pathname.match(/\/\d+\/\d+\/\d+\.png$/)
-  );
-}
-
-function _isAPI(url) {
-  return (
-    url.hostname.includes('railway.app') ||
-    url.pathname.startsWith('/api/')
-  );
-}
-
-function _timeout(ms) {
-  return new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('SW timeout')), ms)
-  );
-}
-
-async function _trimCache(cacheName, maxEntries) {
-  const cache = await caches.open(cacheName);
-  const keys  = await cache.keys();
-  if (keys.length > maxEntries) {
-    const toDelete = keys.slice(0, keys.length - maxEntries);
-    await Promise.all(toDelete.map(k => cache.delete(k)));
-  }
-}
-
-// ── MESSAGE (skip waiting depuis app.js) ──────────────────
-
-self.addEventListener('message', (event) => {
-  if (event.data?.type === 'SKIP_WAITING') {
-    self.skipWaiting();
-  }
-});
-
-// ── PUSH NOTIFICATIONS ────────────────────────────────────
+// ── Push notifications ────────────────────────────────────
 
 self.addEventListener('push', (event) => {
   if (!event.data) return;
-
   let data = {};
-  try {
-    data = event.data.json();
-  } catch {
-    data = { title: 'Xëtu', body: event.data.text() };
-  }
-
-  const title   = data.title   || 'Xëtu 🚌';
-  const options = {
-    body:    data.body    || 'Nouveau signalement bus',
-    icon:    '/assets/icons/icon-192.png',
-    badge:   '/assets/icons/icon-192.png',
-    tag:     data.tag     || 'xetu-notif',
-    renotify: true,
-    data:    { url: data.url || '/' },
-    actions: [
-      { action: 'open',    title: 'Voir sur la carte' },
-      { action: 'dismiss', title: 'Fermer' },
-    ],
-  };
+  try { data = event.data.json(); } catch { data = { title: 'Xëtu', body: event.data.text() }; }
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification(data.title || 'Xëtu', {
+      body:  data.body  || 'Un bus a été signalé',
+      icon:  '/assets/icons/icon-192.png',
+      badge: '/assets/icons/icon-192.png',
+      data:  data.url ? { url: data.url } : {},
+      vibrate: [200, 100, 200],
+    })
   );
 });
 
-// ── CLICK NOTIFICATION ────────────────────────────────────
-
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  if (event.action === 'dismiss') return;
-
   const url = event.notification.data?.url || '/';
-
   event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((clientList) => {
-        // Si l'app est déjà ouverte → focus
-        for (const client of clientList) {
-          if (client.url.includes(self.location.origin) && 'focus' in client) {
-            return client.focus();
-          }
-        }
-        // Sinon → ouvre un nouvel onglet
-        if (clients.openWindow) {
-          return clients.openWindow(url);
-        }
-      })
+    clients.matchAll({ type: 'window' }).then(windowClients => {
+      for (const client of windowClients) {
+        if (client.url === url && 'focus' in client) return client.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
   );
 });

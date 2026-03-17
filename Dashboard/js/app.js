@@ -1,5 +1,6 @@
 /**
- * js/app.js — V2.0 Sprint Final
+ * js/app.js — V2.1
+ * FIX : popups avis/contact s'ouvrent après fermeture menu (délai 50ms)
  */
 
 import * as store   from './store.js';
@@ -31,96 +32,49 @@ export function goTo(screenId) {
 _navBtns.forEach(btn => btn.addEventListener('click', () => goTo(btn.dataset.screen)));
 document.getElementById('btn-back-signal')?.addEventListener('click', () => goTo('home'));
 
-// ── Menu hamburger — corrigé ──────────────────────────────
-
-function _initMenu() {
-  const overlay  = document.getElementById('menu-overlay');
-  const btnOpen  = document.getElementById('btn-menu');
-  const btnClose = document.getElementById('menu-close');
-  if (!overlay || !btnOpen) return;
-
-  const open  = () => { overlay.hidden = false; };
-  const close = () => { overlay.hidden = true;  };
-
-  btnOpen.addEventListener('click', open);
-  btnClose?.addEventListener('click', close);
-  overlay.addEventListener('click', (e) => { if (e.target === overlay) close(); });
-
-  // Partager
-  document.getElementById('menu-partager')?.addEventListener('click', async () => {
-    close();
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: 'Xëtu', text: 'Suis les bus Dem Dikk en temps réel', url: location.href });
-      } else {
-        await navigator.clipboard?.writeText(location.href);
-        Toast.info('Lien copié !');
-      }
-    } catch {}
-  });
-
-  // CGU
-  document.getElementById('menu-cgu')?.addEventListener('click', () => {
-    close();
-    Toast.info('Conditions d\'utilisation à venir');
-  });
-
-  // Avis → popup étoiles
-  document.getElementById('menu-avis')?.addEventListener('click', () => {
-    close();
-    _openPopup('popup-avis');
-  });
-
-  // Contact → popup
-  document.getElementById('menu-contact')?.addEventListener('click', () => {
-    close();
-    _openPopup('popup-contact');
-  });
-}
-
 // ── Popups ────────────────────────────────────────────────
 
 function _openPopup(id) {
-  document.getElementById(id).hidden = false;
+  // Délai pour laisser l'animation de fermeture du menu se terminer
+  setTimeout(() => {
+    const el = document.getElementById(id);
+    if (el) el.hidden = false;
+  }, 50);
 }
+
 function _closePopup(id) {
-  document.getElementById(id).hidden = true;
+  const el = document.getElementById(id);
+  if (el) el.hidden = true;
 }
 
 function _initPopups() {
-  // Popup Avis — étoiles
+  // Popup Avis — étoiles interactives
   let _starVal = 0;
   const starsRow = document.getElementById('stars-row');
+
   starsRow?.querySelectorAll('.star-btn').forEach(btn => {
+    const val = parseInt(btn.dataset.val);
+
     btn.addEventListener('click', () => {
-      _starVal = parseInt(btn.dataset.val);
-      starsRow.querySelectorAll('.star-btn').forEach((b, i) => {
-        b.classList.toggle('active', i < _starVal);
-      });
+      _starVal = val;
+      _updateStars(starsRow, _starVal);
     });
-    btn.addEventListener('mouseenter', () => {
-      const hov = parseInt(btn.dataset.val);
-      starsRow.querySelectorAll('.star-btn').forEach((b, i) => {
-        b.classList.toggle('active', i < hov);
-      });
-    });
-    btn.addEventListener('mouseleave', () => {
-      starsRow.querySelectorAll('.star-btn').forEach((b, i) => {
-        b.classList.toggle('active', i < _starVal);
-      });
-    });
+    btn.addEventListener('mouseenter', () => _updateStars(starsRow, val));
+    btn.addEventListener('mouseleave', () => _updateStars(starsRow, _starVal));
+    // Touch
+    btn.addEventListener('touchstart', (e) => {
+      e.stopPropagation();
+      _starVal = val;
+      _updateStars(starsRow, _starVal);
+    }, { passive: true });
   });
 
   document.getElementById('avis-cancel')?.addEventListener('click', () => _closePopup('popup-avis'));
   document.getElementById('avis-confirm')?.addEventListener('click', () => {
     _closePopup('popup-avis');
-    if (_starVal >= 4) {
-      window.open('https://play.google.com/store/apps/', '_blank');
-    } else if (_starVal > 0) {
-      Toast.info('Merci pour votre avis ! 🙏');
-    }
+    if (_starVal >= 4) window.open('https://play.google.com/store/apps/', '_blank');
+    else if (_starVal > 0) Toast.info('Merci pour votre avis ! 🙏');
   });
-  // Fermer en cliquant fond
   document.getElementById('popup-avis')?.addEventListener('click', (e) => {
     if (e.target.id === 'popup-avis') _closePopup('popup-avis');
   });
@@ -132,7 +86,53 @@ function _initPopups() {
   });
 }
 
-// ── Statut WebSocket — point coloré seulement ─────────────
+function _updateStars(row, val) {
+  row.querySelectorAll('.star-btn').forEach((b, i) => {
+    b.classList.toggle('active', i < val);
+  });
+}
+
+// ── Menu hamburger ────────────────────────────────────────
+
+function _initMenu() {
+  const overlay  = document.getElementById('menu-overlay');
+  const btnOpen  = document.getElementById('btn-menu');
+  const btnClose = document.getElementById('menu-close');
+  if (!overlay || !btnOpen) return;
+
+  const openMenu  = () => { overlay.hidden = false; };
+  const closeMenu = () => { overlay.hidden = true; };
+
+  btnOpen.addEventListener('click', openMenu);
+  btnClose?.addEventListener('click', closeMenu);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeMenu(); });
+
+  document.getElementById('menu-partager')?.addEventListener('click', async () => {
+    closeMenu();
+    try {
+      if (navigator.share) await navigator.share({ title: 'Xëtu', url: location.href });
+      else { await navigator.clipboard?.writeText(location.href); Toast.info('Lien copié !'); }
+    } catch {}
+  });
+
+  document.getElementById('menu-cgu')?.addEventListener('click', () => {
+    closeMenu();
+    Toast.info('Conditions d\'utilisation à venir');
+  });
+
+  // Avis & Contact : fermer menu PUIS ouvrir popup (délai dans _openPopup)
+  document.getElementById('menu-avis')?.addEventListener('click', () => {
+    closeMenu();
+    _openPopup('popup-avis');
+  });
+
+  document.getElementById('menu-contact')?.addEventListener('click', () => {
+    closeMenu();
+    _openPopup('popup-contact');
+  });
+}
+
+// ── Statut WS ─────────────────────────────────────────────
 
 function _updateWsStatus(status) {
   const el = document.getElementById('ws-status-btn');
@@ -168,15 +168,12 @@ async function _loadData() {
     store.set('buses',       buses);
     store.set('leaderboard', lbData.leaderboard || []);
     store.set('stats',       lbData.stats || {});
-  } catch (err) {
-    console.warn('[App]', err);
-  }
+  } catch (err) { console.warn('[App]', err); }
 }
 
 // ── Init ──────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-
   _initMenu();
   _initPopups();
 
@@ -194,9 +191,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     },
     onChatResponse: (text) => store.set('lastBotMessage', text),
     onTyping:       (active) => store.set('chatTyping', active),
-    onWelcome:      (text, suggestions) => {
-      // NE PAS afficher le texte welcome — il est déjà dans le HTML
-      // On envoie seulement les suggestions si présentes
+    onWelcome:      (_text, suggestions) => {
       if (suggestions?.length) store.set('chatSuggestions', suggestions);
     },
     onError:        (msg) => { _updateWsStatus('closed'); Toast.error(msg || 'Connexion perdue'); },
