@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.1
+   css/base.css — V2.2 — FIX bottom nav mobile
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -15,7 +15,14 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app { height: 100%; display: flex; flex-direction: column; overflow: hidden; }
+/* App shell — hauteur fixe, jamais de scroll global */
+#app {
+  height: 100%;
+  height: 100dvh; /* dynamic viewport height — fix iOS Safari */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
 
 /* ── Header ── */
 #app-header {
@@ -63,7 +70,6 @@ html, body {
 .menu-close {
   background: none; border: none; color: var(--muted); cursor: pointer;
   padding: 8px 20px; display: flex; align-self: flex-end; margin-bottom: 12px;
-  transition: color var(--t-fast);
 }
 .menu-close:hover { color: var(--text); }
 
@@ -81,7 +87,7 @@ html, body {
 .menu-icon { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
 .menu-item:hover .menu-icon, .menu-item:active .menu-icon { color: var(--orange); }
 
-/* ── Popups — z-index 700 pour passer au-dessus du menu (500) ── */
+/* ── Popups — z-index 700 ── */
 .popup-overlay {
   position: fixed; inset: 0; z-index: 700;
   background: rgba(0,0,0,0.75);
@@ -99,12 +105,10 @@ html, body {
 .popup-title { font-size: 17px; font-weight: 700; margin-bottom: 6px; color: var(--text); }
 .popup-sub   { font-size: 13px; color: var(--muted); margin-bottom: 20px; }
 
-/* Stars */
 .stars-row { display: flex; gap: 6px; justify-content: center; margin-bottom: 24px; }
 .star-btn {
   font-size: 38px; background: none; border: none; cursor: pointer;
-  color: rgba(255,255,255,0.15); transition: color 0.1s, transform 0.1s; line-height: 1;
-  padding: 4px;
+  color: rgba(255,255,255,0.15); transition: color 0.1s, transform 0.1s; line-height: 1; padding: 4px;
 }
 .star-btn.active { color: #FFD700; }
 .star-btn:hover  { color: #FFD700; transform: scale(1.2); }
@@ -119,7 +123,6 @@ html, body {
 .popup-btn--confirm { background: var(--orange); color: #fff; }
 .popup-btn:active   { opacity: 0.8; }
 
-/* Contact */
 .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 4px; }
 .contact-item {
   display: flex; flex-direction: column; align-items: center; gap: 8px;
@@ -129,36 +132,65 @@ html, body {
   transition: border-color var(--t-fast), color var(--t-fast), background var(--t-fast);
 }
 .contact-item:hover, .contact-item:active { border-color: var(--orange-border); color: var(--text); background: var(--surface3); }
-.contact-icon {
-  width: 46px; height: 46px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-}
+.contact-icon { width: 46px; height: 46px; border-radius: 50%; display: flex; align-items: center; justify-content: center; }
 .contact-icon--call { background: rgba(0,214,127,0.15);  color: var(--green);  }
 .contact-icon--mail { background: rgba(255,107,53,0.15); color: var(--orange); }
 .contact-icon--wa   { background: rgba(37,211,102,0.15); color: #25D366;       }
 .contact-icon--ig   { background: rgba(212,53,126,0.15); color: #D4537E;       }
 
 /* ── Screens ── */
-#screens { flex: 1; overflow: hidden; position: relative; min-height: 0; }
-.screen  { position: absolute; inset: 0; display: none; flex-direction: column; overflow: hidden; }
+#screens {
+  flex: 1;
+  overflow: hidden;
+  position: relative;
+  min-height: 0; /* critique pour flex */
+}
+
+.screen {
+  position: absolute; inset: 0; display: none;
+  flex-direction: column; overflow: hidden;
+}
 .screen.active { display: flex; }
 
-/* ── Bottom nav — FIX double clic ── */
+/* ── Bottom nav — FIX DÉFINITIF bug mobile double clic ──
+   Le problème : padding-bottom + height variable = hauteur qui change
+   Solution : hauteur totale FIXE incluant safe area dans le padding des boutons
+*/
 .bottom-nav {
-  background: var(--surface); border-top: 1px solid var(--border);
-  display: flex; flex-shrink: 0;
-  height: var(--nav-h); min-height: var(--nav-h); max-height: var(--nav-h);
-  position: relative; z-index: var(--z-header);
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  display: flex;
+  /* Hauteur fixe absolue — jamais recalculée */
+  flex: 0 0 auto;
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  /* Pas de padding-bottom sur le container — on le met sur les boutons */
+  z-index: 20;
+  /* Empêche tout déplacement */
+  will-change: auto;
+  transform: translateZ(0); /* force GPU layer — évite les repaints */
 }
+
 .nav-btn {
-  flex: 1; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 4px;
+  flex: 1;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  padding-top: 10px;
+  /* Compenser safe-area dans le padding bottom des boutons */
+  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  gap: 4px;
   border: none; background: none; color: var(--muted);
-  font-size: 10px; font-family: 'Inter', sans-serif; cursor: pointer;
-  transition: color var(--t-fast); padding: 0; min-width: 0; overflow: hidden;
+  font-size: 10px; font-family: 'Inter', sans-serif;
+  cursor: pointer; transition: color var(--t-fast);
+  min-width: 0; overflow: hidden;
+  /* Empêche le bouton de changer de taille au clic */
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
 }
-.nav-btn svg { width: 22px; height: 22px; stroke: currentColor; fill: none; flex-shrink: 0; }
+.nav-btn svg {
+  width: 22px; height: 22px; stroke: currentColor; fill: none;
+  flex-shrink: 0; pointer-events: none; /* évite double event */
+}
+.nav-btn span { pointer-events: none; } /* label non cliquable séparément */
 .nav-btn.active { color: var(--orange); }
 .nav-btn.active svg { stroke: var(--orange); }
 
@@ -167,6 +199,6 @@ html, body {
 *::-webkit-scrollbar { display: none; }
 
 /* Animations */
-@keyframes slideUp    { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
-@keyframes fadeIn     { from{opacity:0} to{opacity:1} }
+@keyframes slideUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+@keyframes fadeIn   { from{opacity:0} to{opacity:1} }
 .anim-up { animation: slideUp 0.25s ease both; }
