@@ -161,7 +161,7 @@ async def run(
     global _fallback_count
 
     # ── Choix de l'agent ─────────────────────────────────
-    agent_name = "gemini" if langue == "wolof" else "groq"
+    agent_name = "groq"
     logger.info(f"[xetu_run] langue={langue!r} | phone=…{phone[-4:]!r} | agent={agent_name}")
 
     config = {
