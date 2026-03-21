@@ -225,7 +225,7 @@ async def report_bus(
     import asyncio
     from db import queries
     from config.settings import VALID_LINES
-    from core.anti_fraud import is_blacklisted, is_spam_pattern, compute_confidence
+    from core.anti_fraud import is_blacklisted_signalement, is_spam_pattern, compute_signalement_confidence, CONFIDENCE_THRESHOLD
     from skills.signalement import notify_abonnes
 
     phone = _get_phone(config)
@@ -235,19 +235,26 @@ async def report_bus(
     if ligne not in VALID_LINES:
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
-    if is_blacklisted(phone):
+    if is_blacklisted_signalement(message_original):
         return {"status": "blocked", "reason": "blacklist"}
 
-    if is_spam_pattern(message_original):
+    if is_spam_pattern(phone, ligne):
         return {"status": "blocked", "reason": "spam"}
 
-    confidence = compute_confidence(phone, ligne, arret)
-    if confidence < 0.3:
+    confidence = compute_signalement_confidence(
+    phone=phone, ligne=ligne, arret=arret,
+    source="signalement_fort",
+    has_verbe_observation=True,
+    has_arret_connu=bool(arret),
+    )
+    
+    if confidence < CONFIDENCE_THRESHOLD:
+
         return {
-            "status": "needs_confirmation",
-            "ligne": ligne,
-            "arret": arret,
-            "confidence": confidence,
+        "status": "needs_confirmation",
+        "ligne": ligne,
+        "arret": arret,
+        "confidence": round(confidence, 2),
         }
 
     try:
