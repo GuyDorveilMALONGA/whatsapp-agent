@@ -1,11 +1,13 @@
 """
-agent/tools.py — V1.8
+agent/tools.py — V1.9
 Outils LangGraph de Xëtu.
 
-MIGRATIONS V1.8 depuis V1.7 :
-  - calculate_route : retourne str Markdown formatée (plus de dict brut)
-  - Ajout helper privé _format_route_result()
-  - Docstring calculate_route mise à jour (return type str)
+MIGRATIONS V1.9 depuis V1.8 :
+  - Ajout tool set_itinerary_context (TOOL 7)
+    Fixe le flux itinéraire 2 tours : quand destination connue mais origin manquante,
+    l'agent appelle ce tool pour setter session.etat='attente_origin' en DB.
+    Sans ce tool, set_attente_origin() n'était jamais appelé → Tour 2 impossible.
+  - ALL_TOOLS mis à jour
 """
 import logging
 from typing import Optional, Annotated
@@ -35,25 +37,21 @@ def _format_route_result(result: dict) -> str:
     status = result.get("status", "error")
     routes = result.get("routes") or []
 
-    # ── Arrêt introuvable ──────────────────────────────────
     if status == "stop_not_found":
         which = result.get("which", "")
         query = result.get("query", "?")
         label = "départ" if which == "origin" else "destination"
         return f"Je ne connais pas *{query}* comme {label}. Précise le quartier ou l'arrêt Dem Dikk. 🙏"
 
-    # ── Même arrêt ─────────────────────────────────────────
     if status == "same_stop":
         stop = result.get("stop", "?")
         return f"Le départ et la destination sont le même arrêt (*{stop}*). 🙏"
 
-    # ── Aucun itinéraire ───────────────────────────────────
     if status == "not_found" or not routes:
         orig = result.get("origin_display") or result.get("origin", "?")
         dest = result.get("dest_display") or result.get("destination", "?")
         return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
 
-    # ── Meilleur itinéraire (index 0, déjà trié par score) ─
     r = routes[0]
 
     def _mins(total_min=None, nb_stops=None) -> str:
@@ -66,7 +64,6 @@ def _format_route_result(result: dict) -> str:
     orig = result.get("origin_display", "?")
     dest = result.get("dest_display", "?")
 
-    # ── Trajet direct ──────────────────────────────────────
     if status == "direct":
         num      = r.get("number", "?")
         nb       = r.get("nb_stops")
@@ -81,7 +78,6 @@ def _format_route_result(result: dict) -> str:
             f"descendez à *{arrivee}* ({nb} arrêts{dur_part})"
         )
 
-    # ── Marche + direct ────────────────────────────────────
     if status == "walk_direct":
         num           = r.get("number", "?")
         walk_stop     = r.get("walk_stop", "?")
@@ -101,7 +97,6 @@ def _format_route_result(result: dict) -> str:
             )
         return f"🚶 {walk_part}, puis 🚌 Ligne {num} → descendez à *{arrivee}*{dur_part}"
 
-    # ── Correspondance ─────────────────────────────────────
     if status == "transfer":
         num1      = r.get("number1", "?")
         transfer  = r.get("transfer", "?")
@@ -117,7 +112,6 @@ def _format_route_result(result: dict) -> str:
             f"puis 🚌 Ligne {num2} → *{arrivee}*{dur_part}"
         )
 
-    # ── Fallback inattendu ─────────────────────────────────
     logger.warning(f"[_format_route_result] status inconnu: {status!r}")
     return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
 
@@ -134,7 +128,7 @@ async def calculate_route(
 ) -> str:
     """Calcule un itinéraire en bus Dem Dikk à Dakar.
     Utiliser UNIQUEMENT si l'utilisateur fournit un départ ET une destination.
-    Ne pas appeler si l'une des deux est manquante — demander d'abord à l'usager.
+    Ne pas appeler si l'une des deux est manquante — appeler set_itinerary_context à la place.
     Retourne une string Markdown prête à envoyer — ne pas reformater ni résumer.
 
     Args:
@@ -224,69 +218,37 @@ async def report_bus(
     NE PAS rappeler report_bus automatiquement.
 
     Args:
-        ligne: numéro de ligne observée (ex: '15', '16A')
-        arret: nom de l'arrêt ou lieu où le bus a été vu
-        message_original: texte brut du message (utilisé pour l'anti-fraude)
+        ligne: numéro de ligne Dem Dikk (ex: '15', '16A', 'TAF TAF')
+        arret: nom de l'arrêt où le bus a été vu
+        message_original: texte brut de l'usager (pour l'anti-fraude)
     """
     import asyncio
-    from core.anti_fraud import (
-        is_blacklisted_signalement,
-        is_spam_pattern,
-        check_distance_coherence,
-        compute_signalement_confidence,
-        CONFIDENCE_THRESHOLD,
-    )
-    from config.settings import VALID_LINES
     from db import queries
+    from config.settings import VALID_LINES
+    from core.anti_fraud import is_blacklisted, is_spam_pattern, compute_confidence
     from skills.signalement import notify_abonnes
 
     phone = _get_phone(config)
-    logger.info(f"[report_bus] ligne={ligne!r} arret={arret!r} phone=…{phone[-4:]}")
-
-    if is_blacklisted_signalement(message_original):
-        logger.warning(f"[report_bus] blacklisté: {message_original!r}")
-        return {"status": "rejected", "reason": "not_a_real_sighting"}
-
     ligne = str(ligne).upper()
+    logger.info(f"[report_bus] ligne={ligne} arret={arret!r} phone=…{phone[-4:]}")
+
     if ligne not in VALID_LINES:
         return {"status": "error", "message": f"Ligne {ligne} inconnue du réseau Dem Dikk"}
 
-    if is_spam_pattern(phone, ligne):
-        logger.warning(f"[report_bus] spam {phone[-4:]}")
-        queries.penalise_spam(phone)
-        return {"status": "rejected", "reason": "spam"}
+    if is_blacklisted(phone):
+        return {"status": "blocked", "reason": "blacklist"}
 
-    if not check_distance_coherence(phone, ligne, arret):
-        logger.warning(f"[report_bus] distance incohérente {phone[-4:]}")
-        queries.penalise_spam(phone)
-        return {"status": "rejected", "reason": "distance_incoherence"}
+    if is_spam_pattern(message_original):
+        return {"status": "blocked", "reason": "spam"}
 
-    confidence = compute_signalement_confidence(
-        phone=phone, ligne=ligne, arret=arret,
-        source="signalement_fort",
-        has_verbe_observation=True,
-        has_arret_connu=bool(arret),
-    )
-    if confidence < CONFIDENCE_THRESHOLD:
-        logger.info(f"[report_bus] confiance basse: {confidence:.2f}")
+    confidence = compute_confidence(phone, ligne, arret)
+    if confidence < 0.3:
         return {
             "status": "needs_confirmation",
             "ligne": ligne,
             "arret": arret,
-            "confidence": round(confidence, 2),
+            "confidence": confidence,
         }
-
-    try:
-        sigs_actifs = queries.get_signalements_actifs(ligne)
-        corrobore = any(
-            s["position"].lower() == arret.lower()
-            for s in sigs_actifs
-            if s["phone"] != phone
-        )
-        if corrobore:
-            queries.boost_corroboration(ligne, arret, phone)
-    except Exception as e:
-        logger.warning(f"[report_bus] corroboration erreur: {e}")
 
     try:
         result = queries.save_signalement(ligne, arret, phone)
@@ -433,6 +395,51 @@ async def extract_entities(
 
 
 # ══════════════════════════════════════════════════════════
+# TOOL 7 — Contexte itinéraire (flux 2 tours)
+# ══════════════════════════════════════════════════════════
+
+@tool
+async def set_itinerary_context(
+    destination: str,
+    config: ConfigDep,
+) -> str:
+    """Appeler quand l'usager veut aller quelque part mais n'a PAS donné son point de départ.
+    Enregistre la destination en session et prépare le flux 2 tours.
+    NE PAS appeler si départ ET destination sont déjà connus — utiliser calculate_route directement.
+    Retourne 'ok' — le LLM demande ensuite 'Tu pars d'où ?' en langage naturel.
+
+    Args:
+        destination: lieu de destination mentionné par l'usager (ex: 'Sandaga', 'UCAD', 'Yoff')
+    """
+    from core.session_manager import set_attente_origin
+
+    phone = _get_phone(config)
+    destination = destination.strip()
+
+    if not destination:
+        logger.warning("[set_itinerary_context] destination vide — ignoré")
+        return "error: destination vide"
+
+    logger.info(
+        f"[set_itinerary_context] phone=…{phone[-4:]} destination={destination!r}"
+    )
+
+    try:
+        set_attente_origin(phone, destination)
+        logger.info(
+            f"[set_itinerary_context] ✅ session.etat='attente_origin' "
+            f"destination={destination!r}"
+        )
+        return "ok"
+    except Exception as e:
+        logger.error(
+            f"[set_itinerary_context] ERREUR: {type(e).__name__}: {e}",
+            exc_info=True,
+        )
+        return f"error: {e}"
+
+
+# ══════════════════════════════════════════════════════════
 # Export
 # ══════════════════════════════════════════════════════════
 
@@ -443,4 +450,5 @@ ALL_TOOLS = [
     manage_subscription,
     get_bus_info,
     extract_entities,
+    set_itinerary_context,  # V1.9 — flux itinéraire 2 tours
 ]

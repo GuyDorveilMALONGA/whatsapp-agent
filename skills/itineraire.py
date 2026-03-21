@@ -1,17 +1,20 @@
 """
-skills/itineraire.py — V4.2
+skills/itineraire.py — V4.3
 Calcule et formate les itinéraires avec le moteur Walk-Aware.
+
+MIGRATIONS V4.3 depuis V4.2 :
+  - handle_origin_response : Cas C GPS ajouté
+    Quand session.etat == "position_connue" avec lat/lon dans signalement,
+    trouve l'arrêt le plus proche via graph.find_stops_nearby()
+    et l'utilise comme origin sans demander à l'usager.
+  - reset_context() déplacé APRÈS lecture du GPS (sinon lat/lon perdus)
+  - Fallback entities.get("arret") ajouté (extractor retourne parfois "arret" pas "origin")
+  - Sur stop_not_found/origin : re-sette session avant de retourner l'erreur
+    (sans ça l'usager devait tout recommencer depuis le début)
 
 FIX V4.2 :
   1. handle_origin_response : destination remontée depuis history ROBUSTE
-     - V4.1 cherchait uniquement "Tu veux aller à *X*" (FR seulement)
-     - V4.2 : _destination_depuis_history() — 3 patterns (FR + WO + context_builder)
-     - Import re sorti du bloc (était dans la boucle en V4.1 — bug latent)
-
-  2. handle_alternatives : NOUVEAU
-     - Relance find_route() avec exclude_lines → jamais de prose LLM
-     - Session sauvegardée avec origin/dest/exclude_lines après chaque itinéraire
-     - Fallback history si session expirée
+  2. handle_alternatives : NOUVEAU — relance find_route() avec exclude_lines
 
 FIX V4.1 :
   - handle_origin_response : extractor.extract() supprimé
@@ -26,7 +29,9 @@ from rag.validator import validate_and_suggest
 logger = logging.getLogger(__name__)
 
 
-# ── Formatage FR ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# Formatage FR
+# ══════════════════════════════════════════════════════════
 
 def _direct_fr(r: dict) -> str:
     best  = r["routes"][0]
@@ -114,10 +119,12 @@ def _no_od_fr() -> str:
 
 
 def _ask_origin_fr(dest: str) -> str:
-    return f"Tu veux aller à *{dest}*.\n\nTu es à quel arrêt en ce moment ?"
+    return f"Tu veux aller à *{dest}*.\n\nTu es à quel arrêt en ce moment ?\n\n— *Xëtu*"
 
 
-# ── Formatage Wolof ───────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# Formatage Wolof
+# ══════════════════════════════════════════════════════════
 
 def _direct_wo(r: dict) -> str:
     best = r["routes"][0]
@@ -157,7 +164,9 @@ def _not_found_wo(r: dict) -> str:
     )
 
 
-# ── Table dispatch ────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# Table dispatch
+# ══════════════════════════════════════════════════════════
 
 _FMT = {
     "fr": {
@@ -181,7 +190,9 @@ _FMT = {
 }
 
 
-# ── Extraction destination depuis historique ──────────────
+# ══════════════════════════════════════════════════════════
+# Helper — extraction destination depuis historique
+# ══════════════════════════════════════════════════════════
 
 def _destination_depuis_history(history: list) -> str | None:
     """
@@ -191,9 +202,9 @@ def _destination_depuis_history(history: list) -> str | None:
       3. Bot     : "→ *Sandaga*" (format réponse itinéraire)
     """
     for msg in reversed(history or []):
-        content = msg.get("content", "")
         if msg.get("role") != "assistant":
             continue
+        content = msg.get("content", "")
         m = re.search(r"Tu veux aller à \*(.+?)\*", content)
         if m:
             return m.group(1)
@@ -206,7 +217,30 @@ def _destination_depuis_history(history: list) -> str | None:
     return None
 
 
-# ── Point d'entrée principal ──────────────────────────────
+# ══════════════════════════════════════════════════════════
+# Helper — sauvegarde session post-itinéraire
+# ══════════════════════════════════════════════════════════
+
+def _save_itineraire_session(phone: str, result: dict, origin: str, dest: str):
+    """Sauvegarde origin/dest/lignes proposées pour handle_alternatives."""
+    routes = result.get("routes", [])
+    lignes = []
+    for r in routes:
+        for key in ("number", "number1", "number2"):
+            if r.get(key):
+                lignes.append(r[key])
+    set_session(
+        phone,
+        etat="itineraire_actif",
+        ligne=lignes[0] if lignes else None,
+        destination=dest,
+        signalement={"origin": origin, "dest": dest, "exclude_lines": lignes},
+    )
+
+
+# ══════════════════════════════════════════════════════════
+# Point d'entrée principal (Tour 1 complet : origin + dest connus)
+# ══════════════════════════════════════════════════════════
 
 async def handle(message: str, contact: dict, langue: str, entities: dict) -> str:
     lang         = langue if langue in _FMT else "fr"
@@ -223,16 +257,13 @@ async def handle(message: str, contact: dict, langue: str, entities: dict) -> st
     if not origin_query:
         set_attente_origin(contact["phone"], dest_query)
         return _ask_origin_fr(dest_query.title()) if lang == "fr" else (
-            f"Fa nga dem *{dest_query.title()}* — fi nga dëkk ?"
+            f"Fa nga dem *{dest_query.title()}* — fi nga dëkk ?\n\n— *Xëtu*"
         )
 
     result = graph.find_route(origin_query, dest_query, no_transfer=no_transfer)
 
-    # Sauvegarder origin/dest dans session pour les alternatives
     if result["status"] in ("direct", "walk_direct", "transfer"):
-        _save_itineraire_session(
-            contact["phone"], result, origin_query, dest_query
-        )
+        _save_itineraire_session(contact["phone"], result, origin_query, dest_query)
 
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(result["status"])
     if fmt_fn:
@@ -242,52 +273,71 @@ async def handle(message: str, contact: dict, langue: str, entities: dict) -> st
     return _not_found_fr(result) if lang == "fr" else _not_found_wo(result)
 
 
-def _save_itineraire_session(phone: str, result: dict,
-                              origin: str, dest: str):
-    """Sauvegarde origin/dest/lignes proposées pour handle_alternatives."""
-    routes     = result.get("routes", [])
-    lignes     = []
-    for r in routes:
-        for key in ("number", "number1", "number2"):
-            if r.get(key):
-                lignes.append(r[key])
-    set_session(
-        phone,
-        etat="itineraire_actif",
-        ligne=lignes[0] if lignes else None,
-        destination=dest,
-        signalement={"origin": origin, "dest": dest, "exclude_lines": lignes}
-    )
-
-
-# ── Flow multi-tour : réponse origine ────────────────────
+# ══════════════════════════════════════════════════════════
+# Flow multi-tour — Tour 2 : réponse origine
+# ══════════════════════════════════════════════════════════
 
 async def handle_origin_response(phone: str, text: str, langue: str,
                                   entities: dict, history: list = None) -> str:
-    ctx         = get_context(phone)
+    ctx = get_context(phone)
+
+    # ── CAS C : position GPS connue — lire AVANT reset_context ───────────
+    gps_origin = None
+    if ctx.etat == "position_connue":
+        sig = ctx.signalement or {}
+        lat = sig.get("lat")
+        lon = sig.get("lon")
+        if lat and lon:
+            try:
+                graph   = get_graph()
+                nearby  = graph.find_stops_nearby(float(lat), float(lon))
+                if nearby:
+                    gps_origin = nearby[0]["canon"]
+                    logger.info(
+                        f"[handle_origin_response] GPS→arrêt: "
+                        f"{gps_origin!r} ({nearby[0]['dist_m']:.0f}m)"
+                    )
+            except Exception as e:
+                logger.warning(f"[handle_origin_response] GPS lookup erreur: {e}")
+
+    # ── Reset session (après lecture GPS) ─────────────────────────────────
     destination = ctx.destination
     reset_context(phone)
 
-    # FIX V4.2 : session expirée → 3 patterns de recherche dans history
+    # ── Fallback destination depuis history si session expirée ────────────
     if not destination and history:
         destination = _destination_depuis_history(history)
         if destination:
-            logger.info(f"[Itinéraire] destination récupérée depuis history: {destination}")
+            logger.info(
+                f"[handle_origin_response] destination depuis history: {destination!r}"
+            )
 
     if not destination:
         return _no_od_fr() if langue != "wo" else (
             "Wax ma fi nga dëkk ak fa nga dem.\n\n— *Xëtu*"
         )
 
-    origin_raw   = entities.get("origin") or entities.get("destination") or text.strip()
-    origin_query = validate_and_suggest(origin_raw) or origin_raw
+    # ── Résolution origin ─────────────────────────────────────────────────
+    if gps_origin:
+        origin_query = gps_origin
+        logger.info(f"[handle_origin_response] origin depuis GPS: {origin_query!r}")
+    else:
+        origin_raw   = (
+            entities.get("origin")
+            or entities.get("arret")        # extractor retourne parfois "arret"
+            or entities.get("destination")  # cas ambigu
+            or text.strip()
+        )
+        origin_query = validate_and_suggest(origin_raw) or origin_raw
 
     no_transfer  = entities.get("no_transfer_preference", False)
     lang         = langue if langue in _FMT else "fr"
     graph        = get_graph()
     route_result = graph.find_route(origin_query, destination, no_transfer=no_transfer)
 
+    # ── Origin introuvable → re-setter session, redemander sans reset total ─
     if route_result["status"] == "stop_not_found" and route_result.get("which") == "origin":
+        set_attente_origin(phone, destination)  # conserve le flux pour le prochain tour
         if lang == "fr":
             return (
                 f"❓ Je ne connais pas *{origin_query}* comme arrêt Dem Dikk.\n\n"
@@ -306,17 +356,18 @@ async def handle_origin_response(phone: str, text: str, langue: str,
     if fmt_fn:
         return fmt_fn(route_result)
 
+    logger.error(f"[handle_origin_response] status inconnu: {route_result['status']}")
     return _not_found_fr(route_result) if lang == "fr" else _not_found_wo(route_result)
 
 
-# ── Alternatives ──────────────────────────────────────────
+# ══════════════════════════════════════════════════════════
+# Alternatives — relance avec exclude_lines
+# ══════════════════════════════════════════════════════════
 
 async def handle_alternatives(phone: str, langue: str, history: list) -> str:
     """
-    FIX V4.2 — NOUVEAU.
     Relance find_route() en excluant les lignes déjà proposées.
     Jamais de prose LLM — réponse structurée directe.
-
     Appelé depuis main.py/_dispatch quand intent = "alternatives_itineraire".
     """
     lang         = langue if langue in _FMT else "fr"
@@ -328,7 +379,6 @@ async def handle_alternatives(phone: str, langue: str, history: list) -> str:
     dest_query    = session_data.get("dest") or ctx.destination
     exclude_lines = session_data.get("exclude_lines", [])
 
-    # Fallback history si session expirée
     if not dest_query and history:
         dest_query = _destination_depuis_history(history)
 
@@ -340,10 +390,7 @@ async def handle_alternatives(phone: str, langue: str, history: list) -> str:
             "Wax ma ci kanam : _Fi → Fa_\n\n— *Xëtu*"
         )
 
-    result = graph.find_route(
-        origin_query, dest_query,
-        exclude_lines=exclude_lines
-    )
+    result = graph.find_route(origin_query, dest_query, exclude_lines=exclude_lines)
 
     if result["status"] in ("not_found", "no_transfer_not_found"):
         return (
@@ -354,7 +401,6 @@ async def handle_alternatives(phone: str, langue: str, history: list) -> str:
             "Jël Yango. 🚗\n\n— *Xëtu*"
         )
 
-    # Mettre à jour exclude_lines pour une prochaine demande
     new_excludes = list(exclude_lines)
     for route in result.get("routes", []):
         for key in ("number", "number1", "number2"):
@@ -367,7 +413,7 @@ async def handle_alternatives(phone: str, langue: str, history: list) -> str:
         ligne=result["routes"][0].get("number") or result["routes"][0].get("number1"),
         destination=dest_query,
         signalement={"origin": origin_query, "dest": dest_query,
-                     "exclude_lines": new_excludes}
+                     "exclude_lines": new_excludes},
     )
 
     fmt_fn = _FMT.get(lang, _FMT["fr"]).get(result["status"])
