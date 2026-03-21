@@ -1,6 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.9
-   FIX safe area : nav descend jusqu'en bas, couleur correcte
+   css/base.css — V3.0
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -10,7 +9,7 @@
 
 html, body {
   height: 100%; overflow: hidden;
-  background: var(--surface); /* ← couleur du nav, couvre la safe area sous la home bar */
+  background: var(--surface);
   color: var(--text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px; line-height: 1.5;
@@ -156,18 +155,19 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav ────────────────────────────────────────────
-   V2.9 : height = --nav-h + safe-area-inset-bottom
-   padding-bottom = safe-area-inset-bottom → icônes restent en haut
-   body { background: var(--surface) } → couleur identique derrière
+/* ── Bottom nav ──────────────────────────────────────────
+   --safe-area-factor dans variables.css (0 à 1) contrôle
+   la proportion de safe area prise en compte.
+   0 = nav colle au bas du contenu, 1 = safe area complète.
+   Tweaker uniquement --safe-area-factor dans variables.css.
 */
 .bottom-nav {
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex: 0 0 auto;
-  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * 0.5);
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) * 0.5);
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor));
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) * var(--safe-area-factor));
   z-index: 20;
   transform: translateZ(0);
 }
@@ -178,7 +178,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 16px;
+  padding-top: 10px;
   padding-bottom: 0;
   gap: 4px;
   border: none;

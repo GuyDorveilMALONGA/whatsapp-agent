@@ -57,7 +57,8 @@
   /* ── Layout mobile ── */
   --header-h:  52px;
   --stats-h:   48px;
-  --nav-h:     60px;
+  --nav-h: 35px;
+  --safe-area-factor: 0.3;
 
   /* ── Z-index ── */
   --z-map:    1;
