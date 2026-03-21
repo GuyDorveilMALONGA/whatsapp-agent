@@ -1,6 +1,12 @@
 """
-services/telegram.py — V1.0
+services/telegram.py — V1.1
 Adaptateur Telegram pour Xëtu — Session 3.
+
+MIGRATIONS V1.1 depuis V1.0 :
+  - parse_incoming_update() : les messages location GPS ne sont plus ignorés.
+    Si message.location présent → retourne un dict avec lat/lon/message_type="location".
+    main.py détecte message_type="location" et court-circuite le pipeline LLM
+    vers _handle_telegram_location() → api/tracking.py.
 
 RÔLE :
   Reçoit les updates Telegram (webhook POST /telegram/webhook),
@@ -86,17 +92,30 @@ def parse_incoming_update(payload: dict) -> dict | None:
     """
     Parse un update Telegram reçu sur le webhook.
 
-    Retourne un dict normalisé :
+    Retourne un dict normalisé pour les messages texte :
       {
-        "user_id"   : "tg_123456789",   ← préfixé pour Supabase
-        "chat_id"   : 123456789,        ← pour répondre
-        "text"      : "Bus 15 à Liberté 5",
-        "ts"        : "2026-03-10T08:32:00Z",
-        "canal"     : "telegram",
+        "user_id"      : "tg_123456789",   ← préfixé pour Supabase
+        "chat_id"      : 123456789,        ← pour répondre
+        "text"         : "Bus 15 à Liberté 5",
+        "message_type" : "text",
+        "ts"           : "2026-03-10T08:32:00Z",
+        "canal"        : "telegram",
+      }
+
+    Retourne un dict normalisé pour les messages location GPS :
+      {
+        "user_id"      : "tg_123456789",
+        "chat_id"      : 123456789,
+        "text"         : None,
+        "lat"          : 14.716,
+        "lon"          : -17.467,
+        "message_type" : "location",
+        "ts"           : "2026-03-10T08:32:00Z",
+        "canal"        : "telegram",
       }
 
     Retourne None si :
-      - Pas de message texte (photo, sticker, voice, etc.)
+      - Pas de message texte ni location (photo, sticker, voice, etc.)
       - Message d'un bot
       - Update sans message (callback_query, etc.)
     """
@@ -112,14 +131,6 @@ def parse_incoming_update(payload: dict) -> dict | None:
         if sender.get("is_bot"):
             return None
 
-        # Récupérer le texte
-        text = message.get("text", "").strip()
-        if not text:
-            # Voice, photo, sticker, document → ignoré (même comportement que WhatsApp)
-            msg_type = _detect_message_type(message)
-            logger.info(f"[Telegram] Message non-texte ({msg_type}) — ignoré")
-            return None
-
         chat_id    = message["chat"]["id"]
         tg_user_id = sender.get("id", chat_id)
 
@@ -132,12 +143,40 @@ def parse_incoming_update(payload: dict) -> dict | None:
         else:
             ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        # ── Location GPS ──────────────────────────────────
+        # Traité AVANT le check texte car message.text est absent pour une location
+        if message.get("location"):
+            loc = message["location"]
+            logger.info(
+                f"[Telegram] Location reçue — tg_{tg_user_id} "
+                f"lat={loc['latitude']} lon={loc['longitude']}"
+            )
+            return {
+                "user_id":      f"tg_{tg_user_id}",
+                "chat_id":      chat_id,
+                "text":         None,
+                "lat":          float(loc["latitude"]),
+                "lon":          float(loc["longitude"]),
+                "message_type": "location",
+                "ts":           ts,
+                "canal":        "telegram",
+            }
+
+        # ── Texte ─────────────────────────────────────────
+        text = message.get("text", "").strip()
+        if not text:
+            # Voice, photo, sticker, document → ignoré (même comportement que WhatsApp)
+            msg_type = _detect_message_type(message)
+            logger.info(f"[Telegram] Message non-texte ({msg_type}) — ignoré")
+            return None
+
         return {
-            "user_id" : f"tg_{tg_user_id}",   # Contrat Message Universel
-            "chat_id" : chat_id,               # Pour send_message()
-            "text"    : text,
-            "ts"      : ts,
-            "canal"   : "telegram",
+            "user_id":      f"tg_{tg_user_id}",   # Contrat Message Universel
+            "chat_id":      chat_id,               # Pour send_message()
+            "text":         text,
+            "message_type": "text",
+            "ts":           ts,
+            "canal":        "telegram",
         }
 
     except (KeyError, TypeError) as e:

@@ -1,9 +1,11 @@
 """
-db/queries.py — V5.2
+db/queries.py — V5.3
 Règle absolue : SEUL fichier qui touche Supabase.
 
-MIGRATIONS V5.2 depuis V5.1 :
-  - FIX : fonctions push utilisaient `supabase` directement → remplacé par get_client()
+MIGRATIONS V5.3 depuis V5.2 :
+  - NOUVEAU : is_recent_gps_signalement(phone, window_seconds) — anti-spam GPS (30s)
+  - NOUVEAU : save_signalement_gps(ligne, arret, phone, ttl_minutes) — TTL paramétrable
+    Ces deux fonctions sont utilisées exclusivement par api/tracking.py.
 """
 from datetime import datetime, timedelta, timezone, date
 import logging
@@ -152,7 +154,7 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
         "phone":      phone,
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at.isoformat(),
-        "valide":     True,  
+        "valide":     True,
     }).execute()
     return res.data[0]
 
@@ -261,6 +263,74 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
     except Exception as e:
         logger.error(f"[enrichir_signalement] Erreur: {e}")
         return False
+
+
+# ── Signalements GPS (api/tracking.py) ────────────────────
+
+def is_recent_gps_signalement(phone: str, window_seconds: int = 30) -> bool:
+    """
+    Anti-spam GPS : True si ce phone a déjà signalé dans la fenêtre.
+
+    Fenêtre volontairement distincte de DEDUP_WINDOW_SECONDS (120s) :
+    ici 30s par défaut car les signalements GPS peuvent arriver en rafale
+    si l'usager bouge (ex: partage de position en continu).
+
+    Vérifie sur TOUS les signalements du phone (pas par ligne/arrêt)
+    car le GPS peut sauter d'un arrêt à l'autre très vite.
+
+    Fail open (retourne False) si Supabase KO — on préfère accepter
+    une entrée doublon plutôt que bloquer l'usager.
+    """
+    db    = get_client()
+    now   = datetime.now(timezone.utc)
+    since = (now - timedelta(seconds=window_seconds)).isoformat()
+    try:
+        res = (db.table("signalements")
+                 .select("id")
+                 .eq("phone", phone)
+                 .gte("timestamp", since)
+                 .limit(1)
+                 .execute())
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"[gps_antispam] Erreur check: {e}")
+        return False  # fail open
+
+
+def save_signalement_gps(ligne: str, arret: str, phone: str,
+                          ttl_minutes: int = 10) -> dict | None:
+    """
+    Variante GPS de save_signalement() avec TTL paramétrable (défaut 10min).
+
+    Différences vs save_signalement() :
+    - TTL paramétrable (10min au lieu de 20min)
+    - Pas de dédup sur (ligne, arret) — l'anti-spam est géré en amont
+      par is_recent_gps_signalement() dans tracking.py (fenêtre 30s).
+    - Pas de penalise_spam() — c'est du GPS automatique, pas un doublon
+      malveillant intentionnel.
+    - qualite="gps" pour distinguer des signalements texte dans les stats
+      et get_fiabilite_ligne().
+    """
+    db         = get_client()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    try:
+        res = db.table("signalements").insert({
+            "ligne":      ligne,
+            "position":   arret,
+            "phone":      phone,
+            "timestamp":  datetime.now(timezone.utc).isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "valide":     True,
+            "qualite":    "gps",   # tag pour distinguer des signalements texte
+        }).execute()
+        logger.info(
+            f"[gps] Signalement enregistré — {phone[-4:]} ligne={ligne} "
+            f"arret={arret!r} TTL={ttl_minutes}min"
+        )
+        return res.data[0]
+    except Exception as e:
+        logger.error(f"[gps] save_signalement_gps erreur: {e}")
+        return None
 
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
@@ -394,6 +464,11 @@ def create_abonnement(phone: str, ligne: str, arret: str,
         "actif":        True
     }).execute()
     return res.data[0]
+
+
+def delete_abonnement(phone: str, ligne: str):
+    db = get_client()
+    db.table("abonnements").update({"actif": False}).eq("phone", phone).eq("ligne", ligne).execute()
 
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
@@ -694,7 +769,8 @@ def get_signalements_recents(minutes: int = 5) -> list:
     except Exception as e:
         logger.error(f"[Push] get_signalements_recents erreur: {e}")
         return []
-    
+
+
 def get_fiabilite_ligne(ligne: str) -> dict:
     """
     Score de fiabilité d'une ligne basé sur les 7 derniers jours.
@@ -713,9 +789,9 @@ def get_fiabilite_ligne(ligne: str) -> dict:
         if nb == 0:
             return {"score": 0.0, "nb_signalements": 0, "pct_valides": 0.0, "label": "❓ Pas de données"}
 
-        nb_valides  = sum(1 for r in rows if r.get("valide") is True)
-        nb_enrichis = sum(1 for r in rows if r.get("qualite"))
-        pct_valides = nb_valides / nb
+        nb_valides   = sum(1 for r in rows if r.get("valide") is True)
+        nb_enrichis  = sum(1 for r in rows if r.get("qualite"))
+        pct_valides  = nb_valides / nb
         pct_enrichis = nb_enrichis / nb
 
         score = round((pct_valides * 0.6) + (pct_enrichis * 0.2) + min(nb / 20, 1.0) * 0.2, 2)

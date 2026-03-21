@@ -1,11 +1,14 @@
 """
-main.py — V8.2
+main.py — V8.3
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V8.2 depuis V8.1 :
-  - Retrait du chargement manuel de history= dans _process_message_safe
-  - xetu_run n'accepte plus history= (checkpointer LangGraph gère l'historique)
-  - queries.get_recent_messages() retiré du pipeline principal
+MIGRATIONS V8.3 depuis V8.2 :
+  - NOUVEAU : support des messages location Telegram (GPS)
+    → parse_incoming_update() retourne maintenant message_type="location"
+    → telegram_webhook détecte ce type et court-circuite le pipeline LLM
+    → _handle_telegram_location() appelle api/tracking.py directement (sans HTTP)
+  - Import tracking_router + app.include_router(tracking_router)
+  - Zéro changement dans le pipeline principal (_process_message_safe)
 """
 import logging
 import re
@@ -58,9 +61,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V8.2 démarré — Agent LangGraph + Checkpointer actif")
+    logger.info("🚌 Xëtu V8.3 démarré — Agent LangGraph + Checkpointer actif")
     yield
-    logger.info("🚌 Xëtu V8.2 arrêté proprement")
+    logger.info("🚌 Xëtu V8.3 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -110,13 +113,15 @@ async def preflight_handler(rest_of_path: str, request: Request):
 from api.buses       import router as buses_router
 from api.leaderboard import router as leaderboard_router
 from api.report      import router as report_router
-from api.push import router as push_router
+from api.push        import router as push_router
+from api.tracking    import router as tracking_router
 
 
 app.include_router(buses_router)
 app.include_router(leaderboard_router)
 app.include_router(report_router)
 app.include_router(push_router)
+app.include_router(tracking_router)
 
 
 
@@ -133,7 +138,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "8.2", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "8.3", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -241,7 +246,21 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
 
     user_id = msg["user_id"]
     chat_id = msg["chat_id"]
-    text    = msg["text"]
+
+    # ── LOCATION GPS — court-circuit avant pipeline LLM ──
+    # Pas de rate_limit ici : le volume GPS est déjà limité par l'anti-spam
+    # de 30s dans tracking.py. Appliquer rate_limit bloquerait des usagers
+    # légitimes qui envoient leur position juste après un message texte.
+    if msg.get("message_type") == "location":
+        return await _handle_telegram_location(
+            user_id=user_id,
+            chat_id=chat_id,
+            lat=msg["lat"],
+            lon=msg["lon"],
+            background_tasks=background_tasks,
+        )
+
+    text = msg["text"]
 
     if not check_rate_limit(user_id):
         return {"status": "rate_limited"}
@@ -250,6 +269,51 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
         return await telegram_service.send_message(chat_id, message)
 
     await _process_message_telegram(user_id, text, background_tasks, _send_telegram)
+    return {"status": "ok"}
+
+
+# ═══════════════════════════════════════════════════════════
+# HANDLER LOCATION TELEGRAM
+# ═══════════════════════════════════════════════════════════
+
+async def _handle_telegram_location(
+    user_id: str,
+    chat_id: int,
+    lat: float,
+    lon: float,
+    background_tasks: BackgroundTasks,
+) -> dict:
+    """
+    Traite un message location Telegram.
+
+    Appelle tracking_update() directement (pas de round-trip HTTP).
+    La ligne est automatiquement inférée depuis la session LangGraph
+    de l'usager si elle existe (ex: il venait de demander "Bus 15 est où ?").
+
+    Ne passe PAS par le pipeline LLM — réponse immédiate.
+    """
+    from api.tracking import tracking_update, TrackingUpdate
+
+    body   = TrackingUpdate(phone=user_id, lat=lat, lon=lon, ligne=None)
+    result = await tracking_update(body, background_tasks)
+    status = result.get("status")
+
+    if status == "ok":
+        ligne = result["ligne"]
+        arret = result["arret"]
+        reply = f"📍 Position reçue. Bus *{ligne}* noté à *{arret}*. 🙏 — *Xëtu*"
+    elif status == "spam":
+        reply = "⏳ Tu viens déjà de signaler. Attends 30 secondes. 🙏"
+    elif status == "no_stop_found":
+        reply = "📍 Aucun arrêt Dem Dikk dans 400m. 🙏"
+    else:  # db_error ou inconnu
+        reply = "❌ Erreur lors de l'enregistrement. Réessaie dans un moment. 🙏"
+
+    await telegram_service.send_message(chat_id, reply)
+    logger.info(
+        f"[Telegram/Location] user={user_id[-6:]} status={status} → "
+        f"{result.get('ligne', '?')} @ {result.get('arret', '?')!r}"
+    )
     return {"status": "ok"}
 
 
