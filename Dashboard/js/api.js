@@ -1,8 +1,10 @@
 /**
- * js/api.js — V1.0 App Passager
+ * js/api.js — V1.1 App Passager
  * Adapté depuis api.js V6.1 du dashboard.
  * Retiré : mock data, getLineData(), logique desktop.
  * Conservé : fetchBuses(), fetchLeaderboard(), loadRoutes().
+ *
+ * V1.1 : routes_geometry_v13_fixed2.json (98 corrections + coupes boucles OSRM)
  */
 
 import { API_BASE, LIGNE_NAMES } from './constants.js';
@@ -47,13 +49,13 @@ function _mapLeaderboard(rawLb) {
 export async function loadRoutes() {
   if (_routesCache) return _routesCache;
   try {
-    const res = await fetch('./data/routes_geometry_v13.json');
+    const res = await fetch('./data/routes_geometry_v13_fixed2.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
     _routesCache = json.lignes || json.routes || {};
-    console.log(`[Api] routes_geometry_v13 chargé — ${Object.keys(_routesCache).length} lignes`);
+    console.log(`[Api] routes_geometry_v13_fixed2 chargé — ${Object.keys(_routesCache).length} lignes`);
   } catch (err) {
-    console.warn('[Api] Impossible de charger routes_geometry_v13.json :', err.message);
+    console.warn('[Api] Impossible de charger routes_geometry_v13_fixed2.json :', err.message);
     _routesCache = {};
   }
   return _routesCache;

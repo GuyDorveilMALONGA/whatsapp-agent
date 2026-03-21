@@ -225,7 +225,7 @@ let _routesCache = null;
 async function _loadRoutes() {
   if (_routesCache) return _routesCache;
   try {
-    const r = await fetch('./data/routes_geometry_v13.json');
+    const r = await fetch('./data/routes_geometry_v13_fixed2.json');
     const j = await r.json();
     _routesCache = j.lignes || j.routes || {};
   } catch { _routesCache = {}; }
