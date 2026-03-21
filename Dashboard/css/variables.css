@@ -58,8 +58,8 @@
   --header-h:  52px;
   --stats-h:   48px;
   --nav-h: 56px;
-  --safe-area-factor: 0.15;
-  
+  --safe-area-factor: 0.1;
+
   /* ── Z-index ── */
   --z-map:    1;
   --z-ui:     10;
