@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.3 — FIX bottom nav safe area iOS
+   css/base.css — V2.4 — FIX header + bottom nav safe area iOS
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -26,9 +26,13 @@ html, body {
 
 /* ── Header ── */
 #app-header {
-  height: var(--header-h); background: var(--bg);
+  background: var(--bg);
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; padding: 0 16px; gap: 10px;
+  display: flex; align-items: flex-end; gap: 10px;
+  /* Hauteur totale = header + status bar iOS */
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  /* Les éléments s'alignent en bas, au-dessus de la status bar */
+  padding: 0 16px 10px;
   flex-shrink: 0; z-index: var(--z-header);
 }
 
@@ -152,22 +156,18 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav — V2.3 FIX safe area iOS ──────────────────
-   Stratégie :
-   - La nav prend height = --nav-h + safe-area-inset-bottom
-   - Les boutons se centrent UNIQUEMENT dans les --nav-h px visibles
-   - La safe area est une zone morte sous les boutons
-   - Aucun env() dans .nav-btn — la nav gère tout
+/* ── Bottom nav — V2.4 ─────────────────────────────────────
+   - height = --nav-h + safe-area-inset-bottom
+   - boutons centrés dans --nav-h uniquement
+   - safe area = zone morte noire sous les boutons
 */
 .bottom-nav {
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex: 0 0 auto;
-  /* Hauteur totale = zone cliquable + safe area iPhone */
   height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
   z-index: 20;
-  /* Force GPU layer — évite les repaints au scroll */
   transform: translateZ(0);
 }
 
@@ -176,11 +176,9 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  /* Centré dans --nav-h, pas dans la hauteur totale avec safe area */
   justify-content: center;
   padding-top: 8px;
   padding-bottom: 8px;
-  /* Pas de env() ici — .bottom-nav gère déjà la safe area */
   gap: 4px;
   border: none;
   background: none;
