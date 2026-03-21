@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.2 — FIX bottom nav mobile
+   css/base.css — V2.3 — FIX bottom nav safe area iOS
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -152,45 +152,53 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav — FIX DÉFINITIF bug mobile double clic ──
-   Le problème : padding-bottom + height variable = hauteur qui change
-   Solution : hauteur totale FIXE incluant safe area dans le padding des boutons
+/* ── Bottom nav — V2.3 FIX safe area iOS ──────────────────
+   Stratégie :
+   - La nav prend height = --nav-h + safe-area-inset-bottom
+   - Les boutons se centrent UNIQUEMENT dans les --nav-h px visibles
+   - La safe area est une zone morte sous les boutons
+   - Aucun env() dans .nav-btn — la nav gère tout
 */
 .bottom-nav {
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
-  /* Hauteur fixe absolue — jamais recalculée */
   flex: 0 0 auto;
+  /* Hauteur totale = zone cliquable + safe area iPhone */
   height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
-  /* Pas de padding-bottom sur le container — on le met sur les boutons */
   z-index: 20;
-  /* Empêche tout déplacement */
-  will-change: auto;
-  transform: translateZ(0); /* force GPU layer — évite les repaints */
+  /* Force GPU layer — évite les repaints au scroll */
+  transform: translateZ(0);
 }
 
 .nav-btn {
   flex: 1;
-  display: flex; flex-direction: column;
-  align-items: center; justify-content: flex-start;
-  padding-top: 10px;
-  /* Compenser safe-area dans le padding bottom des boutons */
-  padding-bottom: max(8px, env(safe-area-inset-bottom, 8px));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  /* Centré dans --nav-h, pas dans la hauteur totale avec safe area */
+  justify-content: center;
+  padding-top: 8px;
+  padding-bottom: 8px;
+  /* Pas de env() ici — .bottom-nav gère déjà la safe area */
   gap: 4px;
-  border: none; background: none; color: var(--muted);
-  font-size: 10px; font-family: 'Inter', sans-serif;
-  cursor: pointer; transition: color var(--t-fast);
-  min-width: 0; overflow: hidden;
-  /* Empêche le bouton de changer de taille au clic */
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 10px;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: color var(--t-fast);
+  min-width: 0;
+  overflow: hidden;
   -webkit-tap-highlight-color: transparent;
   user-select: none;
 }
 .nav-btn svg {
   width: 22px; height: 22px; stroke: currentColor; fill: none;
-  flex-shrink: 0; pointer-events: none; /* évite double event */
+  flex-shrink: 0; pointer-events: none;
 }
-.nav-btn span { pointer-events: none; } /* label non cliquable séparément */
+.nav-btn span { pointer-events: none; }
 .nav-btn.active { color: var(--orange); }
 .nav-btn.active svg { stroke: var(--orange); }
 
