@@ -1,6 +1,11 @@
 /**
- * js/home.js — V1.1
+ * js/home.js — Xëtu V1.2
  * Sprint UI : marqueurs cercles, CartoCDN dark, icône bus supprimée.
+ *
+ * NOUVEAUTÉS V1.2 :
+ *   - _drawGtfsLines() : tracés L1 + L4 au chargement de la carte home,
+ *     données GTFS embarquées (45 + 33 arrêts, confidence=1.0).
+ *     Polylines en gras + arrêts avec tooltip nom + coords GPS au tap/hover.
  */
 
 import * as store from './store.js';
@@ -32,7 +37,194 @@ function _initMap() {
     'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     { maxZoom: 19, subdomains: 'abcd' }
   ).addTo(_map);
+
+  // Tracés GTFS L1 + L4 permanents
+  _drawGtfsLines();
 }
+
+// ── TRACÉS GTFS L1 + L4 ───────────────────────────────────
+// Données embarquées directement — confidence=1.0, source GTFS vérifiée.
+// Couche indépendante des bus markers, jamais effacée.
+// Tooltip tap/hover : nom arrêt + coordonnées GPS exactes.
+
+const _GTFS_DATA = {
+  '1': {
+    color: '#00D67F',
+    label: 'L1 — Parcelles Assainies → Leclerc',
+    trace: [
+      [14.760337,-17.438687],[14.763941,-17.441183],[14.762826,-17.446516],
+      [14.759832,-17.448105],[14.758248,-17.447765],[14.7543,-17.446884],
+      [14.750523,-17.44654],[14.75005,-17.447991],[14.750294,-17.449628],
+      [14.750618,-17.451216],[14.751909,-17.454321],[14.751324,-17.456147],
+      [14.750278,-17.457885],[14.746395,-17.466589],[14.744906,-17.468876],
+      [14.740498,-17.471506],[14.735673,-17.473248],[14.729656,-17.472863],
+      [14.725906,-17.471813],[14.722566,-17.471226],[14.719751,-17.471389],
+      [14.712285,-17.471903],[14.70925,-17.471285],[14.705035,-17.470294],
+      [14.700212,-17.46885],[14.695885,-17.465384],[14.693566,-17.46262],
+      [14.691574,-17.460204],[14.689322,-17.457816],[14.686677,-17.455513],
+      [14.68354,-17.452374],[14.681512,-17.450239],[14.67856,-17.447046],
+      [14.675097,-17.443519],[14.670725,-17.440327],[14.669174,-17.43795],
+      [14.669499,-17.432616],[14.669905,-17.431704],[14.674246,-17.432611],
+      [14.673962,-17.431671],[14.671893,-17.427341],[14.672123,-17.427338],
+    ],
+    arrets: [
+      {"nom":"Terminus Parcelles Assainies","lat":14.764233,"lon":-17.440017},
+      {"nom":"Sapeur Pompier des Parcelles Assainies","lat":14.76275,"lon":-17.44095},
+      {"nom":"Unite 9","lat":14.7626,"lon":-17.446467},
+      {"nom":"Hlm Grand medine","lat":14.75985,"lon":-17.448017},
+      {"nom":"Ecole Dior","lat":14.758267,"lon":-17.447683},
+      {"nom":"Acapes","lat":14.756333,"lon":-17.447317},
+      {"nom":"Unite 24","lat":14.7543,"lon":-17.446883},
+      {"nom":"Boulangerie Mandela 3","lat":14.750483,"lon":-17.446283},
+      {"nom":"Marche Grand Medine Bv","lat":14.7501,"lon":-17.447983},
+      {"nom":"Telecentre Niuma","lat":14.750367,"lon":-17.449617},
+      {"nom":"Parking Stade L.S.S Bv","lat":14.750617,"lon":-17.451217},
+      {"nom":"Boulangerie Dedi","lat":14.751917,"lon":-17.454317},
+      {"nom":"Cite Keur Damel Bv","lat":14.7514,"lon":-17.4562},
+      {"nom":"Mosquee Nord Foire Bv","lat":14.7502,"lon":-17.45785},
+      {"nom":"Foire de Dakar Bv","lat":14.746417,"lon":-17.4666},
+      {"nom":"Cfpt Bv","lat":14.744933,"lon":-17.4689},
+      {"nom":"Sipres Bv","lat":14.740533,"lon":-17.4716},
+      {"nom":"Sapco sur la VDN Bv","lat":14.735683,"lon":-17.473283},
+      {"nom":"Cimetiere Saint Lazarre","lat":14.72965,"lon":-17.472883},
+      {"nom":"Sacree Coeur 3 extension","lat":14.7259,"lon":-17.471833},
+      {"nom":"Novomed Sacree Coeur 3","lat":14.722567,"lon":-17.471183},
+      {"nom":"Avant Case des tout petits sur la Vdn","lat":14.71975,"lon":-17.471383},
+      {"nom":"Bimao sur la VDN Bv","lat":14.712283,"lon":-17.471917},
+      {"nom":"Africatel sur la Vdn","lat":14.70925,"lon":-17.471283},
+      {"nom":"Cite Mermoz sur la Vdn","lat":14.705033,"lon":-17.4703},
+      {"nom":"Station Mobile Vdn","lat":14.7002,"lon":-17.468883},
+      {"nom":"Hopitale Fann Bv","lat":14.695867,"lon":-17.4654},
+      {"nom":"Universite Cheikh A Diop","lat":14.69355,"lon":-17.462633},
+      {"nom":"Cesti Bv","lat":14.691517,"lon":-17.46025},
+      {"nom":"Ecole Manguiers Bv","lat":14.689333,"lon":-17.4578},
+      {"nom":"Police Medina","lat":14.686617,"lon":-17.455567},
+      {"nom":"Rue 31 x Blaise Diagne","lat":14.68345,"lon":-17.452467},
+      {"nom":"Marche Tillene Bv","lat":14.6815,"lon":-17.45025},
+      {"nom":"Rue 11 x Blaise Diagne Bv","lat":14.679667,"lon":-17.448317},
+      {"nom":"Stade Iba Mar Diop","lat":14.678483,"lon":-17.447117},
+      {"nom":"Credit Foncier Bv","lat":14.675067,"lon":-17.44355},
+      {"nom":"El Malick Sandaga","lat":14.670667,"lon":-17.440483},
+      {"nom":"Peytavin Sandaga","lat":14.6689,"lon":-17.437933},
+      {"nom":"Avenue Ponty (Plaza)","lat":14.669384,"lon":-17.434782},
+      {"nom":"Cbao (Avenue Ponty)","lat":14.669487,"lon":-17.432615},
+      {"nom":"Place de l'independance","lat":14.669908,"lon":-17.43165},
+      {"nom":"Esso Port","lat":14.674233,"lon":-17.432633},
+      {"nom":"Embarcadere","lat":14.674117,"lon":-17.43155},
+      {"nom":"Mole 1 (Port de dakar)","lat":14.671833,"lon":-17.42735},
+      {"nom":"Terminus Leclerc","lat":14.672133,"lon":-17.4273},
+    ],
+  },
+  '4': {
+    color: '#4FC3F7',
+    label: 'L4 — Liberté 5 → Leclerc',
+    trace: [
+      [14.72318,-17.458638],[14.724542,-17.457012],[14.727674,-17.45657],
+      [14.727036,-17.452502],[14.721926,-17.453323],[14.719571,-17.453681],
+      [14.717644,-17.458175],[14.715337,-17.460237],[14.71113,-17.463928],
+      [14.70779,-17.466325],[14.705231,-17.464304],[14.703899,-17.463073],
+      [14.699115,-17.456685],[14.698255,-17.456924],[14.695569,-17.455836],
+      [14.693524,-17.453754],[14.692787,-17.452037],[14.690763,-17.450324],
+      [14.685879,-17.452937],[14.683389,-17.452521],[14.68139,-17.450353],
+      [14.678418,-17.447178],[14.675015,-17.443599],[14.670718,-17.440353],
+      [14.668673,-17.439616],[14.665476,-17.436642],[14.6699,-17.431776],
+      [14.673065,-17.430706],[14.672177,-17.42735],
+    ],
+    arrets: [
+      {"nom":"Terminus Dieuppeul","lat":14.723283,"lon":-17.459117},
+      {"nom":"Cite Derkle","lat":14.72455,"lon":-17.457067},
+      {"nom":"Ecole Derkle Bv","lat":14.727667,"lon":-17.456517},
+      {"nom":"Pharmacie Derkle","lat":14.727033,"lon":-17.452483},
+      {"nom":"Cite Marine Bv","lat":14.724367,"lon":-17.452917},
+      {"nom":"1er Arret Dieuppeul","lat":14.721917,"lon":-17.453267},
+      {"nom":"2eme Arret Dieuppeul","lat":14.719567,"lon":-17.45365},
+      {"nom":"Sapeur Pompier","lat":14.717667,"lon":-17.4582},
+      {"nom":"Sacre Coeur 1 Bv","lat":14.715233,"lon":-17.460117},
+      {"nom":"College Sacre coeur","lat":14.71355,"lon":-17.461767},
+      {"nom":"Paroisse Sacre Coeur","lat":14.71115,"lon":-17.46395},
+      {"nom":"SOS Village","lat":14.707783,"lon":-17.466333},
+      {"nom":"Karack Mosquee","lat":14.70525,"lon":-17.464283},
+      {"nom":"1er Arret Thierno S N Tall","lat":14.702517,"lon":-17.461733},
+      {"nom":"2eme Arret Thierno S N Tall","lat":14.699983,"lon":-17.459567},
+      {"nom":"3eme Arret Thierno S N Tall","lat":14.69845,"lon":-17.458117},
+      {"nom":"4eme Arret Thierno S N Tall","lat":14.695583,"lon":-17.455817},
+      {"nom":"Immeuble Seydi Jamil Hlm Fass","lat":14.693533,"lon":-17.45375},
+      {"nom":"Marche Fass","lat":14.692833,"lon":-17.452017},
+      {"nom":"Direction des Hlms","lat":14.69075,"lon":-17.4503},
+      {"nom":"Travaux Communaux Fass Bv","lat":14.688567,"lon":-17.451433},
+      {"nom":"Supermache Sham","lat":14.68585,"lon":-17.452883},
+      {"nom":"Rue 31 x Blaise Diagne","lat":14.68345,"lon":-17.452467},
+      {"nom":"Marche Tillene Bv","lat":14.6815,"lon":-17.45025},
+      {"nom":"Rue 11 x Blaise Diagne Bv","lat":14.679667,"lon":-17.448317},
+      {"nom":"Stade Iba Mar Diop","lat":14.678483,"lon":-17.447117},
+      {"nom":"Credit Foncier Bv","lat":14.675067,"lon":-17.44355},
+      {"nom":"El Malick Sandaga","lat":14.670667,"lon":-17.440483},
+      {"nom":"Direction Asecna","lat":14.668667,"lon":-17.439633},
+      {"nom":"Cathedrale","lat":14.66545,"lon":-17.43665},
+      {"nom":"Place de l'independance","lat":14.669908,"lon":-17.43165},
+      {"nom":"Police Municipale","lat":14.672983,"lon":-17.430767},
+      {"nom":"Terminus Leclerc","lat":14.672133,"lon":-17.4273},
+    ],
+  },
+};
+
+function _drawGtfsLines() {
+  if (!_map) return;
+
+  for (const [ligneId, data] of Object.entries(_GTFS_DATA)) {
+    const { color, label, trace, arrets } = data;
+
+    // Polyline GTFS en gras
+    L.polyline(trace, {
+      color,
+      weight:   5,
+      opacity:  0.85,
+      lineJoin: 'round',
+      lineCap:  'round',
+    })
+    .addTo(_map)
+    .bindTooltip(label, {
+      sticky:    true,
+      className: 'gtfs-trace-label',
+      opacity:   1,
+    });
+
+    // Arrêts individuels
+    arrets.forEach((stop, idx) => {
+      const isTerminus  = idx === 0 || idx === arrets.length - 1;
+      const radius      = isTerminus ? 8 : 4;
+      const fillColor   = isTerminus ? color : '#ffffff';
+
+      const tooltipHtml =
+        `<div class="gtfs-tip-nom">L${ligneId} · ${stop.nom}</div>` +
+        `<div class="gtfs-tip-coords">${stop.lat.toFixed(6)}, ${stop.lon.toFixed(6)}</div>` +
+        (isTerminus ? `<div class="gtfs-tip-terminus">Terminus</div>` : '');
+
+      const circle = L.circleMarker([stop.lat, stop.lon], {
+        radius,
+        color,
+        weight:      isTerminus ? 3 : 1.5,
+        fillColor,
+        fillOpacity: isTerminus ? 1 : 0.9,
+      })
+      .addTo(_map)
+      .bindTooltip(tooltipHtml, {
+        direction:  'top',
+        offset:     [0, -radius - 3],
+        className:  'gtfs-stop-tip',
+        permanent:  false,
+        opacity:    1,
+      });
+
+      // Mobile : tap pour ouvrir le tooltip
+      circle.on('click', () => circle.openTooltip());
+    });
+
+    console.log(`[Home] GTFS L${ligneId} — ${arrets.length} arrêts · ${trace.length} pts trace`);
+  }
+}
+
+// ── Markers bus actifs ────────────────────────────────────
 
 function _updateMarkers(buses) {
   if (!_map) return;
@@ -47,7 +239,6 @@ function _updateMarkers(buses) {
                 : b.minutes_ago <= 15 ? '#FFD166'
                 : '#FF4757';
 
-    // Cercle comme demandé dans le PDF
     const icon = L.divIcon({
       html: `<div style="
         width: 36px; height: 36px; border-radius: 50%;
@@ -63,11 +254,14 @@ function _updateMarkers(buses) {
     });
 
     _busMarkers[b.id] = L.marker([b.lat, b.lng], { icon })
-      .bindPopup(`<b>Bus ${b.ligne}</b><br>${b.position}<br>
-        <span style="color:${color}">${formatAgeShort(b.minutes_ago)}</span>`)
+      .bindPopup(
+        `<b>Bus ${b.ligne}</b><br>${b.position}<br>` +
+        `<span style="color:${color}">${formatAgeShort(b.minutes_ago)}</span>`
+      )
       .addTo(_map);
   });
 
+  // Recentrer seulement si des bus actifs existent
   if (buses.length > 0) {
     const lats = buses.filter(b => b.lat).map(b => b.lat);
     const lngs = buses.filter(b => b.lng).map(b => b.lng);

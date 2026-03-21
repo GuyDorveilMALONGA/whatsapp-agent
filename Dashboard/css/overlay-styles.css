@@ -1,9 +1,9 @@
 /* ════════════════════════════════════════════════════════
-   css/overlay-styles.css — Xëtu V2.0
-   Styles overlay arrêts + tooltips GTFS L1/L4
+   css/overlay-styles.css — Xëtu V2.1
+   Styles overlay arrêts filtre ligne + tooltips GTFS L1/L4
    ════════════════════════════════════════════════════════ */
 
-/* ── Tooltip arrêts overlay filtre ligne ────────────────── */
+/* ── Tooltip arrêts overlay (filtre ligne actif) ────────── */
 
 .stop-tooltip {
   background: #1e293b;
@@ -18,17 +18,17 @@
   pointer-events: none;
 }
 
-/* Supprimer la flèche par défaut Leaflet */
 .stop-tooltip::before {
   border-top-color: #ff6b35 !important;
 }
 
-/* Légère animation d'apparition */
+/* ── Transition overlay polylines ───────────────────────── */
+
 .leaflet-overlay-pane path {
   transition: opacity 0.3s ease;
 }
 
-/* ── Tooltip tracé ligne (hover polyline) ───────────────── */
+/* ── Label survol tracé standard ────────────────────────── */
 
 .trace-tooltip {
   background: #1e293b;
@@ -40,58 +40,63 @@
   pointer-events: none;
 }
 
-/* ── Tooltips GTFS — L1 (#00D67F) et L4 (#4FC3F7) ──────── */
+/* ── Label survol tracé GTFS (polyline L1/L4) ───────────── */
 
-.gtfs-trace-tooltip {
+.gtfs-trace-label {
   background: #0f172a;
-  border-color: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
   color: #e2e8f0;
   font-size: 12px;
   font-weight: 500;
-}
-
-.gtfs-stop-tooltip {
-  background: #0f172a;
-  border-radius: 8px;
-  padding: 6px 10px;
-  min-width: 180px;
+  padding: 4px 10px;
   pointer-events: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  line-height: 1.6;
+  white-space: nowrap;
 }
 
-/* Supprimer flèche Leaflet sur tooltip GTFS */
-.gtfs-stop-tooltip::before {
+/* ── Tooltip arrêt GTFS (tap/hover sur circleMarker) ────── */
+
+.gtfs-stop-tip {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 7px 11px;
+  min-width: 170px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
+  line-height: 1;
+}
+
+/* Supprimer la flèche Leaflet sur les tooltips GTFS */
+.gtfs-stop-tip::before {
   display: none;
 }
 
-.gtfs-stop-tooltip b {
-  display: block;
+.gtfs-tip-nom {
   color: #f1f5f9;
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 5px;
+  line-height: 1.3;
 }
 
-/* Coordonnées GPS en monospace discret */
-.gtfs-coords {
-  color: #64748b;
+.gtfs-tip-coords {
+  color: #475569;
   font-family: 'Courier New', monospace;
   font-size: 10px;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.03em;
 }
 
-/* Badge terminus */
-.gtfs-terminus-badge {
+.gtfs-tip-terminus {
   display: inline-block;
-  margin-top: 4px;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
+  margin-top: 5px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 4px;
-  color: #94a3b8;
+  color: #64748b;
   font-size: 10px;
   font-weight: 500;
-  padding: 1px 6px;
+  padding: 2px 6px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
