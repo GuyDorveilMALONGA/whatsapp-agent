@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.6 — nav hauteur fixe + body bg fix
+   css/base.css — V2.7
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -9,8 +9,7 @@
 
 html, body {
   height: 100%; overflow: hidden;
-  /* var(--surface) au lieu de var(--bg) — couvre la zone safe area sous la nav */
-  background: var(--surface); color: var(--text);
+  background: var(--bg); color: var(--text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -23,7 +22,7 @@ html, body {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-  background: var(--bg); /* le fond de l'app reste --bg */
+  background: var(--bg);
 }
 
 /* ── Header ── */
@@ -156,10 +155,11 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav — V2.6 ─────────────────────────────────────
+/* ── Bottom nav — V2.7 ─────────────────────────────────────
    - height = --nav-h uniquement, SANS env()
-   - body background = var(--surface) couvre la zone safe area
-   - plus de bande de couleur différente, nav répond à --nav-h
+   - padding-bottom = env(safe-area-inset-bottom) pour étendre
+     la couleur --surface dans la zone safe area
+   - icônes poussées vers le bas avec padding-top > padding-bottom
 */
 .bottom-nav {
   background: var(--surface);
@@ -167,6 +167,7 @@ html, body {
   display: flex;
   flex: 0 0 auto;
   height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 20;
   transform: translateZ(0);
 }
@@ -176,9 +177,9 @@ html, body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding-top: 8px;
-  padding-bottom: 8px;
+  justify-content: flex-start;
+  padding-top: 10px;
+  padding-bottom: 4px;
   gap: 4px;
   border: none;
   background: none;
