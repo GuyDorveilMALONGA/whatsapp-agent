@@ -166,8 +166,8 @@ html, body {
   border-top: 1px solid var(--border);
   display: flex;
   flex: 0 0 auto;
-  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * 0.5);
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) * 0.5);
   z-index: 20;
   transform: translateZ(0);
 }
@@ -178,7 +178,7 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  padding-top: 10px;
+  padding-top: 16px;
   padding-bottom: 0;
   gap: 4px;
   border: none;
