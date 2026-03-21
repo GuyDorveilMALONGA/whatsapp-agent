@@ -4,7 +4,7 @@
  * Chaque sprint : incrémenter CACHE_VERSION
  */
 
-const CACHE_VERSION = 'xetu-v3'; // ← incrémente à chaque sprint
+const CACHE_VERSION = 'xetu-v4'; // ← incrémente à chaque sprint
 const CACHE_NAME    = CACHE_VERSION;
 
 const PRECACHE_URLS = [
