@@ -1,10 +1,11 @@
 """
-agent/tools.py — V1.7
-Outils LangGraph de Xëtu — docstrings complètes restaurées pour production.
+agent/tools.py — V1.8
+Outils LangGraph de Xëtu.
 
-MIGRATIONS V1.7 depuis V1.6-test :
-  - Docstrings complètes restaurées (meilleure sélection d'outils par le LLM)
-  - Zéro modification logique
+MIGRATIONS V1.8 depuis V1.7 :
+  - calculate_route : retourne str Markdown formatée (plus de dict brut)
+  - Ajout helper privé _format_route_result()
+  - Docstring calculate_route mise à jour (return type str)
 """
 import logging
 from typing import Optional, Annotated
@@ -24,6 +25,104 @@ def _get_phone(config: RunnableConfig) -> str:
 
 
 # ══════════════════════════════════════════════════════════
+# HELPER — Formatage itinéraire (Markdown, max 4 lignes)
+# ══════════════════════════════════════════════════════════
+
+def _format_route_result(result: dict) -> str:
+    """Transforme le dict brut de graph.find_route() en string Markdown lisible.
+    Appelé uniquement par calculate_route — pas un tool LangGraph.
+    """
+    status = result.get("status", "error")
+    routes = result.get("routes") or []
+
+    # ── Arrêt introuvable ──────────────────────────────────
+    if status == "stop_not_found":
+        which = result.get("which", "")
+        query = result.get("query", "?")
+        label = "départ" if which == "origin" else "destination"
+        return f"Je ne connais pas *{query}* comme {label}. Précise le quartier ou l'arrêt Dem Dikk. 🙏"
+
+    # ── Même arrêt ─────────────────────────────────────────
+    if status == "same_stop":
+        stop = result.get("stop", "?")
+        return f"Le départ et la destination sont le même arrêt (*{stop}*). 🙏"
+
+    # ── Aucun itinéraire ───────────────────────────────────
+    if status == "not_found" or not routes:
+        orig = result.get("origin_display") or result.get("origin", "?")
+        dest = result.get("dest_display") or result.get("destination", "?")
+        return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
+
+    # ── Meilleur itinéraire (index 0, déjà trié par score) ─
+    r = routes[0]
+
+    def _mins(total_min=None, nb_stops=None) -> str:
+        if total_min:
+            return f"~{total_min} min"
+        if nb_stops:
+            return f"~{nb_stops * 2} min"
+        return ""
+
+    orig = result.get("origin_display", "?")
+    dest = result.get("dest_display", "?")
+
+    # ── Trajet direct ──────────────────────────────────────
+    if status == "direct":
+        num      = r.get("number", "?")
+        nb       = r.get("nb_stops")
+        t_min    = r.get("total_min") or (nb * 2 if nb else None)
+        duration = _mins(t_min, nb)
+        stops    = r.get("stops", [])
+        depart   = stops[0] if stops else orig
+        arrivee  = stops[-1] if stops else dest
+        dur_part = f", {duration}" if duration else ""
+        return (
+            f"🚌 Ligne {num} → montez à *{depart}*, "
+            f"descendez à *{arrivee}* ({nb} arrêts{dur_part})"
+        )
+
+    # ── Marche + direct ────────────────────────────────────
+    if status == "walk_direct":
+        num           = r.get("number", "?")
+        walk_stop     = r.get("walk_stop", "?")
+        walk_min      = r.get("walk_min")
+        total_min     = r.get("total_min")
+        nb            = r.get("nb_stops")
+        stops         = r.get("stops", [])
+        arrivee       = stops[-1] if stops else dest
+        duration      = _mins(total_min, nb)
+        walk_part     = f"Marchez {walk_min} min jusqu'à *{walk_stop}*" if walk_min else f"Rejoignez *{walk_stop}*"
+        dur_part      = f" ({duration} total)" if duration else ""
+        walk_dest_min = r.get("walk_dest_min", 0)
+        if walk_dest_min:
+            return (
+                f"🚶 {walk_part}, puis 🚌 Ligne {num} → descendez à *{arrivee}*, "
+                f"puis 🚶 {walk_dest_min} min à pied{dur_part}"
+            )
+        return f"🚶 {walk_part}, puis 🚌 Ligne {num} → descendez à *{arrivee}*{dur_part}"
+
+    # ── Correspondance ─────────────────────────────────────
+    if status == "transfer":
+        num1      = r.get("number1", "?")
+        transfer  = r.get("transfer", "?")
+        num2      = r.get("number2", "?")
+        total_min = r.get("total_min")
+        nb        = r.get("nb_stops")
+        stops2    = r.get("stops2", [])
+        arrivee   = stops2[-1] if stops2 else dest
+        duration  = _mins(total_min, nb)
+        dur_part  = f" ({duration} total)" if duration else ""
+        return (
+            f"🚌 Ligne {num1} → *{transfer}* (correspondance), "
+            f"puis 🚌 Ligne {num2} → *{arrivee}*{dur_part}"
+        )
+
+    # ── Fallback inattendu ─────────────────────────────────
+    logger.warning(f"[_format_route_result] status inconnu: {status!r}")
+    return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
+
+
+# ══════════════════════════════════════════════════════════
 # TOOL 1 — Itinéraire
 # ══════════════════════════════════════════════════════════
 
@@ -32,10 +131,11 @@ async def calculate_route(
     origin: str,
     destination: str,
     config: ConfigDep,
-) -> dict:
+) -> str:
     """Calcule un itinéraire en bus Dem Dikk à Dakar.
     Utiliser UNIQUEMENT si l'utilisateur fournit un départ ET une destination.
     Ne pas appeler si l'une des deux est manquante — demander d'abord à l'usager.
+    Retourne une string Markdown prête à envoyer — ne pas reformater ni résumer.
 
     Args:
         origin: point de départ (quartier, arrêt ou lieu connu de Dakar)
@@ -46,12 +146,20 @@ async def calculate_route(
     graph = get_graph()
     try:
         result = graph.find_route(origin, destination)
-        if not result or not result.get("routes"):
-            return {"status": "not_found", "origin": origin, "destination": destination}
-        return {"status": "ok", "result": result}
+        if not result:
+            return (
+                f"Aucun itinéraire trouvé entre *{origin}* et *{destination}*. "
+                "Reformule ou précise le quartier."
+            )
+        msg = _format_route_result(result)
+        logger.info(f"[calculate_route] → {msg[:80]!r}")
+        return msg
     except Exception as e:
         logger.error(f"[calculate_route] ERREUR: {type(e).__name__}: {e}", exc_info=True)
-        return {"status": "error", "message": str(e), "origin": origin, "destination": destination}
+        return (
+            f"Erreur lors du calcul d'itinéraire entre *{origin}* et *{destination}*. "
+            "Réessaie dans quelques secondes."
+        )
 
 
 # ══════════════════════════════════════════════════════════
