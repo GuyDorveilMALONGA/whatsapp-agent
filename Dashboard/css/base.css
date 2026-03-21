@@ -167,6 +167,7 @@ html, body {
   display: flex;
   flex: 0 0 auto;
   height: var(--nav-h);
+  padding-bottom: env(safe-area-inset-bottom, 0px); /* ← ajouter */
   padding-bottom: env(safe-area-inset-bottom, 0px);
   z-index: 20;
   transform: translateZ(0);
