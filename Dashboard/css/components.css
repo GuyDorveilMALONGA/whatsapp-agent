@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/components.css — V2.3
+   css/components.css — V2.4
    ════════════════════════════════════════════════════════ */
 
 /* ══ ACCUEIL ══════════════════════════════════════════════ */
@@ -13,14 +13,13 @@
 }
 .btn-see-bus {
   width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 12px; background: var(--orange-dim); border: 1.5px solid var(--orange);
-  border-radius: var(--radius-lg); color: var(--orange); font-size: 14px; font-weight: 500;
-  font-family: 'Inter', sans-serif; cursor: pointer;
-  transition: background var(--t-fast), box-shadow var(--t-fast);
+  padding: 12px; background: var(--orange); border: none;
+  border-radius: var(--radius-lg); color: #fff; font-size: 14px; font-weight: 600;
+  font-family: 'Inter', sans-serif; cursor: pointer; box-shadow: var(--shadow-orange);
+  transition: opacity var(--t-fast), transform var(--t-fast);
 }
-.btn-see-bus:hover, .btn-see-bus:active {
-  background: rgba(255,107,53,0.25); box-shadow: 0 0 0 3px rgba(255,107,53,0.15);
-}
+.btn-see-bus:hover  { opacity: 0.9; }
+.btn-see-bus:active { transform: scale(0.98); opacity: 0.85; }
 
 .home-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .home-cols-header { padding: 10px 14px 0; flex-shrink: 0; }
@@ -63,8 +62,7 @@
 
 .empty-state {
   display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
-  gap: 6px; padding: 20px;
-  color: var(--muted);
+  gap: 6px; padding: 20px; color: var(--muted);
 }
 .empty-icon  { font-size: 28px; }
 .empty-text  { font-size: 12px; text-align: center; }

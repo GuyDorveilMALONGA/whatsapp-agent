@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.4 — FIX header + bottom nav safe area iOS
+   css/base.css — V2.5 — FIX nav couleur safe area
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -29,9 +29,7 @@ html, body {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: flex-end; gap: 10px;
-  /* Hauteur totale = header + status bar iOS */
   height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
-  /* Les éléments s'alignent en bas, au-dessus de la status bar */
   padding: 0 16px 10px;
   flex-shrink: 0; z-index: var(--z-header);
 }
@@ -147,7 +145,7 @@ html, body {
   flex: 1;
   overflow: hidden;
   position: relative;
-  min-height: 0; /* critique pour flex */
+  min-height: 0;
 }
 
 .screen {
@@ -156,10 +154,11 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav — V2.4 ─────────────────────────────────────
+/* ── Bottom nav — V2.5 ─────────────────────────────────────
    - height = --nav-h + safe-area-inset-bottom
    - boutons centrés dans --nav-h uniquement
-   - safe area = zone morte noire sous les boutons
+   - ::after couvre la zone safe area avec la même couleur
+     → plus de bande de couleur différente sous la nav
 */
 .bottom-nav {
   background: var(--surface);
@@ -169,6 +168,17 @@ html, body {
   height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
   z-index: 20;
   transform: translateZ(0);
+  position: relative;
+}
+
+/* Couvre la zone safe area avec la même couleur que la nav */
+.bottom-nav::after {
+  content: '';
+  position: absolute;
+  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
+  left: 0; right: 0;
+  height: env(safe-area-inset-bottom, 0px);
+  background: var(--surface);
 }
 
 .nav-btn {
