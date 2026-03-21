@@ -1,8 +1,10 @@
-/* ── OVERLAY LIGNE — arrêts et tracé ──────────────────────
-   À ajouter dans ton fichier CSS principal (style.css)
-   ────────────────────────────────────────────────────── */
+/* ════════════════════════════════════════════════════════
+   css/overlay-styles.css — Xëtu V2.0
+   Styles overlay arrêts + tooltips GTFS L1/L4
+   ════════════════════════════════════════════════════════ */
 
-/* Tooltip nom d'arrêt */
+/* ── Tooltip arrêts overlay filtre ligne ────────────────── */
+
 .stop-tooltip {
   background: #1e293b;
   border: 1px solid #ff6b35;
@@ -16,12 +18,80 @@
   pointer-events: none;
 }
 
-/* Supprimer la flèche par défaut Leaflet sur le tooltip */
+/* Supprimer la flèche par défaut Leaflet */
 .stop-tooltip::before {
   border-top-color: #ff6b35 !important;
 }
 
-/* Légère animation d'apparition de l'overlay */
+/* Légère animation d'apparition */
 .leaflet-overlay-pane path {
   transition: opacity 0.3s ease;
+}
+
+/* ── Tooltip tracé ligne (hover polyline) ───────────────── */
+
+.trace-tooltip {
+  background: #1e293b;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #94a3b8;
+  font-size: 11px;
+  padding: 3px 8px;
+  pointer-events: none;
+}
+
+/* ── Tooltips GTFS — L1 (#00D67F) et L4 (#4FC3F7) ──────── */
+
+.gtfs-trace-tooltip {
+  background: #0f172a;
+  border-color: rgba(255, 255, 255, 0.25);
+  color: #e2e8f0;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.gtfs-stop-tooltip {
+  background: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  min-width: 180px;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  line-height: 1.6;
+}
+
+/* Supprimer flèche Leaflet sur tooltip GTFS */
+.gtfs-stop-tooltip::before {
+  display: none;
+}
+
+.gtfs-stop-tooltip b {
+  display: block;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+/* Coordonnées GPS en monospace discret */
+.gtfs-coords {
+  color: #64748b;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  letter-spacing: 0.02em;
+}
+
+/* Badge terminus */
+.gtfs-terminus-badge {
+  display: inline-block;
+  margin-top: 4px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  color: #94a3b8;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
