@@ -22,7 +22,7 @@
   background: rgba(255,107,53,0.25); box-shadow: 0 0 0 3px rgba(255,107,53,0.15);
 }
 
-.home-bottom { flex: 0 0 auto; height: 38vh; display: flex; flex-direction: column; overflow: hidden; }
+.home-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
 .home-cols-header { padding: 10px 14px 0; flex-shrink: 0; }
 .home-col-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
 .col-tab {

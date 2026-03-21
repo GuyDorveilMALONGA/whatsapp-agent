@@ -3,7 +3,7 @@
    ════════════════════════════════════════════════════════ */
 
 #map-home {
-  height: 220px;
+  height: 42dvh;  /* au lieu de 220px */
   flex-shrink: 0;
   z-index: var(--z-map);
 }
