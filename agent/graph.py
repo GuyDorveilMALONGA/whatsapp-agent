@@ -170,10 +170,43 @@ class DemDikkGraph:
             if ascii_key not in self._ascii_to_canon:
                 self._ascii_to_canon[ascii_key] = canon
 
+        # V3.4 : indexer les aliases terrain depuis le JSON v15
+        # Un alias pointe vers le canon officiel le plus proche (fuzzy)
+        # Si aucun match suffisant, on l'indexe sur lui-même pour que
+        # find_stop() puisse le traiter via son propre fuzzy matching.
+        _nb_aliases = 0
+        for category, lines in data["categories"].items():
+            for line in lines:
+                for alias_raw in line.get("aliases_terrain", []):
+                    alias_raw = alias_raw.strip()
+                    if not alias_raw:
+                        continue
+                    alias_ascii = _norm_ascii(alias_raw)
+                    if alias_ascii in self._ascii_to_canon:
+                        continue  # déjà connu — ne pas écraser un arrêt officiel
+                    # Chercher le meilleur arrêt officiel par similarité textuelle
+                    best_canon, best_score = None, 0.0
+                    for canon_ascii, canon in self._ascii_to_canon.items():
+                        from difflib import SequenceMatcher
+                        score = SequenceMatcher(None, alias_ascii, canon_ascii).ratio()
+                        if alias_ascii in canon_ascii or canon_ascii in alias_ascii:
+                            score = min(1.0, score + 0.2)
+                        if score > best_score:
+                            best_score, best_canon = score, canon
+                    if best_canon and best_score >= 0.55:
+                        self._ascii_to_canon[alias_ascii] = best_canon
+                    else:
+                        # Score trop bas : on indexe l'alias sur lui-même
+                        # find_stop() le trouvera via fuzzy en dernier recours
+                        alias_canon = _norm(alias_raw)
+                        self._ascii_to_canon[alias_ascii] = alias_canon
+                    _nb_aliases += 1
+
         logger.info(
-            f"[Graph V3.3] {len(self.line_stops)} lignes · "
-            f"{len(self._all_stops)} arrêts · "
-            f"{len(self._ascii_to_canon)} clés ASCII"
+            f"[Graph V3.4] {len(self.line_stops)} lignes · "
+            f"{len(self._all_stops)} arrêts officiels · "
+            f"{_nb_aliases} aliases terrain · "
+            f"{len(self._ascii_to_canon)} clés ASCII total"
         )
 
     def _segment_time(self, line_num: str, stops: list, a: str, b: str) -> int:

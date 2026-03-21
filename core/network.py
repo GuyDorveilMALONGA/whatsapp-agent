@@ -96,12 +96,13 @@ def _build_graph_data() -> dict:
                                                    s.get("travel_time_to_next_sec")),
             })
         lines_list.append({
-            "number":     line_id,
-            "name":       line.get("nom",  line.get("name", "")),
-            "category":   line.get("categorie", line.get("category", line.get("service", ""))),
-            "terminus_a": line.get("terminus_a", ""),
-            "terminus_b": line.get("terminus_b", ""),
-            "stops":      stops_compat,
+            "number":          line_id,
+            "name":            line.get("nom",  line.get("name", "")),
+            "category":        line.get("categorie", line.get("category", line.get("service", ""))),
+            "terminus_a":      line.get("terminus_a", ""),
+            "terminus_b":      line.get("terminus_b", ""),
+            "stops":           stops_compat,
+            "aliases_terrain": line.get("aliases_terrain", []),
         })
     return {"categories": {"all": lines_list}}
 
