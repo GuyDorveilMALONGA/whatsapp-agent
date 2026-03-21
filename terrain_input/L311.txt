@@ -1,0 +1,29 @@
+# Ligne 311 — LIGNE 311 (LAC ROSE → CROISEMENT KEUR MASSAR)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 21 arrêts sur cette ligne.
+
+Lac Rose Croisement Niague |
+Croisement Tivaoune Peulh |
+Terminus Malika |
+Croisement Tivaoune Peulh |
+Terminus Malika |
+Croisement Tivaoune Peulh |
+Croisement Keur Massar |
+KEUR MASSAR |
+SEDIMA |
+Terminus Keur Massar |
+SEDIMA |
+KEUR MASSAR |
+SEDIMA |
+Station Keur Massar |
+Terminus Keur Massar |
+SEDIMA |
+KEUR MASSAR |
+SEDIMA |
+Terminus Keur Massar |
+Station Keur Massar |
+Croisement Keur Massar |

@@ -1,0 +1,51 @@
+# Ligne 18 — LIGNE 18 (DIEUPPEUL → CENTRE-VILLE)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 43 arrêts sur cette ligne.
+
+Terminus Liberté 5 |
+Cité Derklé |
+Rond Point Liberté 6 |
+Khar Yalla |
+Cité Marine |
+Avenue Cheikh Ahmadou Bamba |
+Station Castors |
+Marché HLM |
+Ouagou Niayes |
+BOP |
+Masalikul Djinane |
+CSS |
+Colobane |
+Service des Mines |
+Place Bakou |
+Police Bel Air |
+Grand Moulin de Dakar |
+Bel Air |
+Arsenal |
+Gare de Dakar |
+Esso Port |
+Place de l'Indépendance |
+Avenue Georges Pompidou |
+Rond point Sandaga |
+Avenue André Peytavin |
+Lat Dior |
+Route de la Corniche |
+Reubeuss |
+Mosquée Seydou Nourrou Tall |
+DAF |
+Rue 6 |
+Médina |
+Gueule Tapée |
+Lycée Delafosse |
+Canal 4 |
+Rond point Sham |
+Avenue Cheikh Anta Diop |
+Ecole Normale Supérieure |
+Avenue Bourguiba |
+Stade Demba Diop |
+Rond Point Jet d'eau |
+Allées Ababacar Sy |
+Terminus Liberté 5 |

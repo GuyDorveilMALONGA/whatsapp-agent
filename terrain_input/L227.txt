@@ -1,0 +1,76 @@
+# Ligne 227 — LIGNE 227 (KEUR MASSAR → TERMINUS PARCELLES)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 68 arrêts sur cette ligne.
+
+Terminus Keur Massar |
+KEUR MASSAR |
+SEDIMA |
+Sapeur Pompiers |
+Grand Moulin de Dakar |
+SEDIMA |
+Terminus Keur Massar |
+KEUR MASSAR |
+Terminus Keur Massar |
+SEDIMA |
+Terminus Keur Massar |
+KEUR MASSAR |
+Croisement Keur Massar |
+SEDIMA |
+Malika Plage |
+APIX |
+Daroukhane |
+Poste Thiaroye |
+Gadaye |
+APIX |
+Daroukhane |
+Poste Thiaroye |
+APIX |
+Gadaye |
+Daroukhane |
+Terminus Daroukhane |
+Gadaye |
+Daroukhane |
+Terminus Daroukhane |
+Police Wakhinane |
+Hamo 6 |
+Arrêt Dial Mbaye |
+Terminus Guediawaye |
+Stade Amadou Barry |
+CES Canada |
+Hôpital Dalal Diam |
+Case Bi |
+Croisement 22 |
+Terminus Parcelles |
+Tolou Abdoulaye Wade |
+Eglise PA |
+Ecole Hyacinthe Thiandoum |
+Rte de l'Aéroport |
+Pont Sénégal Emergent (92) |
+Diamalaye |
+HLM Grand Médine |
+Ecole Dior |
+Pharmacie Patte d'Oie |
+Marché Grand Médine |
+Pont Emergent |
+Patte d'Oie |
+Unités 22 24 |
+Terrain Acapes |
+Ecole Dior |
+HLM Grand Médine |
+Dispensaire Norade |
+Police PA |
+Rue 39 |
+Police Parcelles |
+Terminus Parcelles Assainies |
+Case PA |
+Terminus Malika |
+Terminus des Parcelles |
+Camberene |
+Malibu |
+Gueule Tapée |
+Terminus Palais 2 |
+APIX |

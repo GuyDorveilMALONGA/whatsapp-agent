@@ -1,0 +1,80 @@
+# Ligne 219 — LIGNE 219 (DAROUKHANE → OUAKAM)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 72 arrêts sur cette ligne.
+
+Daroukhane |
+Marché Ndiarème |
+Marché Jeudi Corniche |
+Deux voies Notaire |
+Ravin |
+Marché Jeudi |
+Marché Sahm |
+Gueule Tapée |
+Arrêt Dial Mbaye |
+Terminus Guédiawaye |
+HLM Rufisque |
+Terminus Palais 2 |
+Marché Ndiarème |
+Lycée Limamoulaye |
+Hamo |
+Lycée Limamoulaye |
+Corniche Daroukhane |
+Marché Boubess |
+Corniche Daroukhane |
+Terminus Daroukhane |
+Police Wakhinane |
+Terminus des Parcelles |
+Hôpital Dalal Diam |
+Case Bi |
+Pont Sénégal 92 |
+Collège Hyacinthe Thiandoum |
+Rond Point Liberté 6 |
+Rond Point JVC |
+Rond Point Boulangerie Jaune |
+Immeuble Mariama |
+Ancienne Piste |
+Hôpital Militaire de Ouakam |
+Terminus Ouakam |
+Comico |
+Cité Asecna |
+Cité Assemblée |
+Mamelles |
+Route des Mamelles |
+Brioche Dorée Ouakam |
+Cité Assemblée |
+AEROPORT LEOPOLD SEDAR SENGHOR |
+Pharmacie Cité Aviation |
+Route des Mamelles |
+Mamelles |
+Pharmacie Cité Aviation |
+Mamelles |
+Route des Mamelles |
+AEROPORT LEOPOLD SEDAR SENGHOR |
+Pharmacie Cité Aviation |
+Terminus Aéroport LSS |
+Cité Assemblée |
+AEROPORT LEOPOLD SEDAR SENGHOR |
+Route des Mamelles |
+Pharmacie Cité Aviation |
+Mamelles |
+Route des Mamelles |
+AEROPORT LEOPOLD SEDAR SENGHOR |
+Dakar Sacré Coeur |
+2 voies |
+Terminus Liberté 5 (Dieuppeul) |
+Ancien Piste |
+Terminus Dieuppeul |
+Collège Sacré Cœur |
+Cité Derklé |
+Eglise Martyrs de l'Ouganda |
+Allées Ababacar Sy |
+CEM Ousmane Socé Diop |
+Cité Marine |
+Allées Khalifa Ababacar Sy |
+Sicap rue 10 |
+Station Castor |
+Sapeur Pompier Guédiawaye |

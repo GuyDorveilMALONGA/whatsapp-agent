@@ -1,0 +1,33 @@
+# Ligne 2 — LIGNE 2 (DAROUKHANE → PLACE LECLERC)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+
+Terminus Daroukhane | Daroukhane
+Terminus Guédiawaye | Guédiawaye
+Marché Sahm | Sahm
+Ravin | Ravin
+Ecole Canada | Canada
+Rte des Niayes | Niayes
+Tally Boumack | Tally Boumack
+Bountou Pikine | Bountou Pikine
+Route Nationale n°1 | Nationale
+Cité des Eaux | Eaux
+Station Castors | Castors
+Avenue Cheikh Ahmadou Bamba | Bamba
+Marché HLM | HLM
+Masalikul Djinane | Massalikoul
+BOPP | Bopp
+Rond Point Colobane | Colobane
+Lycée Kennedy | Kennedy
+Obélisque | Obélisque
+Douta Seck | Douta Seck
+Avenue Blaise Diagne | Blaise Diagne
+Poste Médina | Médina Poste
+Difoncé | Difoncé
+Sandaga | Sandaga
+Boulevard de la République | Boulevard République
+Avenue Léopold Sédar Senghor | Avenue Senghor
+Place de l'Indépendance | Indépendance
+Gare de Dakar | Gare Dakar
+Embarcadère | Embarcadère
+Terminus Leclerc | Leclerc

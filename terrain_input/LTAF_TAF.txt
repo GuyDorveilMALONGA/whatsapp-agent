@@ -1,0 +1,17 @@
+# Ligne TAF TAF — LIGNE TAF TAF (OUAKAM → AIBD)
+# Format : NOM_OFFICIEL | NOM_TERRAIN
+
+Terminus Ouakam | Ouakam
+Mamelles | Mamelles
+Croisement Almadies | Almadies
+Ngor | Ngor
+Yoff Village | Yoff
+Foire | Foire
+Patte d'Oie | Patte d'Oie
+Marché Grand Yoff | Grand Yoff
+Police Grand Yoff | Grand Yoff Police
+Rond Point Liberté 6 | RP Liberté 6
+Terminus Dieuppeul | Dieuppeul
+Autoroute à Péage Pikine | Péage Pikine
+Diamniadio | Diamniadio
+AIBD | Aéroport

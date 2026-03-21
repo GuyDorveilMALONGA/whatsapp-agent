@@ -1,0 +1,48 @@
+# Ligne 23 — LIGNE 23 (PARCELLES ASSAINIES → PALAIS 1)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 40 arrêts sur cette ligne.
+
+Terminus des Parcelles |
+Unité 11 |
+Croisement 22 |
+Police Parcelles |
+Pont Emergent |
+Ecole Hyacinthe Thiandoum |
+Khar Yalla |
+Rond point Liberté 6 |
+Station Castor |
+Hopital Mame Abdou |
+Cité des Eaux |
+Front de Terre |
+Usine des Eaux |
+Allées Khalifa Ababacar Sy |
+Sapeur Pompier Guédiawaye |
+Sicap rue 10 |
+Collège Sacré Cœur |
+Avenue Bourguiba |
+Stade Demba Diop |
+Dior |
+Rue 6 |
+Ecole Normale |
+Poste Fann |
+UCAD |
+Rond Point Sahm |
+Difoncé |
+Poste Médina |
+DAF |
+Eglise |
+Sandaga |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Palais 2 |
+Palais 1 |
+Sorano |
+Place de l'Indépendance |
+Avenue George Pompidou |
+Terminus Leclerc |

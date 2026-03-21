@@ -1,0 +1,18 @@
+# Ligne 327 — LIGNE 327 (KEUR MASSAR → TERMINUS PARCELLES)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 10 arrêts sur cette ligne.
+
+Terminus Keur Massar |
+KEUR MASSAR |
+Terminus Keur Massar |
+KEUR MASSAR |
+Terminus Keur Massar |
+KEUR MASSAR |
+Terminus Keur Massar |
+Malika Plage |
+Terminus Malika |
+Croisement Tivaoune Peulh |

@@ -1,0 +1,65 @@
+# Ligne 218 — LIGNE 218 (THIAROYE → AÃ‰ROPORT LSS)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 57 arrêts sur cette ligne.
+
+Dépôt Thiaroye |
+Bountou Pikine |
+Sipses |
+Baux Maraichers |
+VDN |
+Sortie Croisement Cambérène |
+Malika Plage |
+Yarakh |
+DALIFORT - TER |
+Lycée d'excellence privée |
+Malika Plage |
+DALIFORT - TER |
+Cité Lobatt Fall |
+Baux Maraichers |
+Croisement Bountou Pikine |
+Icotaf |
+Pharmacie Mame Seynabou |
+Police Parcelles |
+Police PA |
+Pharmacie Patte d'Oie |
+Pont Emergent |
+Marché Grand Médine |
+Patte d'Oie |
+Unités 22 24 |
+Ecole Hyacinthe Thiandoum |
+Pont Sénégal Emergent (92) |
+Eglise PA |
+Rte de l'Aéroport |
+Mairie Grand Yoff |
+Foire |
+Sipres |
+Deux voies vers Camp Leclerc |
+VDN-Foire |
+Terminus Aéroport LSS |
+Brioche Dorée Ouakam |
+Comico |
+Ouakam |
+Marché Ouakam |
+Route des Mamelles |
+Mamelles |
+Route des Mamelles |
+Monument de la Renaissance |
+Route des Mamelles |
+Cité Assemblée |
+Brioche Dorée Ouakam |
+Cité Asecna |
+Monument de la Renaissance |
+Marché Ouakam |
+Terminus Ouakam |
+Comico |
+Cité Comico |
+Hôpital Militaire de Ouakam |
+Hopital IHO |
+Route de la Corniche |
+Ancienne Piste |
+Capa Virmaud |
+Avenue Cheikh Anta Diop |

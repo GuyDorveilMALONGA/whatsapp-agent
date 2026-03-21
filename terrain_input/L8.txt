@@ -1,0 +1,36 @@
+# Ligne 8 — LIGNE 8 (AEROPORT LSS → PALAIS 2)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 28 arrêts sur cette ligne.
+
+Terminus Aéroport LSS |
+Cité Asecna |
+Yoff Village |
+Pond Foire |
+Stade Léopold Sédar Senghor - Patte d'Oie |
+Grand Yoff |
+Hopital Général Idrissa Pouye |
+Cité des Eaux |
+Station Castor |
+Avenue Bourguiba |
+Jet d'eau |
+Stade Demba Diop |
+Dial Diop |
+Zone B |
+Point E |
+UCAD |
+Rond point Sham |
+Marché Tilène |
+Poste Médina |
+Difoncé |
+Sandaga |
+ASECNA |
+Boulevard de la République |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Terminus Palais 2 |

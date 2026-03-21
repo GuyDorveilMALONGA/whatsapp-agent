@@ -1,0 +1,23 @@
+# Ligne 213 — LIGNE 213 (RUFISQUE → DIEUPPEUL)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 15 arrêts sur cette ligne.
+
+Gare de Rufisque |
+ZAC Mbao |
+Rond Point Grand Mbao |
+Keur Mbaye Fall |
+Croisement Petit Mbao |
+Diamaguène |
+Poste Thiaroye |
+Sortie Croisement Cambérène |
+Patte d'Oie |
+Marché Grand Yoff |
+Police Grand Yoff |
+Rond Point Liberté 6 |
+2 voies Liberté 6 |
+Rond Point JVC |
+Terminus Dieuppeul |

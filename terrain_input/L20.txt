@@ -1,0 +1,50 @@
+# Ligne 20 — LIGNE 20 (DIEUPPEUL → CENTRE-VILLE)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 42 arrêts sur cette ligne.
+
+Terminus Dieuppeul |
+Allées Ababacar Sy |
+Jet d'Eau |
+Avenue Bourguiba |
+Stade Demba Diop |
+Ecole Normale |
+Poste Fann |
+Avenue Cheikh Anta Diop |
+UCAD |
+Canal 4 |
+Lycée Delafosse |
+Gueule Tapée |
+Rue 6 |
+Médina |
+DAF |
+Mosquée Seydou Nourrou Tall |
+Reubeuss |
+Lat Dior |
+Avenue Peytavin |
+Rond point Sandaga |
+Avenue Georges Pompidou |
+Place de l'Indépendance |
+Gare TER |
+Esso Port |
+Boulevard de l'Arsenal |
+Central Bel Air |
+Grand Moulin de Dakar |
+Police Bel Air |
+Service des Mines |
+Colobane |
+CSS |
+Masalikul Djinane |
+Cité Port |
+Ouagou Niayes |
+Marché HLM |
+Station Castors |
+Avenue Cheikh Ahmadou Bamba |
+Cité Marine |
+Khar Yalla |
+Rond Point Liberté 6 |
+Cité Derklé |
+Terminus Dieuppeul |

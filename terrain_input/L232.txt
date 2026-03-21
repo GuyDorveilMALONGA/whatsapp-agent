@@ -1,0 +1,23 @@
+# Ligne 232 — LIGNE 232 (BAUX MARAICHERS → AEROPORT LSS)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 15 arrêts sur cette ligne.
+
+Baux Maraichers |
+Yarakh |
+Cafétéria |
+Hann Maristes |
+Cours Sainte Marie de Hann |
+Sortie Mariste |
+Usine des eaux |
+Front de terre |
+Khar Yalla |
+Rond Point Liberté 6 |
+Deux voies vers Camp Leclerc |
+VDN |
+Foire |
+Yoff |
+Terminus Aéroport LSS |

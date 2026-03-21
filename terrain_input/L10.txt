@@ -1,0 +1,37 @@
+# Ligne 10 — LIGNE 10 (LIBERTÃ‰ 5 → PALAIS 2)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 29 arrêts sur cette ligne.
+
+Terminus Liberté 5 |
+Cité Derklé |
+Rond point Liberté 6 |
+Khar Yalla |
+Cité Marine |
+CEM Ousmane Socé Diop |
+Eglise Martyrs de l'Ouganda |
+SDE |
+Dakar Sacré Cœur |
+Stade Demba Diop |
+Avenue Bourguiba |
+Ecole Normale |
+Poste Fann |
+Rue Aimé Césaire |
+Ministère de la Santé |
+Corniche Ouest |
+IFAN |
+Hotel Terrou |
+Tunnel de Soumbédioune |
+Village Artisanal de Soumbédioune |
+Prison Rebeus |
+Tribunal de Dakar |
+Boulevard de la République |
+Sorano |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Terminus Palais 2 |

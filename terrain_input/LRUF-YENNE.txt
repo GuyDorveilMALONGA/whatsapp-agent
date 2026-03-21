@@ -1,0 +1,26 @@
+# Ligne RUF-YENNE — RUFISQUE - YENNE (RUFISQUE → YENNE)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 18 arrêts sur cette ligne.
+
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Sortie Rufisque |
+Ville de Rufisque |
+Sortie Rufisque |
+Terminus Rufisque |
+Autoroute à Péage |
+Bargny |
+Autoroute à Péage |
+Bargny |
+Diamniadio Yenne |

@@ -1,0 +1,24 @@
+# Ligne 15 — LIGNE 15 (RUFISQUE → PALAIS 1)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 16 arrêts sur cette ligne.
+
+Terminus Rufisque |
+Sortie Rufisque |
+Croisement Keur Massar |
+Fass Mbao |
+Diamaguène |
+Poste Thiaroye |
+Croisement Bountou Pikine |
+Route Nationale 1 |
+Croisement Cambérène |
+Colobane |
+SCOA |
+Esso Port |
+Place de l'Indépendance |
+Avenue Léopold Sédar Senghor |
+Avenue Nelson Mandela |
+Palais 1 |

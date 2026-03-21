@@ -1,0 +1,24 @@
+# Ligne 221 — LIGNE 221 (GADAYE → ALMADIES)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 16 arrêts sur cette ligne.
+
+Terminus Gadaye (Filaos) |
+Corniche Daroukhane |
+Hamo 6 |
+Arrêt Dial Mbaye |
+PAI |
+Hôpital Dalal Diam |
+Case |
+Police PA |
+Pont Sénégal Emergent (92) |
+Terminus Almadies |
+Route de l'Aéroport |
+Mairie Grand Yoff |
+Ngor Village |
+Yoff Tonghor |
+Cité Asecna |
+Rond Point Ngor |

@@ -1,0 +1,27 @@
+# Ligne 208 — LIGNE 208 (BAYAKH → RUFISQUE)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 19 arrêts sur cette ligne.
+
+Gorom 01 |
+Bambilor |
+Noflaye |
+Sangalkam |
+Noflaye |
+Sangalkam |
+Noflaye |
+Sangalkam |
+Noflaye |
+Sangalkam |
+Noflaye |
+Sangalkam |
+Keur Ndiaye Lo |
+Rufisque |
+Sortie Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Rufisque |

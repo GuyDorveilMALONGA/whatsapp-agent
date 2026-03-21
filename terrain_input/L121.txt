@@ -1,0 +1,33 @@
+# Ligne 121 — LIGNE 121 (SCAT URBAM → LECLERC)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 25 arrêts sur cette ligne.
+
+Terminus Scat Urban |
+Petersen |
+Allées Papa Guèye Fall |
+Avenue Faidherbe |
+RTS |
+Travaux Communaux |
+Rue 22 Prolongée |
+HLM Fass |
+Lycée Blaise Diagne |
+Canal 4 |
+Boulangerie Zone |
+Sicap rue 10 |
+Collège Sacré Cœur |
+Rond point JVC |
+Les deux voies de Liberté 6 |
+Camp Penal |
+Pentola |
+Khar Yalla |
+Rond point 26 |
+Sipres |
+Rte de l'Aéroport |
+Mairie Grand Yoff |
+Ngor Village |
+Yoff Tonghor |
+Yoff |

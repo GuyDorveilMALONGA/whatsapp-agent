@@ -1,0 +1,52 @@
+# Ligne TO1 — LIGNE TAF TAF OUAKAM (OUAKAM → PALAIS 2)
+# Format : NOM_OFFICIEL | NOM_TERRAIN
+
+Terminus Ouakam | Ouakam
+Brioche Dorée Ouakam | Brioche Dorée
+Monument de la Renaissance | Monument Renaissance
+Route des Mamelles | Mamelles
+Cité Assemblée | Cité Assemblée
+Mamelles | Mamelles Haut
+Comico | Comico
+Ancienne Piste | Ancienne Piste
+Immeuble Mariama | Mariama
+Avenue Cheikh Anta Diop | Cheikh Anta Diop
+Ecole Normale | Normale Sup
+Poste Fann | Fann
+Rue Aimé Césaire | Aimé Césaire
+Université Amphate BA | Amphate Ba
+UCAD | UCAD
+Hampathé Ba | Hampathé Ba
+HLM Fass | HLM Fass
+Marché Fass | Fass
+Eglise Sainte Thérèse | Sainte Thérèse
+Travaux Communaux | Travaux Communaux
+Rond Point Sahm | Rond Point Sahm
+Police Bel Air | Bel Air
+Rond point Sham | Sahm
+Médina | Médina
+Blaise Diagne | Blaise Diagne
+Grande Mosquée | Grande Mosquée
+Caserne Sapeurs Pompiers | Pompiers
+SDE | SDE
+Boulevard Général De Gaule | De Gaulle
+DAF | DAF
+Poste Médina | Médina Poste
+Allées Papa Guèye Fall | Papa Guèye Fall
+Petersen | Petersen
+Avenue Jean Jaurès | Jean Jaurès
+Terminus Scat Urban | Scat Urbam
+Avenue André Peytavin | Peytavin
+Sorano | Sorano
+Esso Port | Esso Port
+Embarcadère | Embarcadère
+Avenue George Pompidou | Pompidou
+Gare de Dakar | Gare Dakar
+Avenue Léopold Sédar Senghor | Avenue Senghor
+Place de l'Indépendance | Indépendance
+Hopital Principale | Hôpital Principal
+Corniche Ouest | Corniche
+Avenue Peytavin | Peytavin Bas
+Avenue Pompidou | Pompidou Bas
+Avenue Nelson Mandela | Mandela
+Palais 2 | Palais 2

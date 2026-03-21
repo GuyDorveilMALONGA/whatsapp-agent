@@ -1,0 +1,19 @@
+# Ligne 234 — LIGNE 234 (JAXAAY → LECLERC)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 11 arrêts sur cette ligne.
+
+Terminus Jaxaay |
+Station Keur Massar |
+Croisement Keur Massar |
+Fass Mbao |
+Diamaguène |
+Poste Thiaroye |
+Grand Théâtre |
+Esso Port |
+Place de l'Indépendance |
+Avenue Sarraut |
+Leclerc |

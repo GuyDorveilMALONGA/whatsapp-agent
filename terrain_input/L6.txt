@@ -1,0 +1,106 @@
+# Ligne 6 — LIGNE 6 (GUÃ‰DIAWAYE → PALAIS 1)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 98 arrêts sur cette ligne.
+
+Terminus Guédiawaye |
+Marché Jeudi |
+Malibu |
+Camberene |
+Terminus des Parcelles |
+Hôpital Dalal Diam |
+Camberene |
+Case PA |
+Police de Parcelles Assainies |
+Marché Grand Médine |
+Unités 22 24 |
+Police PA |
+Terrain Acapes |
+Dispensaire Norade |
+Pont Sénégal Emergent (92) |
+Pont Emergent |
+Patte d'Oie |
+Pharmacie Patte d'Oie |
+Ecole Hyacinthe Thiandoum |
+Pentola |
+Khar Yalla |
+Terminus Liberté 5 (Dieuppeul) |
+Rond point Liberté 6 |
+Rond point 26 |
+Cité Derklé |
+Terminus Dieuppeul |
+Station Shell |
+IHO |
+Ancien Piste |
+2 voies |
+IPG |
+Boulangerie Jaune |
+Dakar Sacré Cœur |
+Sapeur Pompier Guédiawaye |
+Allées Ababacar Sy |
+Station Castor |
+Collège Sacré Cœur |
+Allées Khalifa Ababacar Sy |
+Jet d'eau |
+Les deux voies de Sipres |
+Sicap rue 10 |
+Avenue Bourguiba |
+Rte de l'Aéroport |
+Foire |
+Sipres |
+Terminus Liberté 5 |
+Allées Khalifa Ababacar Sy |
+Jet d'Eau |
+Niary Tally |
+Sicap rue 10 |
+Boulangerie Zone |
+Cité Port |
+Avenue Cheikh Ahmadou Bamba |
+CSS |
+Dial Diop (ex rue 10) |
+Université Amphate BA |
+HLM Fass |
+Hampathé Ba |
+Marché Fass |
+Travaux Communaux |
+Police Bel Air |
+Rond Point Sahm |
+Rond point Sham |
+Médina |
+Eglise Sainte Thérèse |
+ENA |
+Dial Diop (ex rue 10) |
+ENA |
+Gare TER |
+BOPP |
+Masalikul Djinane |
+Zone B |
+Université Amphate BA |
+CEM Dieuppeul 3 |
+Boulangerie Zone |
+Rue 6 |
+GRAND MEDINE |
+Stade Demba Diop |
+Avenue Bourguiba |
+Sicap rue 10 |
+Jet d'eau |
+Allées Khalifa Ababacar Sy |
+Dior |
+Allées Ababacar Sy |
+Caserne Sapeurs Pompiers |
+Grande Mosquée |
+Blaise Diagne |
+SDE |
+Poste Médina |
+Allées Papa Guèye Fall |
+Boulevard Général De Gaule |
+Avenue Faidherbe |
+Avenue Lamine Gueye |
+Avenue André Peytavin |
+Avenue Jean Jaurès |
+Boulevard de la République |
+Avenue Nelson Mandela |
+Palais 1 |

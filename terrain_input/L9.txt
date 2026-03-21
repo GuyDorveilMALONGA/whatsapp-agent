@@ -1,0 +1,32 @@
+# Ligne 9 — LIGNE 9 (LIBERTÃ‰ 6 → PALAIS 2)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 24 arrêts sur cette ligne.
+
+Terminus Liberté 6 |
+Rond Point JVC |
+Sacré Cœur |
+IPG |
+Terminus Dieuppeul |
+Allées Ababacar Sy |
+Rond Point Jet d'Eau |
+Niary Tally |
+Eglise Sainte Thérèse |
+Lycée Blaise Diagne |
+Lycée Kennedy |
+Obélisque |
+Centenaire |
+Rond point RTS |
+Poste Médina |
+Difoncé |
+Sandaga |
+Avenue George Pompidou |
+Place de l'Indépendance |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Terminus Palais 2 |

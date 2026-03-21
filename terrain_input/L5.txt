@@ -1,0 +1,74 @@
+# Ligne 5 — LIGNE 5 (GUÃ‰DIAWAYE → PALAIS 1)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 66 arrêts sur cette ligne.
+
+Terminus Guédiawaye |
+Marché Jeudi |
+Malibu |
+Camberene |
+Terminus des Parcelles |
+Hôpital Dalal Diam |
+Case PA |
+Police de Parcelles Assainies |
+Pont Sénégal 92 (Pont de l'émergence) |
+Patte d'Oie |
+Pont Emergent |
+Marché Grand Médine |
+Police PA |
+Police Parcelles |
+Unités 22 24 |
+Ecole Hyacinthe Thiandoum |
+Pharmacie Patte d'Oie |
+Patte d'Oie |
+Ecole Hyacinthe Thiandoum |
+Pont Emergent |
+AIBD |
+Stade Léopold Sédar Senghor - Patte d'Oie |
+Marché Grand Médine |
+Unités 22 24 |
+Pont Sénégal Emergent (92) |
+Terminus 221 Gadaye |
+Rue 39 |
+Dispensaire Norade |
+Terrain Acapes |
+Ecole Dior |
+Tally Boumack |
+Terminus Parcelles |
+HLM Grand Médine |
+Terminus Parcelles Assainies |
+Diamalaye |
+Cité ISRA |
+Station Castor |
+Boulevard de la République |
+Cité Port |
+Colobane |
+Avenue Cheikh Ahmadou Bamba |
+CSS |
+Sotiba (Seras) |
+Caserne Sapeurs Pompiers |
+Grande Mosquée |
+Boulevard Général De Gaule |
+SDE |
+Poste Médina |
+Allées Papa Guèye Fall |
+Petersen |
+Esso Port |
+Gare de Dakar |
+Embarcadère |
+Avenue Jean Jaurès |
+Avenue George Pompidou |
+Avenue André Peytavin |
+Place de l'Indépendance |
+Avenue Léopold Sédar Senghor |
+Intendance |
+Avenue Lamine Gueye |
+Avenue Nelson Mandela |
+Leclerc |
+Esso Port Embarcadère |
+Hopital Principale |
+Palais 2 |
+Palais 1 |

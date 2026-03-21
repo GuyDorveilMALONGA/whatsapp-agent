@@ -1,0 +1,77 @@
+# Ligne 319 — LIGNE 319 (LIBERTÃ‰ 6 → OUAKAM)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 69 arrêts sur cette ligne.
+
+Terminus Liberté 6 |
+Rond Point Liberté 6 |
+Station Shell |
+IHO |
+Ancien Piste |
+Rond point JVC |
+Rond point Cheikh Bethio |
+Boulangerie Jaune |
+Immeuble Mariama |
+Entrée Ouakam |
+Pharmacie Cité Aviation |
+Mamelles |
+Route des Mamelles |
+Cité Assemblée |
+Brioche Dorée Ouakam |
+Comico |
+Ancienne Piste |
+Avenue Cheikh Anta Diop |
+ENEA |
+Capa Virmaud |
+Route de la Corniche |
+Capa Virmaud |
+ENEA |
+Avenue Cheikh Anta Diop |
+ENEA |
+Capa Virmaud |
+Route de la Corniche |
+Capa Virmaud |
+ENEA |
+Avenue Cheikh Anta Diop |
+ENEA |
+Capa Virmaud |
+Route de la Corniche |
+Capa Virmaud |
+ENEA |
+Avenue Cheikh Anta Diop |
+2 voies |
+Dakar Sacré Coeur |
+Terminus Dieuppeul |
+Cité Derklé |
+Collège Sacré Cœur |
+Sapeur Pompier Guédiawaye |
+Eglise Martyrs de l'Ouganda |
+Allées Ababacar Sy |
+CEM Ousmane Socé Diop |
+Allées Khalifa Ababacar Sy |
+Sicap rue 10 |
+Station Castor |
+Boulangerie Zone |
+Université Amphate BA |
+Dial Diop (ex rue 10) |
+Hampathé Ba |
+Cité Port |
+HLM Fass |
+Avenue Cheikh Ahmadou Bamba |
+CSS |
+Colobane |
+Boulangerie N'wely |
+Case des tous petit |
+Front de Terre |
+JVC -  HANNE |
+Cité ISRA |
+Usine des Eaux |
+Yarakh |
+Lycée d'excellence privée |
+Baux Maraichers |
+Bountou Pikine |
+Maison du Parti |
+Pharmacie Mame Seynabou |

@@ -1,0 +1,17 @@
+# Ligne 220 — LIGNE 220 (RUFISQUE → GUÃ‰DIAWAYE)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 9 arrêts sur cette ligne.
+
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Terminus Rufisque |
+Ville de Rufisque |
+Sortie Rufisque |

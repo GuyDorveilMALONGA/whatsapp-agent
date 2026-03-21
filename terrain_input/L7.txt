@@ -1,0 +1,29 @@
+# Ligne 7 — LIGNE 7 (OUAKAM → PALAIS 2)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 21 arrêts sur cette ligne.
+
+Terminus Ouakam |
+Cité Assemblée |
+Cité Comico |
+Sortie Ouakam |
+Hopital IHO |
+Mermoz |
+ENEA |
+Ecole Normale |
+UCAD |
+Rond point Sham |
+Marché Tilène |
+Poste Médina |
+Difoncé |
+Sandaga |
+Avenue George Pompidou |
+Place de l'Indépendance |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Terminus Palais 2 |

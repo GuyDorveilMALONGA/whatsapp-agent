@@ -1,0 +1,24 @@
+# Ligne 11 — LIGNE 11 (KEUR MASSAR → LAT DIOR)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 16 arrêts sur cette ligne.
+
+Terminus Keur Massar |
+Station Keur Massar |
+Croisement Keur Massar |
+Fass Mbao |
+Diamaguène |
+Poste Thiaroye |
+Autoroute à Péage |
+Corniche des HLM |
+Colobane |
+Boulevard Général De Gaule |
+RTS |
+Rond Point |
+Poste Médina |
+Blaise Diagne |
+Sandaga |
+Terminus Lat Dior |

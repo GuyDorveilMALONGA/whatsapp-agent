@@ -1,0 +1,31 @@
+# Ligne 13 — LIGNE 13 (LIBERTÃ‰ 5 → PALAIS 2)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 23 arrêts sur cette ligne.
+
+Terminus Liberté 5 |
+Avenue Cheikh Ahmadou Bamba |
+Station Castors |
+Marché HLM |
+Ouagou Niayes |
+BOP |
+Masalikul Djinane |
+CSS |
+Lycée Kennedy |
+Centenaire |
+RTS |
+Grande Mosquée |
+Allées Papa Guèye Fall |
+Petersen |
+Avenue Faidherbe |
+Esso Port |
+Gare de Dakar |
+Place de l'Indépendance |
+Avenue Léopold Sédar Senghor |
+Hopital Principale |
+Rond point Assemblée Nationale |
+Institut Pasteur |
+Terminus Palais 2 |

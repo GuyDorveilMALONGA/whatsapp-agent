@@ -1,0 +1,67 @@
+# Ligne 233 — LIGNE 233 (BAUX MARAICHERS → PALAIS 1)
+# Remplis la colonne NOM_TERRAIN (laisse vide si identique au nom officiel)
+# Une ligne par arrêt. Format : NOM_OFFICIEL | NOM_TERRAIN
+# Exemple : Terminus Ouakam | Gare Ouakam
+# Lignes commençant par # sont ignorées à l'import.
+#
+# 59 arrêts sur cette ligne.
+
+Baux Maraichers |
+Yarakh |
+Sortie Mariste |
+Hann Maristes |
+Usine des Eaux |
+Front de Terre |
+Cours Sainte Marie de Hann |
+Hann Maristes |
+Central Bel Air (MTOA) |
+Sortie Mariste |
+Hann Maristes |
+Cours Sainte Marie de Hann |
+Hann Maristes |
+Central Bel Air |
+Sortie Mariste |
+Hann Maristes |
+Cours Sainte Marie de Hann |
+Hann Maristes |
+Central Bel Air |
+Sortie Mariste |
+Hann Maristes |
+Cours Sainte Marie de Hann |
+Rond point 26 |
+Pentola |
+Khar Yalla |
+Rond Point Liberté 6 |
+Deux voies vers Camp Leclerc |
+Foire |
+Yoff |
+Mairie Grand Yoff |
+Terminus Aéroport LSS |
+VDN-Foire |
+Deux voies vers Camp Leclerc |
+Sipres |
+Rte de l'Aéroport |
+Eglise PA |
+Pont Sénégal Emergent (92) |
+Diamalaye |
+Marché Grand Médine |
+Unités 22 24 |
+Terrain Acapes |
+Ecole Dior |
+HLM Grand Médine |
+Dispensaire Norade |
+Rue 39 |
+Terminus Parcelles |
+Terminus Parcelles Assainies |
+Cafétéria |
+Acapes |
+Croisement 22 |
+Case PA |
+Terminus Malika |
+Terminus des Parcelles |
+Camberene |
+Malibu |
+Gueule Tapée |
+Arrêt Dial Mbaye |
+Terminus Guédiawaye |
+VDN |

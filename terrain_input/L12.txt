@@ -1,0 +1,80 @@
+# Ligne 12 — LIGNE 12 (GUÉDIAWAYE → PALAIS 1)
+# Format : NOM_OFFICIEL | NOM_TERRAIN
+
+Terminus Guédiawaye | Guédiawaye
+Lycée Canada | Canada
+Tally Boubess | Tally Boubess
+Bountou Pikine | Bountou Pikine
+Maison du Parti | Maison du Parti
+Sips | Sips
+Baux Maraichers | Baux Maraichers
+Yarakh | Yarakh
+Croisement Camberene | Cambérène
+Yarakh |
+DALIFORT - TER | Dalifort
+Cité Lobatt Fall | Lobatt Fall
+Baux Maraichers |
+ASECNA | ASECNA
+Croisement Bountou Pikine | Croisement Bountou
+Icotaf | Icotaf
+Sips |
+Pharmacie Mame Seynabou | Mame Seynabou
+Bountou Pikine |
+Tally Boubess |
+Maison du Parti |
+Lycée Canada |
+Deux voies Notaire | Deux Voies
+Ravin | Ravin
+Front de Terre | Front de Terre
+Cité Marine | Cité Marine
+Cité des Eaux | Eaux
+Station Castor | Castors
+CEM Ousmane Socé Diop | CEM Ousmane Socé
+Eglise Martyrs de l'Ouganda | Martyrs
+Allées Ababacar Sy | Ababacar Sy
+Sapeur Pompier Guédiawaye | Pompiers Guédiawaye
+Allées Khalifa Ababacar Sy | Khalifa Sy
+Sicap rue 10 | Sicap Rue 10
+Avenue Bourguiba | Bourguiba
+National 1 | Nationale
+Ecole Normale | Normale
+Boulevard de la République | Boulevard République
+Avenue Cheikh Anta Diop (Hôpital Fann) | Hôpital Fann
+Ancienne Piste | Ancienne Piste
+Direction Générale DDD | DDD
+Immeuble Mariama | Mariama
+Hôpital Militaire de Ouakam | Hôpital Militaire
+Hopital IHO | IHO
+Cité Comico | Comico
+Ancienne Piste |
+Direction Générale DDD |
+Immeuble Mariama |
+Hôpital Militaire de Ouakam |
+Hopital IHO |
+Cité Comico |
+Immeuble Mariama |
+Dakar Sacré Cœur | Sacré Cœur
+Boulangerie Jaune | Boulangerie Jaune
+Rond point Cheikh Bethio | Cheikh Bethio
+IPG | IPG
+Rue Aimé Césaire | Aimé Césaire
+Poste Fann | Fann
+Université Amphate BA | Amphate Ba
+UCAD | UCAD
+Hampathé Ba | Hampathé Ba
+Marché Fass | Fass
+Eglise Sainte Thérèse | Sainte Thérèse
+Police Bel Air | Bel Air
+Travaux Communaux | Travaux Communaux
+Rond point Sham | Sahm
+Médina | Médina
+Blaise Diagne | Blaise Diagne
+Rond Point Sahm | Rond Point Sahm
+Avenue Blaise Diagne | Blaise Diagne Ave
+Avenue Jean Jaurès | Jean Jaurès
+Marché Sandika | Sandika
+Avenue Léopold Sédar Senghor | Avenue Senghor
+Avenue Nelson Mandela | Mandela
+Palais 1 | Palais
+Palais 2 | Palais 2
+Hopital Principale | Hôpital Principal

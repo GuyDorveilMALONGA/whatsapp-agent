@@ -1,0 +1,29 @@
+# Ligne 16B — LIGNE 16B (MALIKA → PALAIS 1)
+# Format : NOM_OFFICIEL | NOM_TERRAIN
+
+Terminus Malika | Malika
+Station Keur Massar | Keur Massar
+Croisement Keur Massar | Croisement Keur Massar
+LGI Mbao | Mbao
+Thiaroye | Thiaroye
+Sips | Sips
+Sotiba (Seras) | Sotiba
+Yarakh | Yarakh
+Capa Virmaud | Capa
+Place Bakou | Bakou
+SCOA | SCOA
+Police Bel Air | Bel Air Police
+Bel Air | Bel Air
+GMD | GMD
+Sofrigal | Sofrigal
+Cyrnos | Cyrnos
+Caserne Sapeurs Pompiers | Pompiers
+Avenue Lamine Guèye | Lamine Guèye
+Avenue André Peytavin | Peytavin
+Avenue Jean Jaurès | Jean Jaurès
+Boulevard de la République | Boulevard République
+Avenue Léopold Sédar Senghor | Avenue Senghor
+Hôpital Principal | Hôpital Principal
+Assemblée Nationale | Assemblée
+Hôpital Le Dantec | Dantec
+Palais 1 | Palais
