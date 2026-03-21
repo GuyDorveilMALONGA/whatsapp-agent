@@ -22,12 +22,17 @@ for _num in VALID_LINES:
     _BASE_TO_LIGNES.setdefault(_base, []).append(_num)
 
 # Index de tous les arrêts connus (minuscules → nom officiel)
+# FIX BUG-E1 : JSON v15 utilise "arrets"+"nom", pas "stops"+"name"
 _ALL_ARRETS_LOWER: dict[str, str] = {}
 for _line in NETWORK.values():
-    for _stop in _line.get("stops", []):
-        nom = _stop.get("name", "")
+    for _stop in _line.get("arrets", _line.get("stops", [])):
+        nom = _stop.get("nom", _stop.get("name", ""))
         if nom:
             _ALL_ARRETS_LOWER[nom.lower()] = nom
+    # Indexer aussi les aliases terrain
+    for _alias in _line.get("aliases_terrain", []):
+        if _alias and _alias.strip():
+            _ALL_ARRETS_LOWER[_alias.strip().lower()] = _alias.strip()
 
 # ── Numéros en toutes lettres → chiffres ──────────────────
 
@@ -100,11 +105,17 @@ def _find_arret(text: str, ligne: str | None) -> tuple[str | None, str | None]:
     cleaned = " ".join(words)
 
     if ligne and ligne in NETWORK:
+        # FIX BUG-E2 : JSON v15 utilise "arrets"+"nom", pas "stops"+"name"
+        raw_stops = NETWORK[ligne].get("arrets", NETWORK[ligne].get("stops", []))
         candidates = [
-            (s["name"].lower(), s["name"])
-            for s in NETWORK[ligne].get("stops", [])
-            if s.get("name")
+            (s.get("nom", s.get("name", "")).lower(), s.get("nom", s.get("name", "")))
+            for s in raw_stops
+            if s.get("nom") or s.get("name")
         ]
+        # Ajouter les aliases terrain de la ligne
+        for alias in NETWORK[ligne].get("aliases_terrain", []):
+            if alias and alias.strip():
+                candidates.append((alias.strip().lower(), alias.strip()))
     else:
         candidates = list(_ALL_ARRETS_LOWER.items())
 
@@ -160,9 +171,13 @@ def extract(text: str) -> ExtractResult:
 def get_arrets_ligne(ligne: str) -> dict:
     if ligne not in NETWORK:
         return {"exists": False, "aller": [], "retour": [], "description": ""}
-    data       = NETWORK[ligne]
-    stop_names = [s["name"] for s in data.get("stops", []) if s.get("name")]
-    desc       = data.get("name", f"{data.get('terminus_a', '')} → {data.get('terminus_b', '')}")
+    data = NETWORK[ligne]
+    # FIX BUG-E3 : JSON v15 utilise "arrets"+"nom", pas "stops"+"name"
+    raw_stops  = data.get("arrets", data.get("stops", []))
+    stop_names = [s.get("nom", s.get("name", "")) for s in raw_stops
+                  if s.get("nom") or s.get("name")]
+    desc = data.get("nom", data.get("name",
+           f"{data.get('terminus_a', '')} → {data.get('terminus_b', '')}"))
     return {
         "exists":      True,
         "description": desc,
