@@ -1,5 +1,5 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V2.5 — FIX nav couleur safe area
+   css/base.css — V2.6 — nav hauteur fixe + body bg fix
    ════════════════════════════════════════════════════════ */
 
 *, *::before, *::after {
@@ -9,7 +9,8 @@
 
 html, body {
   height: 100%; overflow: hidden;
-  background: var(--bg); color: var(--text);
+  /* var(--surface) au lieu de var(--bg) — couvre la zone safe area sous la nav */
+  background: var(--surface); color: var(--text);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
   font-size: 14px; line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -18,10 +19,11 @@ html, body {
 /* App shell — hauteur fixe, jamais de scroll global */
 #app {
   height: 100%;
-  height: 100dvh; /* dynamic viewport height — fix iOS Safari */
+  height: 100dvh;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  background: var(--bg); /* le fond de l'app reste --bg */
 }
 
 /* ── Header ── */
@@ -154,31 +156,19 @@ html, body {
 }
 .screen.active { display: flex; }
 
-/* ── Bottom nav — V2.5 ─────────────────────────────────────
-   - height = --nav-h + safe-area-inset-bottom
-   - boutons centrés dans --nav-h uniquement
-   - ::after couvre la zone safe area avec la même couleur
-     → plus de bande de couleur différente sous la nav
+/* ── Bottom nav — V2.6 ─────────────────────────────────────
+   - height = --nav-h uniquement, SANS env()
+   - body background = var(--surface) couvre la zone safe area
+   - plus de bande de couleur différente, nav répond à --nav-h
 */
 .bottom-nav {
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   flex: 0 0 auto;
-  height: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px));
+  height: var(--nav-h);
   z-index: 20;
   transform: translateZ(0);
-  position: relative;
-}
-
-/* Couvre la zone safe area avec la même couleur que la nav */
-.bottom-nav::after {
-  content: '';
-  position: absolute;
-  bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
-  left: 0; right: 0;
-  height: env(safe-area-inset-bottom, 0px);
-  background: var(--surface);
 }
 
 .nav-btn {
