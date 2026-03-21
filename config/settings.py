@@ -1,6 +1,13 @@
 """
-config/settings.py — V8.1
+config/settings.py — V8.2
 Point central — variables d'environnement, constantes, configuration globale.
+
+MIGRATIONS V8.2 depuis V8.1 :
+  - JSON_PATH : pointe vers routes_geometry_v13_fixed2.json
+    (98 corrections interpolation + coupes boucles OSRM sur lignes 23/121/217/218/220)
+  - EXCLUDED_LINES : set des lignes fantômes (1 arrêt, données incomplètes)
+    exclues de VALID_LINES et du routage agent. Non supprimées du JSON.
+  - VALID_LINES -= EXCLUDED_LINES appliqué après chargement dynamique.
 
 MIGRATIONS V8.1 depuis V8.0 :
   - JSON_PATH : chemin absolu via pathlib.Path(__file__) pour Railway
@@ -91,12 +98,13 @@ HISTORIQUE_MESSAGES     = 10
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Xëtu")
 
 # ── Chemin JSON réseau ────────────────────────────────────
+# V8.2 : pointe vers routes_geometry_v13_fixed2.json
 # V8.1 : chemin absolu depuis la racine du projet via __file__
 # config/settings.py → parent = config/ → parent = racine/
 _BASE_DIR = pathlib.Path(__file__).parent.parent.resolve()
 JSON_PATH = os.getenv(
     "NETWORK_JSON_PATH",
-    str(_BASE_DIR / "routes_geometry_v13.json")
+    str(_BASE_DIR / "routes_geometry_v13_fixed2.json")
 )
 
 logger.info(f"[Settings] JSON_PATH résolu → {JSON_PATH}")
@@ -137,6 +145,34 @@ def _load_valid_lines(path: str) -> set[str]:
 
 
 VALID_LINES: set[str] = _load_valid_lines(JSON_PATH)
+
+# ── V8.2 : Lignes exclues du routage ─────────────────────
+# Lignes fantômes : 1 seul arrêt, données OSRM incomplètes,
+# ou tronçons non opérationnels sur le réseau Dakar.
+# Conservées dans le JSON pour traçabilité — ignorées par l'agent.
+# Clés en majuscules pour correspondre au str(k).upper() du chargement.
+EXCLUDED_LINES: set[str] = {
+    "DDD_101",  # 504A       — 1 arrêt
+    "DDD_103",  # HADARA     — 1 arrêt
+    "DDD_104",  # TAF TAF JAXAAY — 1 arrêt
+    "DDD_48",   # EXPRESS    — 1 arrêt
+    "DDD_55",   # ISEP       — 1 arrêt
+    "DDD_57",   # 504        — 1 arrêt
+    "DDD_67",   # R02        — 2 arrêts, 1m36s (navette incomplète)
+    "DDD_70",   # R08A       — 1 arrêt
+    "DDD_71",   # R08B       — 1 arrêt
+    "DDD_89",   # Y.NDI-OUR  — 1 arrêt (hors réseau Dakar)
+    "DDD_90",   # Y.NDI-POD  — 1 arrêt (hors réseau Dakar)
+    "DDD_92",   # L.S KED-SAL — 1 arrêt (hors réseau Dakar)
+    "DDD_94",   # L.S KED-SAR — 1 arrêt (hors réseau Dakar)
+    "DDD_98",   # 234 EXPRESS — 1 arrêt
+}
+
+VALID_LINES -= EXCLUDED_LINES
+logger.info(
+    f"[Settings] Lignes exclues : {len(EXCLUDED_LINES)} — "
+    f"VALID_LINES final : {len(VALID_LINES)}"
+)
 
 # ── Message d'accueil ─────────────────────────────────────
 

@@ -1,6 +1,12 @@
 """
-core/network.py — V5.1
+core/network.py — V5.2
 Singleton JSON réseau Dem Dikk — source de vérité unique.
+
+MIGRATIONS V5.2 depuis V5.1 :
+  - Purge EXCLUDED_LINES de NETWORK après chargement.
+    Les lignes fantômes (1 arrêt, données incomplètes) ne sont plus
+    accessibles via get_stops(), get_line_info() ou _build_graph_data().
+  - Source : routes_geometry_v13_fixed2.json (géré dans config/settings.py)
 
 MIGRATIONS V5.1 depuis V5.0 :
   - Logs de diagnostic au démarrage (CWD, JSON_PATH, os.path.exists)
@@ -28,7 +34,7 @@ print(f"[Network] DÉMARRAGE — PID={os.getpid()}", flush=True, file=sys.stderr
 import json
 import logging
 import os
-from config.settings import JSON_PATH
+from config.settings import JSON_PATH, EXCLUDED_LINES
 
 logger = logging.getLogger(__name__)
 
@@ -58,8 +64,10 @@ try:
         num = str(_line_id).upper()
         if not num:
             continue
+        # V5.2 : ignorer les lignes exclues dès le chargement
+        if num in EXCLUDED_LINES:
+            continue
         NETWORK[num] = _line
-        # VALID_LINES géré par config/settings.py — pas besoin d'ajouter ici
         # FIX BUG13 : le JSON v13 utilise "arrets"+"nom", pas "stops"+"name"
         for stop in _line.get("arrets", _line.get("stops", [])):
             nom = stop.get("nom", stop.get("name", ""))
@@ -67,7 +75,7 @@ try:
                 _ARRETS_INDEX[nom.lower()] = nom
 
     logger.info(
-        f"[Network] ✅ {len(VALID_LINES)} lignes · "
+        f"[Network] ✅ {len(NETWORK)} lignes actives · "
         f"{len(_ARRETS_INDEX)} arrêts uniques chargés ({JSON_PATH})"
     )
 
@@ -77,7 +85,6 @@ except Exception as e:
     logger.error(f"[Network] ❌ Erreur critique chargement JSON : {e}")
 
 print(f"[Network] FIN CHARGEMENT — NETWORK={len(NETWORK)} lignes", flush=True, file=sys.stderr)
-
 
 
 def _build_graph_data() -> dict:
@@ -96,13 +103,12 @@ def _build_graph_data() -> dict:
                                                    s.get("travel_time_to_next_sec")),
             })
         lines_list.append({
-            "number":          line_id,
-            "name":            line.get("nom",  line.get("name", "")),
-            "category":        line.get("categorie", line.get("category", line.get("service", ""))),
-            "terminus_a":      line.get("terminus_a", ""),
-            "terminus_b":      line.get("terminus_b", ""),
-            "stops":           stops_compat,
-            "aliases_terrain": line.get("aliases_terrain", []),
+            "number":     line_id,
+            "name":       line.get("nom",  line.get("name", "")),
+            "category":   line.get("categorie", line.get("category", line.get("service", ""))),
+            "terminus_a": line.get("terminus_a", ""),
+            "terminus_b": line.get("terminus_b", ""),
+            "stops":      stops_compat,
         })
     return {"categories": {"all": lines_list}}
 
