@@ -1,9 +1,9 @@
 /**
  * sw.js — Xëtu PWA Service Worker V5
- * xetu-v8 : suppression bus démo auto + DEMO_MODE=false — localStorage pour âge réel des bus démo
+ * xetu-v9 : fix vitesse anim + reader reset auto + DEMO_MODE=false — localStorage pour âge réel des bus démo
  */
 
-const CACHE_VERSION = 'xetu-v8';
+const CACHE_VERSION = 'xetu-v9';
 const CACHE_NAME    = CACHE_VERSION;
 
 const PRECACHE_URLS = [

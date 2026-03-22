@@ -233,15 +233,27 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-const ANIM_SPEED = 0.00004;
+// Vitesse réaliste bus Dakar : ~25 km/h en ville = 6.9 m/s
+// 1 degré lat ≈ 111 000 m → vitesse en degrés/ms
+const _BUS_SPEED_DEG_PER_MS = 6.9 / 111000 / 1000;  // ~0.0000000622 deg/ms
 
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
+
+  // Positionner le bus à son arrêt signalé sur le tracé (pas au début)
+  const startIdx = bus.traceStartIdx ?? 0;
+
   const state = {
-    ligne: bus.ligne, arrets: data.arrets,
-    coords, idx: bus.traceStartIdx ?? 0, progress: 0,
-    lastTs: null, rafId: null, stopped: false,
+    ligne:      bus.ligne,
+    arrets:     data.arrets,
+    coords,
+    idx:        startIdx,
+    progress:   0,
+    lastTs:     null,
+    rafId:      null,
+    stopped:    false,
+    lastArretIdx: -1,   // pour ne mettre à jour le reader que quand l'arrêt change
   };
   _animState = state;
   const mk = _busMarkers[bus.id];
@@ -249,24 +261,42 @@ function _startAnim(bus, data) {
   function tick(ts) {
     if (state.stopped) return;
     if (!state.lastTs) state.lastTs = ts;
-    const dt = Math.min(ts - state.lastTs, 80);
+    const dt = Math.min(ts - state.lastTs, 100);  // cap 100ms
     state.lastTs = ts;
+
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
     if (!a || !b) {
-      state.idx = 0; state.progress = 0;
-      state.rafId = requestAnimationFrame(tick); return;
+      // Fin du tracé — revenir au début (boucle démo)
+      state.idx      = 0;
+      state.progress = 0;
+      state.rafId    = requestAnimationFrame(tick);
+      return;
     }
+
+    // Distance du segment en degrés
     const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.02;
+    // Avancement proportionnel à la vitesse réelle et au temps écoulé
+    const step = segLen > 0 ? (_BUS_SPEED_DEG_PER_MS * dt) / segLen : 0;
+    state.progress += step;
+
     if (state.progress >= 1) {
       state.progress -= 1;
       state.idx = (state.idx + 1) % (coords.length - 1);
     }
+
     const lat = a[0] + (b[0]-a[0]) * state.progress;
     const lon = a[1] + (b[1]-a[1]) * state.progress;
     if (mk) mk.setLatLng([lat, lon]);
-    updateReader(state.ligne, state.arrets, _nearestArretIdx(lat, lon, state.arrets));
+
+    // Mettre à jour le reader SEULEMENT quand l'arrêt courant change
+    // (pas à 60fps — évite le reset constant du scroll)
+    const newArretIdx = _nearestArretIdx(lat, lon, state.arrets);
+    if (newArretIdx !== state.lastArretIdx) {
+      state.lastArretIdx = newArretIdx;
+      updateReader(state.ligne, state.arrets, newArretIdx);
+    }
+
     state.rafId = requestAnimationFrame(tick);
   }
   state.rafId = requestAnimationFrame(tick);
