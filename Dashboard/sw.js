@@ -3,7 +3,7 @@
  * xetu-v10 : position deterministe synchronisee : fix vitesse anim + reader reset auto + DEMO_MODE=false — localStorage pour âge réel des bus démo
  */
 
-const CACHE_VERSION = 'xetu-v10';
+const CACHE_VERSION = 'xetu-v11';
 const CACHE_NAME    = CACHE_VERSION;
 
 const PRECACHE_URLS = [
