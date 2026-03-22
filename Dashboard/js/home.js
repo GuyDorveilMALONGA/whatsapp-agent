@@ -1,5 +1,5 @@
 /**
- * js/home.js — Xëtu V2.2
+ * js/home.js — Xëtu V2.1 FINAL
  *
  * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
  * FIX-2  Tooltips = stop.nom uniquement
@@ -10,7 +10,6 @@
  * FIX-8  Couleur par hash HSL
  * FIX-9  minutes_ago incrémenté, bus expire après 20 min
  * FIX-10 Zoom centré Dakar centre
- * B3     setView sur le bus au lieu de fitBounds sur tout le tracé
  */
 
 import * as store  from './store.js';
@@ -18,6 +17,7 @@ import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './util
 import { initReader, updateReader, hide as hideReader } from './reader.js';
 
 const AVATARS      = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
+const DEMO_TTL_MIN = 20;
 
 // ── État carte ────────────────────────────────────────────
 let _map               = null;
@@ -160,6 +160,13 @@ const _GTFS = {
   },
 };
 
+// ── Bus démo — _NOW fixé UNE SEULE FOIS au chargement ────
+const _NOW = Date.now();
+const DEMO_BUSES = [
+  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:_NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
+  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:_NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
+];
+
 // ── Init ──────────────────────────────────────────────────
 export function initHome({ onSeeBus }) {
   initReader();
@@ -167,32 +174,53 @@ export function initHome({ onSeeBus }) {
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
-  // Carte vide au démarrage — les bus arrivent uniquement via signalements réels
-  if (!store.get('buses')) store.set('buses', []);
+  requestAnimationFrame(() => {
+    _refreshDemoBuses();
+    setInterval(_refreshDemoBuses, 30_000);
+  });
+}
+
+// ── FIX-9 : refresh démos ─────────────────────────────────
+function _refreshDemoBuses() {
+  const now   = Date.now();
+  const buses = DEMO_BUSES
+    .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
+    .map(b => ({
+      ...b,
+      minutes_ago: Math.round((now - b._born) / 60_000),
+      name: _GTFS[b.ligne]
+        ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
+        : `Ligne ${b.ligne}`,
+    }));
+  store.set('buses', buses);
+  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) _deselectBus();
 }
 
 // ── Carte ─────────────────────────────────────────────────
 function _initMap() {
-  // BUG-3 fix : zoom 14, centré Plateau/Médina — plus de vue sur Rufisque/Gorée
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
     .setView([14.693, -17.452], 14);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     { maxZoom: 19, subdomains: 'abcd' }).addTo(_map);
+
+  // FIX carte noire : Leaflet calcule la taille avant que le CSS dvh
+  // soit résolu → tuiles jamais chargées → écran noir.
+  // Double RAF garantit que le layout est stable avant invalidateSize.
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    _map.invalidateSize({ animate: false });
+  }));
 }
 
 // ── Sélection bus ─────────────────────────────────────────
 function _selectBus(busId) {
   if (_selectedBusId === busId) { _deselectBus(); return; }
-
-  // BUG-5 fix : chercher dans le store actif
-  const activeBuses = store.get('buses') || [];
-  const bus  = activeBuses.find(b => b.id === busId);
-  const data = bus ? _GTFS[bus.ligne] : null;
-  if (!data || !bus) return;  // guard : ne rien dessiner si bus absent du store
-
   _selectedBusId = busId;
   _stopAnim();
   _clearActiveLine();
+
+  const bus  = DEMO_BUSES.find(b => b.id === busId);
+  const data = bus ? _GTFS[bus.ligne] : null;
+  if (!data || !bus) return;
 
   const color = data.color;
 
@@ -214,9 +242,7 @@ function _selectBus(busId) {
     _activeStopMarkers.push(circle);
   });
 
-  // B3 fix : setView centré sur la position du bus (coords GPS du signalement)
-  // au lieu de fitBounds sur tout le tracé qui dézoomait sur toute la presqu'île.
-  _map.setView([bus.lat, bus.lng], 15, { animate: true, duration: 0.5 });
+  _map.fitBounds(_activePolyline.getBounds(), { padding: [40, 40], maxZoom: 12 });
   _refreshBusMarkers();
   _startAnim(bus, data);
 }
@@ -236,81 +262,15 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-// Vitesse réaliste bus Dakar : ~25 km/h = 6.9 m/s = 0.0000621 deg/s (1°lat ≈ 111 000 m)
-const _BUS_SPEED_DEG_PER_SEC = 6.9 / 111000;   // degrés par seconde
-const _BUS_SPEED_DEG_PER_MS  = _BUS_SPEED_DEG_PER_SEC / 1000;
-
-/**
- * Calcule la longueur totale d'un tracé en degrés.
- */
-function _traceLength(coords) {
-  let total = 0;
-  for (let i = 0; i < coords.length - 1; i++) {
-    const a = coords[i], b = coords[i + 1];
-    total += Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-  }
-  return total;
-}
-
-/**
- * À partir d'une distance parcourue en degrés, retourne {idx, progress}
- * sur le tracé — position déterministe depuis n'importe quel client.
- */
-function _posFromDistance(coords, distDeg) {
-  let remaining = distDeg % _traceLength(coords); // boucle infinie
-  for (let i = 0; i < coords.length - 1; i++) {
-    const a = coords[i], b = coords[i + 1];
-    const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    if (remaining <= segLen) {
-      return { idx: i, progress: segLen > 0 ? remaining / segLen : 0 };
-    }
-    remaining -= segLen;
-  }
-  return { idx: 0, progress: 0 };
-}
+const ANIM_SPEED = 0.00004;
 
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
-
-  // ── Position de départ déterministe ───────────────────────
-  // On calcule la distance parcourue depuis le signalement :
-  //   distanceDeg = minutes_ago × 60s × vitesse_deg/s
-  // Tous les clients obtiennent la même position pour le même bus.
-  // Re-cliquer sur le bus repart depuis cette même position — pas depuis le début.
-  const minutesAgo    = bus.minutes_ago ?? 0;
-  const elapsedSec    = minutesAgo * 60;
-  const distAtSighting = _BUS_SPEED_DEG_PER_SEC * elapsedSec;
-
-  // Point de départ sur le tracé = position à l'heure du signalement
-  // On commence à traceStartIdx si disponible (arrêt signalé localisé),
-  // sinon on commence au début du tracé.
-  const startSegIdx  = bus.traceStartIdx ?? 0;
-  let   distToStart  = 0;
-  for (let i = 0; i < startSegIdx && i < coords.length - 1; i++) {
-    const a = coords[i], b = coords[i + 1];
-    distToStart += Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-  }
-  // Position actuelle = position au signalement + distance parcourue depuis
-  const currentDist   = distToStart + distAtSighting;
-  const startPos      = _posFromDistance(coords, currentDist);
-
-  // ── Timestamp de référence ─────────────────────────────────
-  // On garde la distance cumulée totale depuis le début du tracé (en degrés).
-  // À chaque tick on ajoute (dt × vitesse). Tous les clients partent du même
-  // currentDist → positions synchronisées.
   const state = {
-    ligne:        bus.ligne,
-    arrets:       data.arrets,
-    coords,
-    idx:          startPos.idx,
-    progress:     startPos.progress,
-    // Distance totale parcourue depuis le début du tracé — base de synchronisation
-    totalDistDeg: currentDist % _traceLength(coords),
-    lastTs:       null,
-    rafId:        null,
-    stopped:      false,
-    lastArretIdx: -1,
+    ligne: bus.ligne, arrets: data.arrets,
+    coords, idx: bus.traceStartIdx ?? 0, progress: 0,
+    lastTs: null, rafId: null, stopped: false,
   };
   _animState = state;
   const mk = _busMarkers[bus.id];
@@ -318,32 +278,24 @@ function _startAnim(bus, data) {
   function tick(ts) {
     if (state.stopped) return;
     if (!state.lastTs) state.lastTs = ts;
-    const dt = Math.min(ts - state.lastTs, 100);
+    const dt = Math.min(ts - state.lastTs, 80);
     state.lastTs = ts;
-
-    // Avancer la distance totale
-    state.totalDistDeg += _BUS_SPEED_DEG_PER_MS * dt;
-
-    // Recalculer la position sur le tracé depuis la distance totale
-    const pos = _posFromDistance(coords, state.totalDistDeg);
-    state.idx      = pos.idx;
-    state.progress = pos.progress;
-
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
-    if (!a || !b) { state.rafId = requestAnimationFrame(tick); return; }
-
+    if (!a || !b) {
+      state.idx = 0; state.progress = 0;
+      state.rafId = requestAnimationFrame(tick); return;
+    }
+    const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
+    state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.02;
+    if (state.progress >= 1) {
+      state.progress -= 1;
+      state.idx = (state.idx + 1) % (coords.length - 1);
+    }
     const lat = a[0] + (b[0]-a[0]) * state.progress;
     const lon = a[1] + (b[1]-a[1]) * state.progress;
     if (mk) mk.setLatLng([lat, lon]);
-
-    // Reader : uniquement quand l'arrêt courant change
-    const newArretIdx = _nearestArretIdx(lat, lon, state.arrets);
-    if (newArretIdx !== state.lastArretIdx) {
-      state.lastArretIdx = newArretIdx;
-      updateReader(state.ligne, state.arrets, newArretIdx);
-    }
-
+    updateReader(state.ligne, state.arrets, _nearestArretIdx(lat, lon, state.arrets));
     state.rafId = requestAnimationFrame(tick);
   }
   state.rafId = requestAnimationFrame(tick);
@@ -404,9 +356,8 @@ function _busIcon(ligne, color, size, isSelected) {
       box-shadow:0 2px 12px rgba(0,0,0,0.5);
       display:flex;align-items:center;justify-content:center;
       font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
-      font-weight:700;color:#fff;line-height:1;">${ligne}</div>`,
-    iconSize: [size, size], iconAnchor: [size/2, size/2],
-    className: 'xetu-bus-marker',   // BUG-4 fix : 'xetu-bus-marker' au lieu de '' → pas de styles Leaflet parasites
+      font-weight:700;color:#fff;">${ligne}</div>`,
+    iconSize: [size, size], iconAnchor: [size/2, size/2], className: '',
   });
 }
 
