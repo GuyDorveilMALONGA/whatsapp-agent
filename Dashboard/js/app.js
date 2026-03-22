@@ -21,7 +21,7 @@ const _screens    = document.querySelectorAll('.screen');
 // ── Mode démo ─────────────────────────────────────────────
 // true  → bus démo L1 + L4 hardcodés, API Railway ignorée
 // false → données réelles depuis Railway/Supabase
-const DEMO_MODE = true;
+const DEMO_MODE = false;
 
 // ── Navigation ────────────────────────────────────────────
 

@@ -17,7 +17,6 @@ import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './util
 import { initReader, updateReader, hide as hideReader } from './reader.js';
 
 const AVATARS      = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
-const DEMO_TTL_MIN = 20;
 
 // ── État carte ────────────────────────────────────────────
 let _map               = null;
@@ -160,53 +159,6 @@ const _GTFS = {
   },
 };
 
-// ── Bus démo — timestamp persistant via localStorage ─────
-//
-// PROBLÈME RACINE :
-//   sessionStorage est vide à chaque ouverture d'onglet → _born = Date.now() - Nmin
-//   → les bus affichent toujours "2 min" et "1 min" au démarrage.
-//
-// SOLUTION :
-//   localStorage persiste entre les rechargelments ET entre les onglets.
-//   On stocke le timestamp réel de création du bus démo.
-//   Si la clé n'existe pas (1er lancement), on l'initialise à maintenant.
-//   Si le bus a expiré (> DEMO_TTL_MIN), on recrée la clé.
-//   → L'âge reflète le temps réel écoulé depuis le 1er chargement.
-
-const _DEMO_BORN_KEY = 'xetu_demo_born_v1'; // v1 pour invalider les anciens caches
-
-function _initDemoBorn() {
-  const TTL_MS = DEMO_TTL_MIN * 60 * 1000;
-  try {
-    const raw = localStorage.getItem(_DEMO_BORN_KEY);
-    if (raw) {
-      const stored = JSON.parse(raw);
-      // Vérifier que les clés sont valides et non expirées
-      const now = Date.now();
-      const allValid = stored['demo-1'] && stored['demo-4'] &&
-        (now - stored['demo-1']) < TTL_MS &&
-        (now - stored['demo-4']) < TTL_MS;
-      if (allValid) return stored;
-    }
-  } catch {}
-  // Première fois ou données corrompues/expirées — créer de nouvelles timestamps
-  const now = Date.now();
-  const born = {
-    'demo-1': now - 2 * 60 * 1000,   // bus 1 : démarré il y a 2 min
-    'demo-4': now - 1 * 60 * 1000,   // bus 4 : démarré il y a 1 min
-  };
-  try { localStorage.setItem(_DEMO_BORN_KEY, JSON.stringify(born)); } catch {}
-  return born;
-}
-
-// Calculé une seule fois par session, mais depuis localStorage (persiste entre reloads)
-const _DEMO_BORN = _initDemoBorn();
-
-const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:_DEMO_BORN['demo-1'], reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:_DEMO_BORN['demo-4'], reporter:'****', traceStartIdx:0  },
-];
-
 // ── Init ──────────────────────────────────────────────────
 export function initHome({ onSeeBus }) {
   initReader();
@@ -214,26 +166,8 @@ export function initHome({ onSeeBus }) {
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
-  requestAnimationFrame(() => {
-    _refreshDemoBuses();
-    setInterval(_refreshDemoBuses, 30_000);
-  });
-}
-
-// ── FIX-9 : refresh démos ─────────────────────────────────
-function _refreshDemoBuses() {
-  const now   = Date.now();
-  const buses = DEMO_BUSES
-    .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
-    .map(b => ({
-      ...b,
-      minutes_ago: Math.round((now - b._born) / 60_000),
-      name: _GTFS[b.ligne]
-        ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
-        : `Ligne ${b.ligne}`,
-    }));
-  store.set('buses', buses);
-  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) _deselectBus();
+  // Carte vide au démarrage — les bus arrivent uniquement via signalements réels
+  if (!store.get('buses')) store.set('buses', []);
 }
 
 // ── Carte ─────────────────────────────────────────────────
@@ -249,8 +183,7 @@ function _initMap() {
 function _selectBus(busId) {
   if (_selectedBusId === busId) { _deselectBus(); return; }
 
-  // BUG-5 fix : chercher dans le store (buses actifs) et non dans DEMO_BUSES
-  // DEMO_BUSES peut contenir des buses expirés ou non encore dans le store.
+  // BUG-5 fix : chercher dans le store actif
   const activeBuses = store.get('buses') || [];
   const bus  = activeBuses.find(b => b.id === busId);
   const data = bus ? _GTFS[bus.ligne] : null;
