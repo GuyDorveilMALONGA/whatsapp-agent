@@ -1,82 +1,159 @@
 /**
- * sw.js — Xëtu PWA Service Worker V6
- * V6 : désactivation automatique en localhost (dev/test)
- *
- * STRATÉGIE RÉSEAU FIRST (plus de précache agressif) :
- * - Toujours essayer le réseau en premier
- * - Cache = fallback hors-ligne uniquement
- * - Plus jamais besoin d'incrémenter la version pour forcer un refresh
+ * sw.js — Xëtu PWA Service Worker
+ * xetu-v6 : stratégie cache /api/buses pour mode offline démo
  */
 
-const CACHE_NAME = 'xetu-v15';
+const CACHE_VERSION = 'xetu-v6';
+const CACHE_NAME    = CACHE_VERSION;
+const DATA_CACHE    = 'xetu-data-v1'; // cache données API — survit aux updates SW
 
-// ── Dev guard : se désinscrire immédiatement en localhost ──
-// Permet de tester sans SW qui intercepte les fichiers modifiés.
-const IS_LOCAL = (
-  self.location.hostname === 'localhost' ||
-  self.location.hostname === '127.0.0.1' ||
-  self.location.hostname === '0.0.0.0' ||
-  self.location.port === '5500' ||
-  self.location.port === '5501' ||
-  self.location.port === '8080' ||
-  self.location.port === '3000'
-);
+const PRECACHE_URLS = [
+  '/',
+  '/index.html',
+  '/manifest.json',
+  '/css/variables.css',
+  '/css/base.css',
+  '/css/components.css',
+  '/css/map.css',
+  '/css/overlay-styles.css',
+  '/css/signal-grid.css',
+  '/js/app.js',
+  '/js/home.js',
+  '/js/signal.js',
+  '/js/chat.js',
+  '/js/mylines.js',
+  '/js/api.js',
+  '/js/store.js',
+  '/js/utils.js',
+  '/js/ws.js',
+  '/js/push.js',
+  '/js/geoloc.js',
+  '/js/toast.js',
+  '/js/constants.js',
+  '/js/reader.js',
+];
 
-if (IS_LOCAL) {
-  // S'auto-désinstaller : vider les caches + se désinscrire
-  self.addEventListener('install', () => {
-    self.skipWaiting();
-  });
-  self.addEventListener('activate', (event) => {
-    event.waitUntil(
-      caches.keys()
-        .then((keys) => Promise.all(keys.map(k => caches.delete(k))))
-        .then(() => self.registration.unregister())
-        .then(() => self.clients.matchAll())
-        .then((clients) => clients.forEach(c => c.navigate(c.url)))
-    );
-  });
-  // Pas de fetch handler en local — laisser passer tout le trafic
-} else {
+// ── Install ───────────────────────────────────────────────
 
-  // ── PROD uniquement ─────────────────────────────────────
+self.addEventListener('install', (event) => {
+  self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(PRECACHE_URLS).catch((err) => {
+        console.warn('[SW] Précache partiel:', err);
+      });
+    })
+  );
+});
 
-  self.addEventListener('install', (event) => {
-    self.skipWaiting();
-  });
+// ── Activate — purger anciens caches SAUF xetu-data-v1 ───
 
-  self.addEventListener('activate', (event) => {
-    // Supprimer TOUS les anciens caches
-    event.waitUntil(
-      caches.keys()
-        .then((keys) => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
-        .then(() => self.clients.claim())
-    );
-  });
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter(k => k !== CACHE_NAME && k !== DATA_CACHE)
+          .map(k => caches.delete(k))
+      )
+    ).then(() => self.clients.claim())
+  );
+});
 
-  self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
+// ── Fetch ─────────────────────────────────────────────────
 
-    // Ne pas intercepter : API Railway, Supabase, WebSocket, tuiles carto
-    if (url.hostname.includes('railway.app'))    return;
-    if (url.hostname.includes('supabase.co'))    return;
-    if (url.hostname.includes('cartocdn.com'))   return;
-    if (url.hostname.includes('stadiamaps.com')) return;
-    if (event.request.url.startsWith('ws://') || event.request.url.startsWith('wss://')) return;
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
 
-    // Stratégie Network First : réseau → cache si hors-ligne
+  // ── Stratégie spéciale : API data — network first + timeout 3G, cache fallback
+  // Couvre /api/buses et /api/leaderboard — données critiques pour la démo
+  const isDataApi = url.pathname.includes('/api/buses') || url.pathname.includes('/api/leaderboard');
+  if (isDataApi) {
     event.respondWith(
-      fetch(event.request)
+      // Timeout 5s pour 3G Dakar — évite l'attente infinie
+      Promise.race([
+        fetch(event.request.clone()),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000)),
+      ])
         .then((response) => {
-          // Mettre en cache uniquement les réponses valides GET
-          if (response.ok && event.request.method === 'GET') {
+          if (response.ok) {
             const clone = response.clone();
-            caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+            caches.open(DATA_CACHE).then(cache => cache.put(event.request, clone));
           }
           return response;
         })
-        .catch(() => caches.match(event.request))
+        .catch((err) => {
+          console.warn(`[SW] ${url.pathname} offline (${err.message}) — fallback cache`);
+          return caches.match(event.request).then(cached => {
+            if (cached) return cached;
+            // Pas de cache — réponse vide valide pour éviter crash JS
+            return new Response(JSON.stringify({ buses: [], leaderboard: [], stats: {}, _cached: false }), {
+              headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        })
     );
-  });
+    return;
+  }
 
-}
+  // ── Ignorer les requêtes externes ────────────────────────
+  if (url.hostname.includes('railway.app') || url.hostname.includes('supabase.co')) return;
+  if (event.request.url.startsWith('ws://') || event.request.url.startsWith('wss://')) return;
+  if (url.hostname.includes('cartocdn.com') || url.hostname.includes('stadiamaps.com')) return;
+  if (url.hostname.includes('tile.openstreetmap.org')) return;
+
+  // ── Stratégie générale : network first, cache fallback ───
+  event.respondWith(
+    fetch(event.request)
+      .then((response) => {
+        if (response.ok && event.request.method === 'GET') {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
+        }
+        return response;
+      })
+      .catch(() => caches.match(event.request))
+  );
+});
+
+// ── Push notifications ────────────────────────────────────
+
+self.addEventListener('push', (event) => {
+  console.log('[SW] Push reçu');
+  let data = {};
+  try {
+    data = event.data?.json() || {};
+  } catch {
+    data = { body: event.data?.text() || '' };
+  }
+  const title   = data.title || 'Xëtu 🚌';
+  const options = {
+    body:    data.body || 'Un bus a été signalé sur votre ligne',
+    icon:    '/assets/icons/icon-192.png',
+    badge:   '/assets/icons/icon-192.png',
+    tag:     data.ligne  || 'xetu-bus',
+    data:    { url: data.url || '/' },
+    vibrate: [200, 100, 200],
+  };
+  console.log('[SW] showNotification:', title, options.body);
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification click ────────────────────────────────────
+
+self.addEventListener('notificationclick', (event) => {
+  console.log('[SW] Notification cliquée:', event.notification.tag);
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.focus();
+          return;
+        }
+      }
+      return clients.openWindow(targetUrl);
+    })
+  );
+});

@@ -27,8 +27,9 @@
 <div id="app">
 
   <header id="app-header">
-    <div id="ws-status-btn" class="ws-status-dot-only ws-status--connecting"><span class="ws-dot"></span></div>
-    <div class="refresh-timer" id="timer">30s</div>
+    <div class="live-indicator" id="live-indicator">
+      <span class="live-dot-inner"></span>live
+    </div>
     <div style="flex:1"></div>
     <button class="btn-menu" id="btn-menu" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -215,6 +216,12 @@
         <div class="chat-msg chat-msg--bot">
           <div class="chat-bubble">Salam ! Je suis Xëtu 🚌<br>Pose-moi une question sur les bus de Dakar ou signale une position directement ici.</div>
         </div>
+        <div class="chat-msg chat-msg--bot">
+          <div class="chat-bubble chat-bubble--hint">
+            💡 Tu peux écrire en <strong>français</strong>, en <strong>wolof</strong> ou mixer les deux.<br>
+            <span style="opacity:0.7;font-size:12px">Ex: <em>"Bus 4 def ko kat ?"</em> · <em>"Dafa dem ?"</em></span>
+          </div>
+        </div>
       </div>
       <div class="chat-suggestions" id="chat-suggestions"></div>
       <div class="chat-composer">
@@ -223,6 +230,7 @@
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
+      <div class="chat-lang-badge">FR · WO · EN · Pulaar</div>
     </section>
 
     <!-- MES LIGNES -->

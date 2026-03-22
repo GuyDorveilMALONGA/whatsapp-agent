@@ -1,16 +1,13 @@
 /**
- * js/app.js — V2.3
- * FIX DEMO_MODE : _loadData() ne touche pas les bus démo
- * FIX V2.3 : intégration signal.js V3.1
- *   - import onScreenEnter depuis signal.js
- *   - goTo('signal') appelle signalScreenEnter()
- *   - btn-see-bus sans { capture: true } (était la cause du crash carte noire)
+ * js/app.js — V2.4
+ * V2.4 : Remplacement du compte à rebours par indicateur "En direct"
+ *        _startTimer() pilote .live-indicator via états loading/online/offline
  */
 
 import * as store   from './store.js';
 import * as Toast   from './toast.js';
 import * as Ws      from './ws.js';
-import { REFRESH_SEC } from './constants.js';
+import { REFRESH_SEC, API_BASE } from './constants.js';
 import { fetchBuses, fetchLeaderboard } from './api.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
 import { initHome }    from './home.js';
@@ -23,7 +20,6 @@ const _navBtns    = document.querySelectorAll('.nav-btn');
 const _screens    = document.querySelectorAll('.screen');
 
 // ── Mode démo ─────────────────────────────────────────────
-// false → données réelles depuis Railway/Supabase
 const DEMO_MODE = false;
 
 // ── Navigation ────────────────────────────────────────────
@@ -35,13 +31,62 @@ export function goTo(screenId) {
     document.querySelector(`[data-screen="${screenId}"]`)?.classList.add('active');
   }
   document.getElementById(`screen-${screenId}`)?.classList.add('active');
-
-  // FIX V2.3 : déclencher GPS auto quand on arrive sur l'écran signal
   if (screenId === 'signal') signalScreenEnter();
 }
 
 _navBtns.forEach(btn => btn.addEventListener('click', () => goTo(btn.dataset.screen)));
 document.getElementById('btn-back-signal')?.addEventListener('click', () => goTo('home'));
+
+// ── Live indicator ─────────────────────────────────────────
+
+function _setLive(state) {
+  const el = document.getElementById('live-indicator');
+  if (!el) return;
+  el.className = 'live-indicator' + (state !== 'online' ? ` live-indicator--${state}` : '');
+  el.querySelector('.live-dot-inner')?.setAttribute('data-state', state);
+  if (state === 'loading') {
+    el.lastChild.textContent = 'sync…';
+  } else if (state === 'offline') {
+    const last = localStorage.getItem('xetu_last_update');
+    el.lastChild.textContent = last ? `offline · ${last}` : 'offline';
+  } else {
+    el.lastChild.textContent = 'live';
+  }
+}
+
+// ── Push conditionnel ────────────────────────────────────
+
+async function _maybeSubscribePush() {
+  try {
+    // Vérifier d'abord si déjà abonné
+    const alreadySub = await isPushSubscribed();
+    if (alreadySub) return;
+
+    // Vérifier si l'utilisateur a des lignes abonnées
+    const SESSION_ID = sessionStorage.getItem('xetu_session_id') || '';
+    if (!SESSION_ID) return;
+
+    const res = await fetch(`${API_BASE}/api/subscriptions?session_id=${encodeURIComponent(SESSION_ID)}`);
+    if (!res.ok) return;
+    const { lignes } = await res.json();
+
+    if (!lignes || lignes.length === 0) {
+      console.log('[Push] Pas de lignes abonnées — push différé');
+      return;
+    }
+
+    console.log('[Push] Lignes actives détectées — demande permission push');
+
+    // Écouter l'événement iOS
+    window.addEventListener('xetu:push-ios-required', () => {
+      Toast.info("Ajoute Xetu a l'ecran d'accueil pour activer les alertes push");
+    }, { once: true });
+
+    await subscribeToPush();
+  } catch (e) {
+    console.warn('[Push] _maybeSubscribePush error:', e);
+  }
+}
 
 // ── Popups ────────────────────────────────────────────────
 
@@ -144,7 +189,7 @@ function _updateWsStatus(status) {
   }`;
 }
 
-// ── Timer ─────────────────────────────────────────────────
+// ── Timer → Live indicator ────────────────────────────────
 
 let _timerCount = REFRESH_SEC;
 let _timerInt   = null;
@@ -152,25 +197,57 @@ let _timerInt   = null;
 function _startTimer() {
   clearInterval(_timerInt);
   _timerCount = REFRESH_SEC;
+  _setLive('online');
+
   _timerInt = setInterval(async () => {
     _timerCount--;
-    const el = document.getElementById('timer');
-    if (el) el.textContent = `${_timerCount}s`;
-    if (_timerCount <= 0) { await _loadData(); _timerCount = REFRESH_SEC; }
+    if (_timerCount <= 0) {
+      _setLive('loading');
+      const ok = await _loadData();
+      _timerCount = REFRESH_SEC;
+      _setLive(ok ? 'online' : 'offline');
+    }
   }, 1000);
 }
 
 // ── Données ───────────────────────────────────────────────
 
+// Retourne true si succès, false si erreur
 async function _loadData() {
   try {
     const [busRes, lbRes] = await Promise.allSettled([fetchBuses(), fetchLeaderboard()]);
-    const buses  = busRes.status === 'fulfilled' ? busRes.value.buses || [] : store.get('buses') || [];
-    const lbData = lbRes.status  === 'fulfilled' ? lbRes.value : { leaderboard: [], stats: {} };
-    store.set('buses',       buses);
+
+    if (busRes.status === 'fulfilled') {
+      // Succès réseau — mettre à jour store + timestamp
+      store.set('buses', busRes.value.buses || []);
+      try {
+        localStorage.setItem(
+          'xetu_last_update',
+          new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+        );
+      } catch {}
+    } else {
+      // Réseau KO — le SW a déjà tenté le cache dans fetchBuses().
+      // On garde les données actuelles du store (dernière valeur connue)
+      // et on notifie l'utilisateur avec le timestamp du dernier succès.
+      console.warn('[App] fetchBuses échoué — mode offline');
+      const lastUpdate = localStorage.getItem('xetu_last_update');
+      const msg = lastUpdate
+        ? `Hors ligne — dernière mise à jour à ${lastUpdate}`
+        : 'Hors ligne — données non disponibles';
+      Toast.error(msg);
+      // Ne pas écraser le store — les données précédentes restent affichées
+    }
+
+    const lbData = lbRes.status === 'fulfilled' ? lbRes.value : { leaderboard: [], stats: {} };
     store.set('leaderboard', lbData.leaderboard || []);
     store.set('stats',       lbData.stats || {});
-  } catch (err) { console.warn('[App]', err); }
+
+    return busRes.status === 'fulfilled';
+  } catch (err) {
+    console.warn('[App]', err);
+    return false;
+  }
 }
 
 // ── Init ──────────────────────────────────────────────────
@@ -179,7 +256,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   _initMenu();
   _initPopups();
 
-  initHome({ onSeeBus: () => goTo('signal') });
+  initHome({ onSeeBus: () => goTo('signal'), onGeoError: (msg) => Toast.error(msg) });
   initSignal({ onSuccess: () => { goTo('home'); _loadData(); } });
   initChat();
   initMylines();
@@ -189,8 +266,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       _updateWsStatus('open');
       store.set('wsStatus', 'open');
       if (!DEMO_MODE) {
-        const sub = await isPushSubscribed();
-        if (!sub) await subscribeToPush();
+        // Abonner aux push uniquement si l'utilisateur a des lignes actives
+        // Évite la popup permission au premier lancement sans contexte
+        _maybeSubscribePush();
       }
     },
     onChatResponse: (text) => store.set('lastBotMessage', text),
@@ -203,13 +281,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     onReconnecting: ()    => { _updateWsStatus('connecting'); store.set('wsStatus', 'connecting'); },
   });
 
-  await _loadData();
+  const ok = await _loadData();
+  _setLive(ok ? 'online' : 'offline');
   _startTimer();
 
-  window.addEventListener('online',  () => Toast.info('Connexion rétablie ✅'));
-  window.addEventListener('offline', () => Toast.error('Hors ligne'));
+  window.addEventListener('online',  () => { Toast.info('Connexion rétablie ✅'); _setLive('online'); });
+  window.addEventListener('offline', () => { Toast.error('Hors ligne'); _setLive('offline'); });
 
-  // SW désactivé en dev local — activé uniquement en prod
   const _isProd = location.hostname !== 'localhost'
                && location.hostname !== '127.0.0.1'
                && location.protocol !== 'file:';

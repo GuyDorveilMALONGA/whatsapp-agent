@@ -1,10 +1,13 @@
 /**
- * js/mylines.js — V2.1
- * Page Mes lignes redesignée : couleurs, abonnements avec noms, score visuel.
+ * js/mylines.js — V2.2
+ * V2.2 : Sync abonnements avec API REST /api/subscriptions
+ *        localStorage reste comme cache offline.
+ *        SESSION_ID : sessionStorage 'xetu_session_id'
  */
 
 import * as store from './store.js';
-import { LIGNES_CONNUES, LIGNE_NAMES, SESSION_PREFIX } from './constants.js';
+import * as Toast from './toast.js';
+import { LIGNES_CONNUES, LIGNE_NAMES, SESSION_PREFIX, API_BASE } from './constants.js';
 import { generateUUID } from './utils.js';
 
 const SESSION_ID = (() => {
@@ -20,6 +23,42 @@ export function initMylines() {
   _renderScore();
   _initSubscribeModal();
   store.subscribe('userScore', (s) => _renderScore(s));
+  // Sync depuis l'API au chargement
+  _syncFromAPI();
+}
+
+// ── API sync ──────────────────────────────────────────────
+
+async function _syncFromAPI() {
+  try {
+    const res = await fetch(`${API_BASE}/api/subscriptions?session_id=${encodeURIComponent(SESSION_ID)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const { lignes } = await res.json();
+    if (Array.isArray(lignes)) {
+      _saveSubs(lignes);
+      _renderSubscriptions();
+    }
+  } catch (e) {
+    // Silencieux — on garde le cache localStorage
+    console.warn('[Mylines] Sync API échouée, fallback localStorage', e);
+  }
+}
+
+async function _apiSubscribe(ligne) {
+  const res = await fetch(`${API_BASE}/api/subscriptions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: SESSION_ID, ligne }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+}
+
+async function _apiUnsubscribe(ligne) {
+  const res = await fetch(
+    `${API_BASE}/api/subscriptions/${encodeURIComponent(ligne)}?session_id=${encodeURIComponent(SESSION_ID)}`,
+    { method: 'DELETE' }
+  );
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
 }
 
 // ── Abonnements ───────────────────────────────────────────
@@ -63,10 +102,18 @@ function _renderSubscriptions() {
   }).join('');
 
   el.querySelectorAll('.myline-remove').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const updated = _getSubs().filter(l => l !== btn.dataset.ligne);
+    btn.addEventListener('click', async () => {
+      const ligne = btn.dataset.ligne;
+      // Optimistic update
+      const updated = _getSubs().filter(l => l !== ligne);
       _saveSubs(updated);
       _renderSubscriptions();
+      // Sync API
+      try {
+        await _apiUnsubscribe(ligne);
+      } catch {
+        Toast.error('Erreur réseau — désabonnement local uniquement');
+      }
     });
   });
 }
@@ -99,7 +146,9 @@ function _renderSubscribeLines(filter) {
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     return a.localeCompare(b);
   });
-  const filtered = filter ? all.filter(l => l.toLowerCase().includes(filter) || (LIGNE_NAMES[l] || '').toLowerCase().includes(filter)) : all;
+  const filtered = filter
+    ? all.filter(l => l.toLowerCase().includes(filter) || (LIGNE_NAMES[l] || '').toLowerCase().includes(filter))
+    : all;
 
   container.innerHTML = filtered.map(l => {
     const isSub = subs.includes(l);
@@ -107,18 +156,34 @@ function _renderSubscribeLines(filter) {
   }).join('');
 
   container.querySelectorAll('.subscribe-chip').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', async () => {
       const ligne   = btn.dataset.ligne;
       let   current = _getSubs();
-      if (current.includes(ligne)) {
+      const isNowSub = current.includes(ligne);
+
+      if (isNowSub) {
+        // Désabonnement
         current = current.filter(l => l !== ligne);
         btn.classList.remove('subscribed');
+        _saveSubs(current);
+        _renderSubscriptions();
+        try {
+          await _apiUnsubscribe(ligne);
+        } catch {
+          Toast.error('Erreur réseau — désabonnement local uniquement');
+        }
       } else {
+        // Abonnement
         current = [...current, ligne];
         btn.classList.add('subscribed');
+        _saveSubs(current);
+        _renderSubscriptions();
+        try {
+          await _apiSubscribe(ligne);
+        } catch {
+          Toast.error('Erreur réseau — abonnement local uniquement');
+        }
       }
-      _saveSubs(current);
-      _renderSubscriptions();
     });
   });
 }
@@ -172,11 +237,9 @@ function _renderProgress(s) {
   ];
   const next = levels.find(l => s < l.min);
   if (!next) return `<div class="score-progress-text" style="color:#FFD700">🏆 Niveau maximum atteint !</div>`;
-
   const prev = levels[levels.indexOf(next) - 1];
   const from = prev ? prev.min : 0;
   const pct  = Math.min(100, Math.round(((s - from) / (next.min - from)) * 100));
-
   return `
     <div class="score-progress-text">Encore ${next.min - s} signalement${next.min - s > 1 ? 's' : ''} pour devenir <b>${next.label}</b></div>
     <div class="score-progress-bar">

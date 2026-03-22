@@ -168,10 +168,14 @@ let _activeFilter  = null;   // string ligne active, null = "Tous"
 let _onSeeBusRef   = null;   // référence vers onSeeBus pour l'overlay empty state
 let _emptyOverlay  = null;   // nœud DOM de l'overlay (null si pas encore créé)
 
+// ── V2.5 : géolocalisation accueil ───────────────────────
+let _userLocMarker = null;   // marker position utilisateur (cercle bleu)
+let _onGeoErrorRef = null;   // callback Toast.error passé depuis app.js
+
 // ── Init ──────────────────────────────────────────────────
-export function initHome({ onSeeBus }) {
-  // CHG-2 : stocker le callback pour l'overlay empty state
-  _onSeeBusRef = onSeeBus;
+export function initHome({ onSeeBus, onGeoError }) {
+  _onSeeBusRef   = onSeeBus;
+  _onGeoErrorRef = onGeoError || null;
   initReader();
   _initMap();
   _initTabs();
@@ -184,18 +188,72 @@ function _initMap() {
   _map = L.map('map-home', {
     zoomControl:        false,
     attributionControl: false,
-    minZoom:            12,   // BUG-3 : empêche le dézoom total sur fitBounds
+    minZoom:            12,
   }).setView([14.693, -17.452], 14);
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     subdomains: 'abc',
   }).addTo(_map);
-  // BUG-3 fix : invalidateSize puis reforcer le centre — Leaflet perd le setView
-  // quand la carte est initialisée sur un div qui n'a pas encore sa taille réelle.
   setTimeout(() => {
     _map.invalidateSize({ animate: false });
     _map.setView([14.693, -17.452], 14);
-  }, 120);
+  }, 300);
+
+  // ── Bouton géolocalisation flottant ───────────────────
+  const geoBtn = document.createElement('button');
+  geoBtn.className   = 'map-geolocate-btn';
+  geoBtn.title       = 'Ma position';
+  geoBtn.innerHTML   = `<svg width="20" height="20" viewBox="0 0 24 24" fill="none"
+    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="12" cy="12" r="3"/>
+    <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+    <circle cx="12" cy="12" r="8" stroke-dasharray="2 2" opacity="0.4"/>
+  </svg>`;
+  geoBtn.addEventListener('click', _handleGeolocate);
+
+  // Insérer dans le pane Leaflet le plus haut pour rester au-dessus des layers
+  const mapEl = document.getElementById('map-home');
+  if (mapEl) {
+    // Utiliser le container Leaflet directement — il est position:relative
+    const container = _map.getContainer();
+    container.appendChild(geoBtn);
+  }
+}
+
+function _handleGeolocate() {
+  if (!navigator.geolocation) {
+    if (_onGeoErrorRef) _onGeoErrorRef('Géolocalisation non supportée');
+    return;
+  }
+  const btn = document.querySelector('.map-geolocate-btn');
+  if (btn) btn.classList.add('map-geolocate-btn--loading');
+
+  navigator.geolocation.getCurrentPosition(
+    (pos) => {
+      const { latitude: lat, longitude: lon } = pos.coords;
+
+      // Centrer la carte
+      if (_map) _map.setView([lat, lon], 15, { animate: true });
+
+      // Marker position utilisateur — cercle bleu discret
+      if (_userLocMarker && _map) _map.removeLayer(_userLocMarker);
+      _userLocMarker = L.circleMarker([lat, lon], {
+        radius:      6,
+        color:       '#fff',
+        weight:      2,
+        fillColor:   '#3b82f6',
+        fillOpacity: 1,
+        interactive: false,
+      }).addTo(_map);
+
+      if (btn) btn.classList.remove('map-geolocate-btn--loading');
+    },
+    () => {
+      if (_onGeoErrorRef) _onGeoErrorRef('Géolocalisation refusée');
+      if (btn) btn.classList.remove('map-geolocate-btn--loading');
+    },
+    { enableHighAccuracy: true, timeout: 8000, maximumAge: 30000 }
+  );
 }
 
 // ── Sélection bus ─────────────────────────────────────────
@@ -385,13 +443,18 @@ function _makeBusMarker(bus) {
 }
 
 function _busIcon(ligne, color, size, isSelected) {
+  // Pulsation uniquement sur les markers non sélectionnés — affordance cliquable
+  const pulse = isSelected ? '' : `<div class="xetu-pulse" style="width:${size}px;height:${size}px;background:${color};"></div>`;
   return L.divIcon({
-    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
-      border:3px solid rgba(255,255,255,${isSelected ? '0.95' : '0.7'});
-      box-shadow:0 2px 12px rgba(0,0,0,0.5);
-      display:flex;align-items:center;justify-content:center;
-      font-family:Inter,sans-serif;font-size:${isSelected ? '13' : '11'}px;
-      font-weight:700;color:#fff;">${ligne}</div>`,
+    html: `<div style="position:relative;width:${size}px;height:${size}px;">
+      ${pulse}
+      <div style="position:absolute;top:0;left:0;width:${size}px;height:${size}px;border-radius:50%;background:${color};
+        border:3px solid rgba(255,255,255,${isSelected ? '0.95' : '0.7'});
+        box-shadow:0 2px 12px rgba(0,0,0,0.5);
+        display:flex;align-items:center;justify-content:center;
+        font-family:Inter,sans-serif;font-size:${isSelected ? '13' : '11'}px;
+        font-weight:700;color:#fff;">${ligne}</div>
+    </div>`,
     iconSize:   [size, size],
     iconAnchor: [size / 2, size / 2],
     className:  'xetu-bus-marker',

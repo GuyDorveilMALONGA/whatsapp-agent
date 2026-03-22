@@ -1,5 +1,6 @@
 /* ════════════════════════════════════════════════════════
-   css/overlay-styles.css — Xëtu V3.0
+   css/overlay-styles.css — Xëtu V3.1
+   V3.1 : Ajout @keyframes xetu-pulse + .xetu-pulse
    Tooltips arrêts + Reader bandeau arrêt courant
    ════════════════════════════════════════════════════════ */
 
@@ -9,6 +10,93 @@
   border:      none !important;
   box-shadow:  none !important;
   outline:     none !important;
+}
+
+/* ── Live indicator (remplace le compte à rebours) ────────
+   États : online (vert animé) | loading (orange fixe) | offline (rouge fixe)
+   ─────────────────────────────────────────────────────── */
+
+.live-indicator {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.55);
+  white-space: nowrap;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 9999px;
+  padding: 3px 9px 3px 7px;
+  line-height: 1;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.live-dot-inner {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  min-width: 6px;
+  border-radius: 50%;
+  background: #00D67F;
+  animation: pulse 1.5s infinite;
+}
+
+.live-indicator--loading .live-dot-inner {
+  background: #FF6B35;
+  animation: none;
+}
+.live-indicator--loading { color: rgba(255,107,53,0.8); }
+
+.live-indicator--offline .live-dot-inner {
+  background: #FF4757;
+  animation: none;
+}
+.live-indicator--offline { color: rgba(255,71,87,0.8); }
+
+/* ── Bouton géolocalisation flottant (carte accueil) ──────── */
+
+.map-geolocate-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 410;  /* au-dessus des layers Leaflet (max ~400) */
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--text-dim);
+  transition: color var(--t-fast), background var(--t-fast), transform var(--t-fast);
+}
+.map-geolocate-btn:hover  { color: var(--text); background: var(--surface3); }
+.map-geolocate-btn:active { transform: scale(0.93); }
+.map-geolocate-btn--loading { color: var(--orange); animation: pulse 1s infinite; }
+
+/* ── Pulsation marker bus ─────────────────────────────────
+   Cercle qui s'élargit depuis le centre du marker.
+   Appliqué uniquement sur les markers non sélectionnés
+   via _busIcon() dans home.js (isSelected === false).
+   ─────────────────────────────────────────────────────── */
+
+@keyframes xetu-pulse {
+  0%   { transform: scale(1);   opacity: 0.6; }
+  100% { transform: scale(2.2); opacity: 0;   }
+}
+
+.xetu-pulse {
+  position: absolute;
+  top: 0;
+  left: 0;
+  border-radius: 50%;
+  animation: xetu-pulse 2s ease-out infinite;
+  pointer-events: none;
 }
 
 /* ── Tooltip arrêt (FIX-2 : nom uniquement) ─────────────── */
@@ -50,7 +138,6 @@
 }
 
 /* ── Bus Reader — FIX-6 ──────────────────────────────────── */
-/* Bandeau fixe arrêt courant, au-dessus de "Je vois un bus ici" */
 
 #bus-reader {
   position: relative;
@@ -64,7 +151,6 @@
   -webkit-backdrop-filter: blur(6px);
 }
 
-/* Scroll horizontal du contenu */
 .reader-scroll {
   display: flex;
   align-items: center;
@@ -73,7 +159,6 @@
   will-change: transform;
 }
 
-/* Badge ligne */
 .reader-badge {
   display: inline-flex;
   align-items: center;
@@ -87,20 +172,17 @@
   letter-spacing: 0.02em;
 }
 
-/* Séparateur entre arrêts */
 .reader-sep {
   color: rgba(255, 255, 255, 0.25);
   font-size: 12px;
   padding: 0 5px;
 }
 
-/* Arrêts passés — discrets */
 .reader-past {
   color: rgba(255, 255, 255, 0.3);
   font-size: 11px;
 }
 
-/* Arrêt courant — mis en valeur */
 .reader-current {
   font-size: 12px;
   font-weight: 600;
@@ -108,7 +190,6 @@
   text-underline-offset: 3px;
 }
 
-/* Arrêts futurs — normaux */
 .reader-future {
   color: rgba(255, 255, 255, 0.65);
   font-size: 11px;

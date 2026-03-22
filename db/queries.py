@@ -440,6 +440,40 @@ def delete_abonnement(phone: str, ligne: str):
     db = get_client()
     db.table("abonnements").update({"actif": False}).eq("phone", phone).eq("ligne", ligne).execute()
 
+# ── Ajouts V5.5 dans db/queries.py — section Abonnements ──────────────────
+# Coller après def delete_abonnement() dans queries.py
+
+def get_abonnements_actifs(phone: str) -> list[dict]:
+    """Retourne les lignes actives pour ce phone/session_id.
+    Utilisé par GET /api/subscriptions."""
+    db = get_client()
+    try:
+        res = (db.table("abonnements")
+                 .select("ligne")
+                 .eq("phone", phone)
+                 .eq("actif", True)
+                 .execute())
+        return res.data or []
+    except Exception as e:
+        logger.error(f"[queries] get_abonnements_actifs erreur: {e}")
+        return []
+
+
+def deactivate_abonnement(phone: str, ligne: str):
+    """Désactive un abonnement (soft delete).
+    Utilisé par DELETE /api/subscriptions/{ligne}."""
+    db = get_client()
+    try:
+        db.table("abonnements")\
+            .update({"actif": False})\
+            .eq("phone", phone)\
+            .eq("ligne", ligne)\
+            .execute()
+        logger.info(f"[queries] deactivate_abonnement — phone=…{phone[-6:]} ligne={ligne}")
+    except Exception as e:
+        logger.error(f"[queries] deactivate_abonnement erreur: {e}")
+        raise
+
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
     db          = get_client()

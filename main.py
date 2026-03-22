@@ -1,14 +1,13 @@
 """
-main.py — V8.3
+main.py — V8.4
 Chef d'orchestre Xëtu — ZÉRO logique métier ici.
 
-MIGRATIONS V8.3 depuis V8.2 :
-  - NOUVEAU : support des messages location Telegram (GPS)
-    → parse_incoming_update() retourne maintenant message_type="location"
-    → telegram_webhook détecte ce type et court-circuite le pipeline LLM
-    → _handle_telegram_location() appelle api/tracking.py directement (sans HTTP)
-  - Import tracking_router + app.include_router(tracking_router)
-  - Zéro changement dans le pipeline principal (_process_message_safe)
+MIGRATIONS V8.4 depuis V8.3 :
+  - NOUVEAU : endpoints REST abonnements /api/subscriptions
+    → GET  /api/subscriptions?session_id=xxx
+    → POST /api/subscriptions {session_id, ligne}
+    → DELETE /api/subscriptions/{ligne}?session_id=xxx
+  - Import subscriptions_router + app.include_router(subscriptions_router)
 """
 import logging
 import re
@@ -53,7 +52,6 @@ _MAX_MESSAGE_LENGTH = 500
 _MIN_MESSAGE_LENGTH = 1
 
 
-
 # ═══════════════════════════════════════════════════════════
 # LIFESPAN
 # ═══════════════════════════════════════════════════════════
@@ -61,9 +59,9 @@ _MIN_MESSAGE_LENGTH = 1
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     start_heartbeat()
-    logger.info("🚌 Xëtu V8.3 démarré — Agent LangGraph + Checkpointer actif")
+    logger.info("🚌 Xëtu V8.4 démarré — Agent LangGraph + Checkpointer actif")
     yield
-    logger.info("🚌 Xëtu V8.3 arrêté proprement")
+    logger.info("🚌 Xëtu V8.4 arrêté proprement")
 
 
 app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
@@ -75,7 +73,7 @@ app = FastAPI(title="Xëtu — Agent Transport Dakar", lifespan=lifespan)
 ALLOWED_ORIGINS = [
     "https://xetudashbord.pages.dev",
     "http://localhost:8080",
-    "http://localhost:5500",   
+    "http://localhost:5500",
     "http://127.0.0.1:5500",
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -85,7 +83,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -107,17 +105,18 @@ async def preflight_handler(rest_of_path: str, request: Request):
     allowed = origin if origin in ALLOWED_ORIGINS else ALLOWED_ORIGINS[0]
     return PlainTextResponse("OK", headers={
         "Access-Control-Allow-Origin": allowed,
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
         "Access-Control-Allow-Headers": "*",
         "Access-Control-Max-Age": "600",
     })
 
 
-from api.buses       import router as buses_router
-from api.leaderboard import router as leaderboard_router
-from api.report      import router as report_router
-from api.push        import router as push_router
-from api.tracking    import router as tracking_router
+from api.buses         import router as buses_router
+from api.leaderboard   import router as leaderboard_router
+from api.report        import router as report_router
+from api.push          import router as push_router
+from api.tracking      import router as tracking_router
+from api.subscriptions import router as subscriptions_router
 
 
 app.include_router(buses_router)
@@ -125,7 +124,7 @@ app.include_router(leaderboard_router)
 app.include_router(report_router)
 app.include_router(push_router)
 app.include_router(tracking_router)
-
+app.include_router(subscriptions_router)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -141,7 +140,7 @@ async def health():
     except Exception:
         pass
     status = "ok" if db_ok else "degraded"
-    return {"status": status, "service": "Xëtu", "version": "8.3", "db": db_ok}
+    return {"status": status, "service": "Xëtu", "version": "8.4", "db": db_ok}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -226,10 +225,6 @@ async def receive_message(request: Request, background_tasks: BackgroundTasks):
 
 @app.post("/telegram/webhook")
 async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
-    # FIX SEC-1 : vérifier le secret_token Telegram (X-Telegram-Bot-Api-Secret-Token)
-    # Ce header est envoyé par Telegram si secret_token a été défini dans setWebhook.
-    # Si TELEGRAM_WEBHOOK_SECRET est absent de l'env, la vérification est skippée
-    # (mode dégradé — configurer le secret dans Railway + set_webhook.py).
     import os
     tg_secret = os.environ.get("TELEGRAM_WEBHOOK_SECRET")
     if tg_secret:
@@ -250,10 +245,6 @@ async def telegram_webhook(request: Request, background_tasks: BackgroundTasks):
     user_id = msg["user_id"]
     chat_id = msg["chat_id"]
 
-    # ── LOCATION GPS — court-circuit avant pipeline LLM ──
-    # Pas de rate_limit ici : le volume GPS est déjà limité par l'anti-spam
-    # de 30s dans tracking.py. Appliquer rate_limit bloquerait des usagers
-    # légitimes qui envoient leur position juste après un message texte.
     if msg.get("message_type") == "location":
         return await _handle_telegram_location(
             user_id=user_id,
@@ -286,15 +277,6 @@ async def _handle_telegram_location(
     lon: float,
     background_tasks: BackgroundTasks,
 ) -> dict:
-    """
-    Traite un message location Telegram.
-
-    Appelle tracking_update() directement (pas de round-trip HTTP).
-    La ligne est automatiquement inférée depuis la session LangGraph
-    de l'usager si elle existe (ex: il venait de demander "Bus 15 est où ?").
-
-    Ne passe PAS par le pipeline LLM — réponse immédiate.
-    """
     from api.tracking import tracking_update, TrackingUpdate
 
     body   = TrackingUpdate(phone=user_id, lat=lat, lon=lon, ligne=None)
@@ -309,7 +291,7 @@ async def _handle_telegram_location(
         reply = "⏳ Tu viens déjà de signaler. Attends 30 secondes. 🙏"
     elif status == "no_stop_found":
         reply = "📍 Aucun arrêt Dem Dikk dans 400m. 🙏"
-    else:  # db_error ou inconnu
+    else:
         reply = "❌ Erreur lors de l'enregistrement. Réessaie dans un moment. 🙏"
 
     await telegram_service.send_message(chat_id, reply)
@@ -436,10 +418,7 @@ async def _process_message_telegram(
 
 # ═══════════════════════════════════════════════════════════
 # PIPELINE SAFE — PARTAGÉ WA + TELEGRAM + WEBSOCKET
-# V8.2 : history retiré — checkpointer LangGraph gère l'historique
 # ═══════════════════════════════════════════════════════════
-
-
 
 async def _process_message_safe(
     phone: str,
@@ -455,37 +434,30 @@ async def _process_message_safe(
         logger.info(f"{_tag} DB_PASSWORD present: {'DB_PASSWORD' in os.environ}")
         logger.info(f"{_tag} START — id=…{phone[-4:]!r} text={text[:60]!r}")
 
-        # ── Validation longueur ──────────────────────────────
         error_msg = _check_message(text)
         if error_msg:
             await send_fn(phone, error_msg)
             return
 
-        # ── Normalisation ────────────────────────────────────
         normalized = normalize(text)
         logger.info(f"{_tag} normalize OK → {normalized[:60]!r}")
 
-        # ── Session ──────────────────────────────────────────
         session = get_context(phone)
         logger.info(f"{_tag} get_context OK → etat={session.etat!r}")
 
-        # ── Contact + Conversation ───────────────────────────
         contact = queries.get_or_create_contact(phone, "fr")
         conv    = queries.get_or_create_conversation(contact["id"])
         conv_id = conv["id"]
 
-        # ── Message de bienvenue (1ère fois) ─────────────────
         history_count = queries.count_messages(conv_id)
         if history_count == 0 and not _is_web:
             await send_fn(phone, WELCOME_MESSAGE)
 
-        # ── Détection langue ─────────────────────────────────
         langue = detect_language(text)
         logger.info(f"{_tag} langue détectée → {langue!r}")
 
         queries.save_message(conv_id, "user", text, langue, "incoming")
 
-        # ── PRIORITÉ 1 : ABANDON ─────────────────────────────
         if is_abandon(text):
             reset_context(phone)
             response = _reponse_abandon(langue)
@@ -493,7 +465,6 @@ async def _process_message_safe(
             queries.save_message(conv_id, "assistant", response, langue, "abandon")
             return
 
-        # ── PRIORITÉ 2 : SESSION ACTIVE ──────────────────────
         if session.etat:
             response = await _handle_session_active(
                 phone=phone, text=text, langue=langue,
@@ -506,8 +477,6 @@ async def _process_message_safe(
                 queries.save_message(conv_id, "assistant", response, langue, "session")
                 return
 
-        # ── PRIORITÉ 3 : AGENT LANGGRAPH ─────────────────────
-        # V8.2 : history retiré — le checkpointer gère la mémoire
         logger.info(f"{_tag} xetu_run START…")
         response = await xetu_run(
             message=normalized,
@@ -519,7 +488,6 @@ async def _process_message_safe(
         await send_fn(phone, response)
         queries.save_message(conv_id, "assistant", response, langue, "agent")
 
-        # ── Mémoire utilisateur ──────────────────────────────
         contact["_last_message"] = text
         user_memory.update_after_message(
             contact=contact, langue=langue, intent="agent",
@@ -534,8 +502,9 @@ async def _process_message_safe(
         logger.error(f"{_tag} ERREUR PIPELINE — {type(e).__name__}: {e}\n{tb}")
         await send_fn(phone, "Une erreur inattendue s'est produite. Réessaie dans un moment. 🙏")
 
+
 # ═══════════════════════════════════════════════════════════
-# HANDLER SESSION ACTIVE (inchangé)
+# HANDLER SESSION ACTIVE
 # ═══════════════════════════════════════════════════════════
 
 async def _handle_session_active(

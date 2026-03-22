@@ -1,9 +1,10 @@
 /**
- * js/signal.js — V3.5
- * - 4 chips prioritaires max (depuis favoris localStorage)
- * - Fallback sur ['1','4','7','15'] si aucun favori
- * - Sans label "LIGNES FRÉQUENTES", juste la grille
- * - Bouton "Toutes les lignes" pleine largeur en dessous
+ * js/signal.js — V3.6
+ * V3.6 : Autocomplete dropdown arrêts sur #arret-input
+ *        - Filtre les arrêts de la ligne sélectionnée en temps réel
+ *        - Chargé depuis routes_geometry_v13_fixed2.json via _loadRoutes()
+ *        - Dropdown positionné sous l'input, max 6 résultats
+ *        - Ferme au blur, sélection au click sans perdre le focus
  */
 
 import * as store  from './store.js';
@@ -25,18 +26,19 @@ let _mapReady        = false;
 let _allLinesVisible = false;
 let _onSuccessRef    = null;
 
+// Autocomplete
+let _dropdownEl  = null;
+let _arretsList  = [];
+
 const SESSION_ID = `${SESSION_PREFIX}${generateUUID()}`;
 
-// 4 lignes par défaut si pas de favoris
 const DEFAULT_PRIORITY = ['1', '4', '7', '15'];
 
 function _getPriorityLines() {
   try {
     const favs = JSON.parse(localStorage.getItem('xetu_fav_lines') || '[]');
-    // Les 4 dernières lignes utilisées, ou les 4 defaults
     const recent = favs.filter(l => LIGNES_CONNUES.has(l)).slice(0, 4);
     if (recent.length === 4) return recent;
-    // Compléter avec les defaults si moins de 4 favoris
     const fill = DEFAULT_PRIORITY.filter(l => !recent.includes(l));
     return [...recent, ...fill].slice(0, 4);
   } catch {
@@ -174,7 +176,7 @@ async function _handleGPS() {
   }
 }
 
-// ── Grille — structure épurée ─────────────────────────────
+// ── Grille ────────────────────────────────────────────────
 
 function _buildLigneGrid() {
   const grid = document.getElementById('ligne-grid');
@@ -183,7 +185,6 @@ function _buildLigneGrid() {
   const priority = _getPriorityLines();
   const otherCount = [...LIGNES_CONNUES].length - priority.length;
 
-  // 4 chips + bouton "Toutes" pleine largeur en dessous
   let html = `<div class="sg-grid-wrap">
     <div class="sg-priority-grid">`;
 
@@ -272,17 +273,116 @@ function _selectLigne(ligne) {
   _selectedLigne = ligne;
   _saveFavoriteLine(ligne);
   _updateSendBtn();
+  // Charger les arrêts pour l'autocomplete
+  _loadArrets(ligne);
 
-  // Snap GPS si position connue mais pas encore snappée sur cette ligne
-  if (_geolocData?.lat && !_geolocData.snapped) {
+  if (_geolocData?.lat) {
     _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
-  // Snap si déjà snappé mais on change de ligne
-  else if (_geolocData?.lat && _geolocData.snapped) {
-    _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
+}
+
+// ── Autocomplete arrêts ───────────────────────────────────
+
+async function _loadArrets(ligne) {
+  const routes = await _loadRoutes();
+  // Essayer plusieurs formats de clé : "4", "04", "4".toUpperCase()
+  const keys = [
+    String(ligne),
+    String(ligne).toUpperCase(),
+    String(parseInt(ligne)),          // "04" → "4"
+    String(ligne).padStart(2, '0'),   // "4"  → "04"
+  ];
+  let lineData = null;
+  for (const k of keys) {
+    if (routes[k]) { lineData = routes[k]; break; }
+  }
+  if (!lineData) {
+    console.warn('[Signal] Ligne introuvable dans routes:', ligne, 'clés dispo:', Object.keys(routes).slice(0, 10));
+    _arretsList = [];
+    return;
+  }
+  const stops = lineData.arrets || lineData.stops || [];
+  _arretsList = stops.map(s => s.nom || s.name).filter(Boolean);
+  console.log('[Signal] Arrêts chargés pour ligne', ligne, ':', _arretsList.length);
+}
+
+function _showDropdown(matches) {
+  _removeDropdown();
+  if (!matches.length) return;
+
+  const input = document.getElementById('arret-input');
+  if (!input) return;
+
+  const dd = document.createElement('div');
+  dd.id        = 'arret-dropdown';
+  dd.className = 'arret-dropdown';
+
+  matches.slice(0, 6).forEach(name => {
+    const item = document.createElement('div');
+    item.className   = 'arret-dropdown-item';
+    item.textContent = name;
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // empêche blur avant click
+      input.value = name;
+      _removeDropdown();
+      _updateSendBtn();
+      if (_geolocData?.lat) {
+        _snapAndFill(_geolocData.lat, _geolocData.lon, _selectedLigne);
+      }
+    });
+    // Support touch
+    item.addEventListener('touchend', (e) => {
+      e.preventDefault();
+      input.value = name;
+      _removeDropdown();
+      _updateSendBtn();
+    });
+    dd.appendChild(item);
+  });
+
+  input.parentElement.style.position = 'relative';
+  input.parentElement.appendChild(dd);
+  _dropdownEl = dd;
+}
+
+function _removeDropdown() {
+  if (_dropdownEl) { _dropdownEl.remove(); _dropdownEl = null; }
+}
+
+function _onArretInput(e) {
+  _updateSendBtn();
+  const val = e.target.value.trim().toLowerCase();
+  if (!val) { _removeDropdown(); return; }
+
+  // Si les arrêts ne sont pas encore chargés, les charger puis afficher
+  if (!_arretsList.length && _selectedLigne) {
+    _loadArrets(_selectedLigne).then(() => {
+      const matches = _arretsList.filter(n => n.toLowerCase().includes(val));
+      _showDropdown(matches);
+    });
+    return;
   }
 
-  // Ne jamais envoyer automatiquement — l'usager appuie sur le bouton
+  const matches = _arretsList.filter(n => n.toLowerCase().includes(val));
+  _showDropdown(matches);
+}
+
+function _onArretFocus() {
+  if (!_selectedLigne) return;
+
+  const show = () => {
+    const val = document.getElementById('arret-input')?.value.trim().toLowerCase() || '';
+    const matches = val
+      ? _arretsList.filter(n => n.toLowerCase().includes(val))
+      : _arretsList;
+    _showDropdown(matches);
+  };
+
+  if (!_arretsList.length) {
+    _loadArrets(_selectedLigne).then(show);
+  } else {
+    show();
+  }
 }
 
 // ── Snap ──────────────────────────────────────────────────
@@ -306,11 +406,24 @@ async function _snapToStop(lat, lon, ligne) {
 let _routesCache = null;
 async function _loadRoutes() {
   if (_routesCache) return _routesCache;
-  try {
-    const r = await fetch('./data/routes_geometry_v13_fixed2.json');
-    const j = await r.json();
-    _routesCache = j.lignes || j.routes || {};
-  } catch { _routesCache = {}; }
+  // Essayer chemin absolu depuis la racine
+  const paths = [
+    '/data/routes_geometry_v13_fixed2.json',
+    './data/routes_geometry_v13_fixed2.json',
+    '/routes_geometry_v13_fixed2.json',
+  ];
+  for (const path of paths) {
+    try {
+      const r = await fetch(path);
+      if (!r.ok) continue;
+      const j = await r.json();
+      _routesCache = j.lignes || j.routes || {};
+      console.log('[Signal] Routes chargées depuis', path, '— lignes:', Object.keys(_routesCache).length);
+      return _routesCache;
+    } catch { continue; }
+  }
+  console.error('[Signal] Impossible de charger le fichier routes');
+  _routesCache = {};
   return _routesCache;
 }
 
@@ -357,12 +470,12 @@ function _updateSendBtn() {
   const hint   = document.getElementById('send-hint');
   if (btn) { btn.disabled = !ok; btn.classList.toggle('btn-send--pulse', ok); }
   if (hint) {
-    if (!_selectedLigne)                      hint.textContent = 'Sélectionne une ligne';
-    else if (_geolocPending)                  hint.textContent = '⏳ GPS en cours…';
-    else if (!ok)                             hint.textContent = 'Indique l\'arrêt ou attends le GPS';
-    else if (hasGps && _geolocData?.nearest_stop) hint.textContent = `📍 ${_geolocData.nearest_stop}`;
-    else if (hasGps)                          hint.textContent = '📍 Position GPS prête';
-    else                                      hint.textContent = 'Prêt à envoyer';
+    if (!_selectedLigne)                           hint.textContent = 'Sélectionne une ligne';
+    else if (_geolocPending)                       hint.textContent = '⏳ GPS en cours…';
+    else if (!ok)                                  hint.textContent = 'Indique l\'arrêt ou attends le GPS';
+    else if (hasGps && _geolocData?.nearest_stop)  hint.textContent = `📍 ${_geolocData.nearest_stop}`;
+    else if (hasGps)                               hint.textContent = '📍 Position GPS prête';
+    else                                           hint.textContent = 'Prêt à envoyer';
   }
 }
 
@@ -438,10 +551,12 @@ function _reset() {
   _selectedLigne = null; _selectedQual = null;
   _geolocData = null; _geolocPending = false;
   _pendingLigne = null; _allLinesVisible = false;
+  _arretsList = [];
   clearTimeout(_pendingTimer); _pendingTimer = null;
 
   const arretInput = document.getElementById('arret-input');
   if (arretInput) arretInput.value = '';
+  _removeDropdown();
   const geoStatus = document.getElementById('geoloc-status');
   if (geoStatus) geoStatus.hidden = true;
   const gpsBtn = document.getElementById('btn-gps');
@@ -453,7 +568,6 @@ function _reset() {
   if (qualBtn) qualBtn.textContent = '＋ Ajouter une observation (optionnel)';
   if (_mapSignal && _userMarker) { _mapSignal.removeLayer(_userMarker); _userMarker = null; }
   _showMapLabel(false);
-  // Remettre le label visible au reset
   const mapLabel = document.getElementById('signal-map-label');
   if (mapLabel) mapLabel.hidden = false;
   _buildLigneGrid();
@@ -467,7 +581,6 @@ function _saveFavoriteLine(ligne) {
     const raw  = localStorage.getItem('xetu_fav_lines') || '[]';
     const favs = JSON.parse(raw);
     if (!favs.includes(ligne)) {
-      // Garder les 4 dernières lignes utilisées
       const newFavs = [ligne, ...favs].slice(0, 4);
       localStorage.setItem('xetu_fav_lines', JSON.stringify(newFavs));
       store.set('favLines', newFavs);
@@ -479,7 +592,21 @@ function _saveFavoriteLine(ligne) {
 
 function _attachEvents(onSuccess) {
   document.getElementById('btn-gps')?.addEventListener('click', _handleGPS);
-  document.getElementById('arret-input')?.addEventListener('input', _updateSendBtn);
   document.getElementById('btn-send')?.addEventListener('click', () => _handleSend(onSuccess));
   _initQualityTags();
+
+  const arretInput = document.getElementById('arret-input');
+  if (arretInput) {
+    arretInput.addEventListener('input',  _onArretInput);
+    arretInput.addEventListener('focus',  _onArretFocus);
+    arretInput.addEventListener('blur',   () => setTimeout(_removeDropdown, 150));
+    arretInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') _removeDropdown();
+      if (e.key === 'ArrowDown') {
+        // Focus premier item du dropdown
+        const first = _dropdownEl?.querySelector('.arret-dropdown-item');
+        if (first) { e.preventDefault(); first.focus(); }
+      }
+    });
+  }
 }

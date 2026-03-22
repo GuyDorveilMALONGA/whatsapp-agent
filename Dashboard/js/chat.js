@@ -1,6 +1,10 @@
 /**
- * js/chat.js — V2.0 Sprint Final
- * FIX bug 3 messages : le welcome WS est ignoré, message en HTML uniquement.
+ * js/chat.js — V2.1
+ * V2.1 :
+ *  - Suggestions par défaut FR/Wolof, rotation aléatoire, 3 à la fois
+ *  - Suggestions contextuelles après chaque réponse bot
+ *  - Réapparition des suggestions quand chat est vide (état initial)
+ *  - FIX bug 3 messages : welcome WS ignoré, message en HTML uniquement
  */
 
 import * as store from './store.js';
@@ -8,10 +12,78 @@ import * as Ws    from './ws.js';
 
 const MAX_INPUT = 500;
 
+// ── Suggestions ───────────────────────────────────────────
+
+// Suggestions centrées sur lignes démo (1 & 4) + wolof naturel
+const DEFAULT_SUGGESTIONS = [
+  'Bus 4 est où ?',
+  'Bus 1 def ko kat ?',       // "Le bus 1, il est passé ?"
+  'Comment aller à Sandaga ?',
+  'Arrêts du bus 4',
+  'Dafa dem ?',               // "Il est parti ?"
+  'Bus bi ngi ci Medina ?',   // "Le bus est à Médina ?"
+  'Préviens-moi pour le bus 4',
+];
+
+function _pickSuggestions(n = 3) {
+  const shuffled = [...DEFAULT_SUGGESTIONS].sort(() => Math.random() - 0.5);
+  return shuffled.slice(0, n);
+}
+
+function _contextualSuggestions(botText) {
+  if (!botText) return _pickSuggestions();
+
+  const lower = botText.toLowerCase();
+
+  // Mentionné une ligne → suggestion ciblée
+  const ligneMatch = lower.match(/bus\s+(\d+[a-z]?)/);
+  if (ligneMatch) {
+    const ligne = ligneMatch[1];
+    return [
+      `Bus ${ligne} est où ?`,
+      'Autres options ?',
+      'Comment aller à Sandaga ?',
+    ];
+  }
+
+  // Itinéraire détecté
+  if (lower.includes('itinéraire') || lower.includes('correspondance') || lower.includes('changer')) {
+    return [
+      'Autres options ?',
+      'Bus bi ngi fi ?',
+      'Combien de temps ?',
+    ];
+  }
+
+  // Arrêt ou horaire
+  if (lower.includes('arrêt') || lower.includes('heure') || lower.includes('fréquence')) {
+    return [
+      'Bus bi ngi fi ?',
+      'Préviens-moi pour le bus 10',
+      'Comment aller à Sandaga ?',
+    ];
+  }
+
+  return _pickSuggestions();
+}
+
+function _isInitialState() {
+  const msgs = document.getElementById('chat-messages');
+  if (!msgs) return true;
+  // État initial = uniquement le message de bienvenue statique (1 enfant)
+  return msgs.children.length <= 1;
+}
+
+// ── Init ──────────────────────────────────────────────────
+
 export function initChat() {
   _attachEvents();
   _subscribeStore();
+  // Afficher les suggestions par défaut au démarrage
+  setSuggestions(_pickSuggestions());
 }
+
+// ── Events ────────────────────────────────────────────────
 
 function _attachEvents() {
   const input   = document.getElementById('chat-input');
@@ -46,10 +118,12 @@ function _doSend() {
   Ws.sendChat(text);
 }
 
+// ── Messages ──────────────────────────────────────────────
+
 export function appendMessage(role, text) {
   const msgs = document.getElementById('chat-messages');
   if (!msgs) return;
-  const wrap = document.createElement('div');
+  const wrap   = document.createElement('div');
   wrap.className = `chat-msg chat-msg--${role}`;
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
@@ -58,6 +132,8 @@ export function appendMessage(role, text) {
   msgs.appendChild(wrap);
   _scrollToBottom();
 }
+
+// ── Typing indicator ──────────────────────────────────────
 
 let _typingEl = null;
 
@@ -82,6 +158,8 @@ function _hideTyping() {
   if (_typingEl) { _typingEl.remove(); _typingEl = null; }
 }
 
+// ── Suggestions ───────────────────────────────────────────
+
 export function setSuggestions(list = []) {
   const c = document.getElementById('chat-suggestions');
   if (!c) return;
@@ -105,6 +183,8 @@ function _clearSuggestions() {
   if (c) c.innerHTML = '';
 }
 
+// ── Statut connexion ──────────────────────────────────────
+
 export function setStatus(status) {
   const dot   = document.getElementById('chat-status-dot');
   const label = document.getElementById('chat-status-label');
@@ -116,23 +196,38 @@ export function setStatus(status) {
     failed:     { cls: 'status--closed',     text: 'Non connecté'},
   };
   const conf = map[status] ?? map.closed;
-  dot.className    = `chat-status-dot ${conf.cls}`;
+  dot.className     = `chat-status-dot ${conf.cls}`;
   label.textContent = conf.text;
 }
 
+// ── Store subscriptions ───────────────────────────────────
+
 function _subscribeStore() {
   store.subscribe('lastBotMessage', (text) => {
-    if (text) { _hideTyping(); appendMessage('bot', text); }
+    if (!text) return;
+    _hideTyping();
+    appendMessage('bot', text);
+    // Suggestions contextuelles après chaque réponse bot
+    setSuggestions(_contextualSuggestions(text));
   });
+
   store.subscribe('chatTyping', (active) => setTyping(active));
 
-  // Suggestions uniquement — le message welcome est déjà dans le HTML
+  // Suggestions du WS (onWelcome) — prioritaires sur les defaults
   store.subscribe('chatSuggestions', (list) => {
     if (list?.length) setSuggestions(list);
   });
 
-  store.subscribe('wsStatus', (status) => setStatus(status));
+  store.subscribe('wsStatus', (status) => {
+    setStatus(status);
+    // Si retour en ligne depuis état vide → réafficher les suggestions
+    if (status === 'open' && _isInitialState()) {
+      setSuggestions(_pickSuggestions());
+    }
+  });
 }
+
+// ── Helpers ───────────────────────────────────────────────
 
 function _scrollToBottom() {
   requestAnimationFrame(() => {
