@@ -200,12 +200,8 @@ function _refreshDemoBuses() {
 function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
     .setView([14.693, -17.452], 14);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png',
     { maxZoom: 19, subdomains: 'abcd' }).addTo(_map);
-
-  // FIX carte noire : Leaflet calcule la taille avant que le CSS dvh
-  // soit résolu → tuiles jamais chargées → écran noir.
-  // Double RAF garantit que le layout est stable avant invalidateSize.
   requestAnimationFrame(() => requestAnimationFrame(() => {
     _map.invalidateSize({ animate: false });
   }));
