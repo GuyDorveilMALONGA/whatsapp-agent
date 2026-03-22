@@ -233,27 +233,81 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-// Vitesse réaliste bus Dakar : ~25 km/h en ville = 6.9 m/s
-// 1 degré lat ≈ 111 000 m → vitesse en degrés/ms
-const _BUS_SPEED_DEG_PER_MS = 6.9 / 111000 / 1000;  // ~0.0000000622 deg/ms
+// Vitesse réaliste bus Dakar : ~25 km/h = 6.9 m/s = 0.0000621 deg/s (1°lat ≈ 111 000 m)
+const _BUS_SPEED_DEG_PER_SEC = 6.9 / 111000;   // degrés par seconde
+const _BUS_SPEED_DEG_PER_MS  = _BUS_SPEED_DEG_PER_SEC / 1000;
+
+/**
+ * Calcule la longueur totale d'un tracé en degrés.
+ */
+function _traceLength(coords) {
+  let total = 0;
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    total += Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
+  }
+  return total;
+}
+
+/**
+ * À partir d'une distance parcourue en degrés, retourne {idx, progress}
+ * sur le tracé — position déterministe depuis n'importe quel client.
+ */
+function _posFromDistance(coords, distDeg) {
+  let remaining = distDeg % _traceLength(coords); // boucle infinie
+  for (let i = 0; i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
+    if (remaining <= segLen) {
+      return { idx: i, progress: segLen > 0 ? remaining / segLen : 0 };
+    }
+    remaining -= segLen;
+  }
+  return { idx: 0, progress: 0 };
+}
 
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
 
-  // Positionner le bus à son arrêt signalé sur le tracé (pas au début)
-  const startIdx = bus.traceStartIdx ?? 0;
+  // ── Position de départ déterministe ───────────────────────
+  // On calcule la distance parcourue depuis le signalement :
+  //   distanceDeg = minutes_ago × 60s × vitesse_deg/s
+  // Tous les clients obtiennent la même position pour le même bus.
+  // Re-cliquer sur le bus repart depuis cette même position — pas depuis le début.
+  const minutesAgo    = bus.minutes_ago ?? 0;
+  const elapsedSec    = minutesAgo * 60;
+  const distAtSighting = _BUS_SPEED_DEG_PER_SEC * elapsedSec;
 
+  // Point de départ sur le tracé = position à l'heure du signalement
+  // On commence à traceStartIdx si disponible (arrêt signalé localisé),
+  // sinon on commence au début du tracé.
+  const startSegIdx  = bus.traceStartIdx ?? 0;
+  let   distToStart  = 0;
+  for (let i = 0; i < startSegIdx && i < coords.length - 1; i++) {
+    const a = coords[i], b = coords[i + 1];
+    distToStart += Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
+  }
+  // Position actuelle = position au signalement + distance parcourue depuis
+  const currentDist   = distToStart + distAtSighting;
+  const startPos      = _posFromDistance(coords, currentDist);
+
+  // ── Timestamp de référence ─────────────────────────────────
+  // On garde la distance cumulée totale depuis le début du tracé (en degrés).
+  // À chaque tick on ajoute (dt × vitesse). Tous les clients partent du même
+  // currentDist → positions synchronisées.
   const state = {
-    ligne:      bus.ligne,
-    arrets:     data.arrets,
+    ligne:        bus.ligne,
+    arrets:       data.arrets,
     coords,
-    idx:        startIdx,
-    progress:   0,
-    lastTs:     null,
-    rafId:      null,
-    stopped:    false,
-    lastArretIdx: -1,   // pour ne mettre à jour le reader que quand l'arrêt change
+    idx:          startPos.idx,
+    progress:     startPos.progress,
+    // Distance totale parcourue depuis le début du tracé — base de synchronisation
+    totalDistDeg: currentDist % _traceLength(coords),
+    lastTs:       null,
+    rafId:        null,
+    stopped:      false,
+    lastArretIdx: -1,
   };
   _animState = state;
   const mk = _busMarkers[bus.id];
@@ -261,36 +315,26 @@ function _startAnim(bus, data) {
   function tick(ts) {
     if (state.stopped) return;
     if (!state.lastTs) state.lastTs = ts;
-    const dt = Math.min(ts - state.lastTs, 100);  // cap 100ms
+    const dt = Math.min(ts - state.lastTs, 100);
     state.lastTs = ts;
+
+    // Avancer la distance totale
+    state.totalDistDeg += _BUS_SPEED_DEG_PER_MS * dt;
+
+    // Recalculer la position sur le tracé depuis la distance totale
+    const pos = _posFromDistance(coords, state.totalDistDeg);
+    state.idx      = pos.idx;
+    state.progress = pos.progress;
 
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
-    if (!a || !b) {
-      // Fin du tracé — revenir au début (boucle démo)
-      state.idx      = 0;
-      state.progress = 0;
-      state.rafId    = requestAnimationFrame(tick);
-      return;
-    }
-
-    // Distance du segment en degrés
-    const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    // Avancement proportionnel à la vitesse réelle et au temps écoulé
-    const step = segLen > 0 ? (_BUS_SPEED_DEG_PER_MS * dt) / segLen : 0;
-    state.progress += step;
-
-    if (state.progress >= 1) {
-      state.progress -= 1;
-      state.idx = (state.idx + 1) % (coords.length - 1);
-    }
+    if (!a || !b) { state.rafId = requestAnimationFrame(tick); return; }
 
     const lat = a[0] + (b[0]-a[0]) * state.progress;
     const lon = a[1] + (b[1]-a[1]) * state.progress;
     if (mk) mk.setLatLng([lat, lon]);
 
-    // Mettre à jour le reader SEULEMENT quand l'arrêt courant change
-    // (pas à 60fps — évite le reset constant du scroll)
+    // Reader : uniquement quand l'arrêt courant change
     const newArretIdx = _nearestArretIdx(lat, lon, state.arrets);
     if (newArretIdx !== state.lastArretIdx) {
       state.lastArretIdx = newArretIdx;
