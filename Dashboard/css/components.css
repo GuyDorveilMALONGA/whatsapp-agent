@@ -1,7 +1,10 @@
 /* ════════════════════════════════════════════════════════
-   css/components.css — V2.5
+   css/components.css — V2.6
    AJOUTS V2.5 :
    - BUG-4 fix : .xetu-bus-marker neutralise les styles Leaflet par défaut
+   AJOUTS V2.6 :
+   - CHG-8 : .home-filter-bar + .filter-chip + .filter-chip--active
+   - CHG-8 : .map-empty-overlay + .map-empty-card (overlay carte 0 bus)
    NOTE : #bus-reader est géré ENTIÈREMENT par reader.js (_injectCSS).
           Ne pas ajouter de styles pour #bus-reader ici — conflit garanti.
    ════════════════════════════════════════════════════════ */
@@ -25,7 +28,7 @@
 .btn-see-bus:hover  { opacity: 0.9; }
 .btn-see-bus:active { transform: scale(0.98); opacity: 0.85; }
 
-.home-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+.home-bottom { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
 .home-cols-header { padding: 10px 14px 0; flex-shrink: 0; }
 .home-col-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); }
 .col-tab {
@@ -40,12 +43,129 @@
 .home-col  { position: absolute; inset: 0; overflow-y: auto; padding: 10px 14px; display: none; flex-direction: column; gap: 8px; }
 .home-col.active { display: flex; }
 
+/* ══ V2.6 : Filter bar scrollable (accueil) ══════════════ */
+
+/* Placée dans .home-cols-header, après .home-col-tabs.
+   Gérée par _renderFilterBar() dans home.js — hidden par défaut,
+   visible dès que 2+ lignes actives dans le store. */
+.home-filter-bar {
+  display: flex;
+  gap: 6px;
+  padding: 10px 14px 6px;
+  /* Retrait du padding horizontal de .home-cols-header (14px) pour
+     compenser et aligner les chips avec les tabs au-dessus */
+  margin-left: -14px;
+  margin-right: -14px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+}
+.home-filter-bar[hidden] { display: none; }
+.home-filter-bar::-webkit-scrollbar { display: none; }
+
+/* ── Chips (partagé avec éventuel usage futur) ── */
+.filter-chip {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  white-space: nowrap;
+  scroll-snap-align: start;
+  transition: all var(--t-fast);
+  line-height: 1;
+}
+.filter-chip:hover {
+  border-color: var(--orange-border);
+  color: var(--text);
+}
+.filter-chip--active {
+  background: var(--orange-dim);
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.filter-chip:active { opacity: 0.8; }
+
+/* ══ V2.6 : Empty state overlay sur la carte ═════════════ */
+
+/* Positionné en absolute sur #map-home (qui est relative via Leaflet).
+   Créé dynamiquement par _showEmptyOverlay() dans home.js.
+   Disparaît automatiquement dès qu'un bus entre dans le store. */
+.map-empty-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 500; /* au-dessus des tiles Leaflet (z-index 200-400) */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none; /* laisse passer les events carte sauf sur la card */
+}
+.map-empty-overlay[hidden] { display: none; }
+
+.map-empty-card {
+  background: rgba(10, 15, 30, 0.88);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: auto; /* la card elle-même est cliquable */
+  min-width: 200px;
+  text-align: center;
+  animation: slideUp 0.25s ease both;
+}
+
+.map-empty-icon {
+  font-size: 32px;
+  line-height: 1;
+}
+.map-empty-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  margin-top: 2px;
+}
+.map-empty-sub {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+.map-empty-btn {
+  margin-top: 6px;
+  padding: 10px 20px;
+  background: var(--orange);
+  border: none;
+  border-radius: var(--radius-lg);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  box-shadow: var(--shadow-orange);
+  transition: opacity var(--t-fast), transform var(--t-fast);
+  white-space: nowrap;
+}
+.map-empty-btn:hover  { opacity: 0.9; }
+.map-empty-btn:active { transform: scale(0.97); opacity: 0.85; }
+
+/* ══ BUS CARDS ════════════════════════════════════════════ */
+
 .bus-card {
   background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-lg);
   padding: var(--space-md); cursor: pointer; transition: border-color var(--t-fast);
   animation: slideUp 0.25s ease both;
 }
 .bus-card:hover { border-color: var(--orange-border); }
+.bus-card--selected { border-color: var(--orange); background: var(--orange-dim); }
 .bus-card-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
 .bus-badge { background: var(--orange); color: #fff; font-size: 12px; font-weight: 700; padding: 3px 8px; border-radius: var(--radius-sm); flex-shrink: 0; }
 .bus-name  { font-size: 11px; color: var(--muted); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -72,8 +192,6 @@
 .empty-text  { font-size: 12px; text-align: center; }
 
 /* ══ BUG-4 FIX V2.5 : marker Leaflet sans styles parasites ══ */
-/* Leaflet ajoute background/border blanc par défaut sur les divIcon.
-   className:'xetu-bus-marker' dans home.js + cette règle = cercle pur. */
 .xetu-bus-marker {
   background: none !important;
   border:     none !important;
