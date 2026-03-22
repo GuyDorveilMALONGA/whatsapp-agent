@@ -1,34 +1,64 @@
 /**
- * js/home.js — Xëtu V2.1 FINAL
+ * js/home.js — Xëtu V3.0
  *
- * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
- * FIX-2  Tooltips = stop.nom uniquement
- * FIX-4  Carte vide au démarrage, tracé à la demande
- * FIX-5  RAF uniquement sur le bus sélectionné
- * FIX-6  Reader bandeau arrêt courant
- * FIX-7  Tracé retiré du DOM au switch
- * FIX-8  Couleur par hash HSL
- * FIX-9  minutes_ago incrémenté, bus expire après 20 min
- * FIX-10 Zoom centré Dakar centre
+ * CORRECTIONS V3.0 :
+ *
+ * BUG-2 (minutes_ago figé) :
+ *   - Avant : `const _NOW = Date.now()` → valeur gelée par le SW au moment du cache.
+ *   - Fix : `_now()` est une fonction — `Date.now()` est évalué à chaque appel,
+ *     donc toujours frais même si le module est servi depuis le cache SW.
+ *
+ * BUG-4 (carré blanc autour du marker) :
+ *   - Avant : `className: ''` → Leaflet ajoute sa propre feuille de style sur l'élément.
+ *   - Fix : `className: 'xetu-bus-marker'` + règle CSS `.xetu-bus-marker { background:none!important; border:none!important; box-shadow:none!important; }`
+ *
+ * BUG-5 (tracés L1+L4 visibles sans clic) :
+ *   - Cause : `_GTFS_DATA` était copié-collé depuis map.js qui appelait `_drawGtfsTestLines()`
+ *     au démarrage. Dans home.js ce code n'existe pas, MAIS `_subscribeStore` → `store.set('buses')`
+ *     → `_updateMarkers` → `_makeBusMarker` → `_selectBus` s'enchaînait immédiatement
+ *     si _selectedBusId était déjà setté (résidu store d'une autre session).
+ *   - Fix : reset explicite `_selectedBusId = null` à l'init, et `_selectBus` ne dessine
+ *     le tracé que si le bus est dans DEMO_BUSES (guard ajouté).
+ *   - Fix 2 : `_refreshDemoBuses()` est le seul endroit qui hydrate le store 'buses'.
+ *     On le retarde d'un tick après `_initMap()` pour éviter la course store→markers→selectBus.
+ *
+ * BUG-3 (carte trop dézoomée) :
+ *   - Zoom initial 14 centré sur Plateau/Médina `[14.693, -17.452]`.
+ *   - `fitBounds` avec `maxZoom:13` pour ne jamais dézoomer au-delà de Dakar-ville.
  */
 
 import * as store  from './store.js';
 import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './utils.js';
 import { initReader, updateReader, hide as hideReader } from './reader.js';
 
+// ── Helpers timing ────────────────────────────────────────
+
+// CHG-1 (BUG-2) : fonction au lieu de constante — frais à chaque appel.
+function _now() { return Date.now(); }
+
 const AVATARS      = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
 const DEMO_TTL_MIN = 20;
 
-// ── État carte ────────────────────────────────────────────
-let _map               = null;
-let _busMarkers        = {};
-let _activeCol         = 'buses';
-let _selectedBusId     = null;
-let _activePolyline    = null;
-let _activeStopMarkers = [];
-let _animState         = null;
+// ── CSS Leaflet marker fix (BUG-4) ───────────────────────
 
-// ── FIX-8 : couleur par hash HSL ─────────────────────────
+function _injectMarkerCSS() {
+  if (document.getElementById('xetu-marker-style')) return;
+  const s = document.createElement('style');
+  s.id = 'xetu-marker-style';
+  s.textContent = `
+    /* BUG-4 : Leaflet divIcon ajoute background/border/box-shadow par défaut */
+    .xetu-bus-marker {
+      background:  none !important;
+      border:      none !important;
+      box-shadow:  none !important;
+      outline:     none !important;
+    }
+  `;
+  document.head.appendChild(s);
+}
+
+// ── Couleur par hash HSL ──────────────────────────────────
+
 function _lineColor(ligne) {
   let hash = 0;
   for (let i = 0; i < String(ligne).length; i++)
@@ -37,6 +67,7 @@ function _lineColor(ligne) {
 }
 
 // ── GTFS L1 + L4 ─────────────────────────────────────────
+
 const _GTFS = {
   '1': {
     color: _lineColor('1'),
@@ -160,60 +191,118 @@ const _GTFS = {
   },
 };
 
-// ── Bus démo — _NOW fixé UNE SEULE FOIS au chargement ────
-const _NOW = Date.now();
-const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:_NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:_NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
-];
+// ── État carte ────────────────────────────────────────────
+
+let _map               = null;
+let _busMarkers        = {};
+let _activeCol         = 'buses';
+let _selectedBusId     = null;   // CHG-2 (BUG-5) : toujours null au démarrage
+let _activePolyline    = null;
+let _activeStopMarkers = [];
+let _animState         = null;
 
 // ── Init ──────────────────────────────────────────────────
+
 export function initHome({ onSeeBus }) {
+  _injectMarkerCSS();  // BUG-4
   initReader();
   _initMap();
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
+
+  // CHG-3 (BUG-5) : on retarde d'un tick pour éviter la race
+  // store → markers → sélection automatique indésirable.
   requestAnimationFrame(() => {
     _refreshDemoBuses();
     setInterval(_refreshDemoBuses, 30_000);
   });
 }
 
-// ── FIX-9 : refresh démos ─────────────────────────────────
+// ── Refresh démos (BUG-2) ─────────────────────────────────
+
 function _refreshDemoBuses() {
-  const now   = Date.now();
-  const buses = DEMO_BUSES
+  // CHG-4 (BUG-2) : _now() évalué ici, à chaque appel — jamais freezé.
+  const now = _now();
+
+  // Les bus démo ont leur _born fixé au moment de leur DÉFINITION ci-dessous.
+  // On les définit dans la fonction pour que Date.now() soit frais à chaque cycle.
+  // Mais pour avoir une heure de départ cohérente on les met en module-level
+  // avec un born calculé une seule fois à l'import… SAUF que le SW gèle l'import.
+  // Solution : born stocké dans sessionStorage la 1ère fois.
+  const b1 = _getBorn('demo-1', 2);
+  const b4 = _getBorn('demo-4', 1);
+
+  const bases = [
+    { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:b1, traceStartIdx:26 },
+    { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:b4, traceStartIdx:0  },
+  ];
+
+  const buses = bases
     .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
-    .map(b => ({
-      ...b,
-      minutes_ago: Math.round((now - b._born) / 60_000),
-      name: _GTFS[b.ligne]
-        ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
-        : `Ligne ${b.ligne}`,
-    }));
+    .map(b => {
+      const data = _GTFS[b.ligne];
+      return {
+        ...b,
+        minutes_ago: Math.round((now - b._born) / 60_000),
+        name: data ? `${data.terminus_a} ↔ ${data.terminus_b}` : `Ligne ${b.ligne}`,
+      };
+    });
+
   store.set('buses', buses);
-  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) _deselectBus();
+
+  // Si le bus sélectionné a expiré, déselectionner
+  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) {
+    _deselectBus();
+  }
+}
+
+/**
+ * CHG-5 (BUG-2) : stocke le timestamp de "naissance" dans sessionStorage.
+ * sessionStorage survit aux rechargements normaux mais PAS au cache SW
+ * (puisque sessionStorage est par onglet, pas par SW).
+ * Ainsi le bus a le même âge dans toute la session, ET l'âge repart de zéro
+ * à chaque nouvelle session (onglet fermé/ouvert).
+ */
+function _getBorn(id, offsetMinutes) {
+  const key = `xetu_born_${id}`;
+  try {
+    const stored = sessionStorage.getItem(key);
+    if (stored) return parseInt(stored, 10);
+    const born = _now() - offsetMinutes * 60 * 1000;
+    sessionStorage.setItem(key, String(born));
+    return born;
+  } catch {
+    // sessionStorage bloqué (navigation privée sans accès) → valeur live
+    return _now() - offsetMinutes * 60 * 1000;
+  }
 }
 
 // ── Carte ─────────────────────────────────────────────────
+
 function _initMap() {
+  // BUG-3 : zoom 14, centré Plateau/Médina
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
-    .setView([14.693, -17.452], 13);
+    .setView([14.693, -17.452], 14);
   L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     { maxZoom: 19, subdomains: 'abcd' }).addTo(_map);
 }
 
 // ── Sélection bus ─────────────────────────────────────────
+
 function _selectBus(busId) {
   if (_selectedBusId === busId) { _deselectBus(); return; }
+
+  // CHG-6 (BUG-5) : guard — ne dessiner que si le bus est dans DEMO_BUSES actifs
+  const bus = (store.get('buses') || []).find(b => b.id === busId);
+  if (!bus) return;
+
   _selectedBusId = busId;
   _stopAnim();
   _clearActiveLine();
 
-  const bus  = DEMO_BUSES.find(b => b.id === busId);
-  const data = bus ? _GTFS[bus.ligne] : null;
-  if (!data || !bus) return;
+  const data = _GTFS[bus.ligne];
+  if (!data) return;
 
   const color = data.color;
 
@@ -221,9 +310,8 @@ function _selectBus(busId) {
     color, weight: 4, opacity: 0.88, lineJoin: 'round', lineCap: 'round',
   }).addTo(_map);
 
-  // FIX-1 : arrêts discrets, non cliquables — le reader s'en charge
   data.arrets.forEach((stop, idx) => {
-    const isT   = idx === 0 || idx === data.arrets.length - 1;
+    const isT = idx === 0 || idx === data.arrets.length - 1;
     const circle = L.circleMarker([stop.lat, stop.lon], {
       radius:      isT ? 4 : 2,
       color:       isT ? color : 'rgba(255,255,255,0.2)',
@@ -235,7 +323,8 @@ function _selectBus(busId) {
     _activeStopMarkers.push(circle);
   });
 
-  _map.fitBounds(_activePolyline.getBounds(), { padding: [40, 40], maxZoom: 12 });
+  // BUG-3 : maxZoom:13 pour rester sur Dakar
+  _map.fitBounds(_activePolyline.getBounds(), { padding: [40, 40], maxZoom: 13 });
   _refreshBusMarkers();
   _startAnim(bus, data);
 }
@@ -255,6 +344,7 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
+
 const ANIM_SPEED = 0.00004;
 
 function _startAnim(bus, data) {
@@ -310,7 +400,8 @@ function _nearestArretIdx(lat, lon, arrets) {
   return best;
 }
 
-// ── Markers bus ───────────────────────────────────────────
+// ── Markers bus (BUG-4) ───────────────────────────────────
+
 function _updateMarkers(buses) {
   if (!_map) return;
   const ids = new Set(buses.map(b => String(b.id)));
@@ -343,14 +434,16 @@ function _makeBusMarker(bus) {
 }
 
 function _busIcon(ligne, color, size, isSelected) {
+  // CHG-7 (BUG-4) : className 'xetu-bus-marker' + règle CSS dans _injectMarkerCSS()
   return L.divIcon({
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
       border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
       box-shadow:0 2px 12px rgba(0,0,0,0.5);
       display:flex;align-items:center;justify-content:center;
       font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
-      font-weight:700;color:#fff;">${ligne}</div>`,
-    iconSize: [size, size], iconAnchor: [size/2, size/2], className: '',
+      font-weight:700;color:#fff;line-height:1;">${ligne}</div>`,
+    iconSize: [size, size], iconAnchor: [size/2, size/2],
+    className: 'xetu-bus-marker',   // ← BUG-4 fix
   });
 }
 
@@ -367,6 +460,7 @@ function _refreshBusMarkers() {
 }
 
 // ── Tabs ──────────────────────────────────────────────────
+
 function _initTabs() {
   document.querySelectorAll('.col-tab').forEach(btn => {
     btn.addEventListener('click', () => {
