@@ -1,8 +1,6 @@
 /**
- * js/reader.js — Xëtu V1.1
- * Bandeau "arrêt courant" affiché au-dessus du bouton "Je vois un bus ici"
- *
- * FIX V1.1 : SCROLL_SPEED 0.4 → 0.02, PAUSE_MS 2000 → 3500
+ * js/reader.js — Xëtu V1.2
+ * FIX V1.2 : scroll basé sur deltaTime (ms) — 22px/sec indépendant du framerate
  */
 
 let _el       = null;
@@ -10,6 +8,7 @@ let _scrollEl = null;
 let _rafId    = null;
 let _scrollX  = 0;
 let _paused   = false;
+let _lastTs   = null;
 
 // ── Init ──────────────────────────────────────────────────
 
@@ -54,18 +53,20 @@ export function hide() {
   if (_el) _el.hidden = true;
   _stopScroll();
   _scrollX = 0;
+  _lastTs  = null;
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
 }
 
-// ── Scroll automatique ────────────────────────────────────
+// ── Scroll basé sur le temps (indépendant du framerate) ──
 
-const SCROLL_SPEED = 0.02;  // px/frame — lent et lisible
-const PAUSE_MS     = 3500;  // pause à la fin avant reset
+const SCROLL_PX_PER_SEC = 22;  // 22px/seconde — lent et lisible
+const PAUSE_MS          = 3500;
 
 function _startScroll() {
   _stopScroll();
   _scrollX = 0;
   _paused  = false;
+  _lastTs  = null;
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
   _rafId = requestAnimationFrame(_tick);
 }
@@ -75,22 +76,25 @@ function _stopScroll() {
   _rafId = null;
 }
 
-function _tick() {
+function _tick(ts) {
   if (!_scrollEl) return;
-  if (_paused) { _rafId = requestAnimationFrame(_tick); return; }
+
+  if (_paused) { _lastTs = ts; _rafId = requestAnimationFrame(_tick); return; }
+
+  if (!_lastTs) _lastTs = ts;
+  const dt = Math.min(ts - _lastTs, 100);
+  _lastTs  = ts;
 
   const containerW = _el.offsetWidth;
   const contentW   = _scrollEl.scrollWidth;
 
-  if (contentW <= containerW) {
-    _stopScroll();
-    return;
-  }
+  if (contentW <= containerW) { _stopScroll(); return; }
 
-  _scrollX += SCROLL_SPEED;
+  _scrollX += (SCROLL_PX_PER_SEC * dt) / 1000;
 
   if (_scrollX > contentW - containerW + 40) {
-    _paused = true;
+    _paused  = true;
+    _scrollX = contentW - containerW + 40;
     setTimeout(() => {
       _scrollX = 0;
       if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';

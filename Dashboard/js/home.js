@@ -167,10 +167,13 @@ const _GTFS = {
   },
 };
 
-// ── Bus démo — _born = timestamp création ─────────────────
+// ── Bus démo — _born fixé UNE SEULE FOIS au chargement du module ─────────────
+// Ne pas mettre Date.now() dans un objet littéral rechargeable — ça se recalcule
+// à chaque hot-reload et les bus ne disparaissent jamais.
+const _NOW = Date.now();
 const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born: Date.now() - 2*60*1000, reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born: Date.now() - 1*60*1000, reporter:'****', traceStartIdx:0  },
+  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born: _NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
+  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born: _NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
 ];
 
 // ── Init ──────────────────────────────────────────────────
