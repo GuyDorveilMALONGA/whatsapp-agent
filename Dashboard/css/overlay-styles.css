@@ -1,10 +1,26 @@
 /* ════════════════════════════════════════════════════════
-   css/overlay-styles.css — Xëtu V2.1
-   Styles overlay arrêts filtre ligne + tooltips GTFS L1/L4
+   css/overlay-styles.css — Xëtu V3.0
+   Tooltips arrêts + Reader bandeau arrêt courant
    ════════════════════════════════════════════════════════ */
 
-/* ── Tooltip arrêts overlay (filtre ligne actif) ────────── */
+/* ── Tooltip arrêt (FIX-2 : nom uniquement) ─────────────── */
 
+.stop-tip {
+  background: #0f172a;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #f1f5f9;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 9px;
+  white-space: nowrap;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+
+.stop-tip::before { display: none; }
+
+/* Ancien .stop-tooltip conservé pour compatibilité */
 .stop-tooltip {
   background: #1e293b;
   border: 1px solid #ff6b35;
@@ -17,86 +33,83 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
   pointer-events: none;
 }
+.stop-tooltip::before { border-top-color: #ff6b35 !important; }
 
-.stop-tooltip::before {
-  border-top-color: #ff6b35 !important;
-}
-
-/* ── Transition overlay polylines ───────────────────────── */
+/* ── Transition polylines ────────────────────────────────── */
 
 .leaflet-overlay-pane path {
-  transition: opacity 0.3s ease;
+  transition: opacity 0.25s ease;
 }
 
-/* ── Label survol tracé standard ────────────────────────── */
+/* ── Bus Reader — FIX-6 ──────────────────────────────────── */
+/* Bandeau fixe arrêt courant, au-dessus de "Je vois un bus ici" */
 
-.trace-tooltip {
-  background: #1e293b;
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  border-radius: 6px;
-  color: #94a3b8;
-  font-size: 11px;
-  padding: 3px 8px;
-  pointer-events: none;
+#bus-reader {
+  position: relative;
+  width: 100%;
+  background: rgba(15, 23, 42, 0.92);
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 7px 12px;
+  overflow: hidden;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
 }
 
-/* ── Label survol tracé GTFS (polyline L1/L4) ───────────── */
-
-.gtfs-trace-label {
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 6px;
-  color: #e2e8f0;
-  font-size: 12px;
-  font-weight: 500;
-  padding: 4px 10px;
-  pointer-events: none;
+/* Scroll horizontal du contenu */
+.reader-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0;
   white-space: nowrap;
+  will-change: transform;
 }
 
-/* ── Tooltip arrêt GTFS (tap/hover sur circleMarker) ────── */
-
-.gtfs-stop-tip {
-  background: #0f172a;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 8px;
-  padding: 7px 11px;
-  min-width: 170px;
-  pointer-events: none;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.55);
-  line-height: 1;
+/* Badge ligne */
+.reader-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 5px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  margin-right: 10px;
+  flex-shrink: 0;
+  letter-spacing: 0.02em;
 }
 
-/* Supprimer la flèche Leaflet sur les tooltips GTFS */
-.gtfs-stop-tip::before {
-  display: none;
+/* Séparateur entre arrêts */
+.reader-sep {
+  color: rgba(255, 255, 255, 0.25);
+  font-size: 12px;
+  padding: 0 5px;
 }
 
-.gtfs-tip-nom {
-  color: #f1f5f9;
+/* Arrêts passés — discrets */
+.reader-past {
+  color: rgba(255, 255, 255, 0.3);
+  font-size: 11px;
+}
+
+/* Arrêt courant — mis en valeur */
+.reader-current {
   font-size: 12px;
   font-weight: 600;
-  margin-bottom: 5px;
-  line-height: 1.3;
+  text-decoration: underline;
+  text-underline-offset: 3px;
 }
 
-.gtfs-tip-coords {
-  color: #475569;
-  font-family: 'Courier New', monospace;
-  font-size: 10px;
-  letter-spacing: 0.03em;
+/* Arrêts futurs — normaux */
+.reader-future {
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 11px;
 }
 
-.gtfs-tip-terminus {
-  display: inline-block;
-  margin-top: 5px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 4px;
-  color: #64748b;
-  font-size: 10px;
-  font-weight: 500;
-  padding: 2px 6px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+/* ── Card bus sélectionnée ───────────────────────────────── */
+
+.bus-card--selected {
+  border-left: 3px solid;
+  border-left-color: var(--color-orange, #ff6b35);
+  background: rgba(255, 107, 53, 0.06);
 }
