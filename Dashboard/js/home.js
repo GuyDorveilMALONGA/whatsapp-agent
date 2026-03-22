@@ -387,14 +387,12 @@ function _makeBusMarker(bus) {
   });
 
   const marker = L.marker([bus.lat, bus.lng], { icon, zIndexOffset: isSelected ? 1000 : 0 })
-    .addTo(_map)
-    .bindPopup(
-      `<b>Bus ${bus.ligne}</b><br>${bus.position}<br>` +
-      `<span style="color:${markerColor}">Il y a ${bus.minutes_ago} min</span>`,
-      { closeButton: false, maxWidth: 200 }
-    );
+    .addTo(_map);
 
-  marker.on('click', () => {
+  // PAS de bindPopup — le popup Leaflet intercepte le click event
+  // et empêche _selectBus de s'exécuter. On gère le clic directement.
+  marker.on('click', (e) => {
+    L.DomEvent.stopPropagation(e);
     _selectedBusId === bus.id ? _deselectBus() : _selectBus(bus.id);
   });
   return marker;
