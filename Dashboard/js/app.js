@@ -1,6 +1,6 @@
 /**
- * js/app.js — V2.1
- * FIX : popups avis/contact s'ouvrent après fermeture menu (délai 50ms)
+ * js/app.js — V2.2
+ * FIX DEMO_MODE : _loadData() ne touche pas les bus démo
  */
 
 import * as store   from './store.js';
@@ -17,6 +17,11 @@ import { initMylines } from './mylines.js';
 const NAV_SCREENS = ['home', 'itin', 'mylines'];
 const _navBtns    = document.querySelectorAll('.nav-btn');
 const _screens    = document.querySelectorAll('.screen');
+
+// ── Mode démo ─────────────────────────────────────────────
+// true  → bus démo L1 + L4 hardcodés, API Railway ignorée
+// false → données réelles depuis Railway/Supabase
+const DEMO_MODE = true;
 
 // ── Navigation ────────────────────────────────────────────
 
@@ -35,7 +40,6 @@ document.getElementById('btn-back-signal')?.addEventListener('click', () => goTo
 // ── Popups ────────────────────────────────────────────────
 
 function _openPopup(id) {
-  // Délai pour laisser l'animation de fermeture du menu se terminer
   setTimeout(() => {
     const el = document.getElementById(id);
     if (el) el.hidden = false;
@@ -48,20 +52,14 @@ function _closePopup(id) {
 }
 
 function _initPopups() {
-  // Popup Avis — étoiles interactives
   let _starVal = 0;
   const starsRow = document.getElementById('stars-row');
 
   starsRow?.querySelectorAll('.star-btn').forEach(btn => {
     const val = parseInt(btn.dataset.val);
-
-    btn.addEventListener('click', () => {
-      _starVal = val;
-      _updateStars(starsRow, _starVal);
-    });
+    btn.addEventListener('click', () => { _starVal = val; _updateStars(starsRow, _starVal); });
     btn.addEventListener('mouseenter', () => _updateStars(starsRow, val));
     btn.addEventListener('mouseleave', () => _updateStars(starsRow, _starVal));
-    // Touch
     btn.addEventListener('touchstart', (e) => {
       e.stopPropagation();
       _starVal = val;
@@ -79,7 +77,6 @@ function _initPopups() {
     if (e.target.id === 'popup-avis') _closePopup('popup-avis');
   });
 
-  // Popup Contact
   document.getElementById('contact-close')?.addEventListener('click', () => _closePopup('popup-contact'));
   document.getElementById('popup-contact')?.addEventListener('click', (e) => {
     if (e.target.id === 'popup-contact') _closePopup('popup-contact');
@@ -120,7 +117,6 @@ function _initMenu() {
     Toast.info('Conditions d\'utilisation à venir');
   });
 
-  // Avis & Contact : fermer menu PUIS ouvrir popup (délai dans _openPopup)
   document.getElementById('menu-avis')?.addEventListener('click', () => {
     closeMenu();
     _openPopup('popup-avis');
@@ -161,6 +157,7 @@ function _startTimer() {
 // ── Données ───────────────────────────────────────────────
 
 async function _loadData() {
+  if (DEMO_MODE) return; // ← démo active : ne pas écraser les bus L1+L4
   try {
     const [busRes, lbRes] = await Promise.allSettled([fetchBuses(), fetchLeaderboard()]);
     const buses  = busRes.status === 'fulfilled' ? busRes.value.buses || [] : store.get('buses') || [];
@@ -186,8 +183,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     onOpen: async () => {
       _updateWsStatus('open');
       store.set('wsStatus', 'open');
-      const sub = await isPushSubscribed();
-      if (!sub) await subscribeToPush();
+      if (!DEMO_MODE) {
+        const sub = await isPushSubscribed();
+        if (!sub) await subscribeToPush();
+      }
     },
     onChatResponse: (text) => store.set('lastBotMessage', text),
     onTyping:       (active) => store.set('chatTyping', active),
