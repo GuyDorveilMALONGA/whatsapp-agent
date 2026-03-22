@@ -1,16 +1,9 @@
 /**
- * js/signal.js — V3.1
- * FIX crash V3.0 :
- *   - Suppression { capture: true } sur btn-see-bus qui interceptait goTo()
- *   - IntersectionObserver remplacé par un hook appelé depuis app.js
- *   - _startAutoGPS() ne se déclenche plus au chargement de la page,
- *     seulement quand l'écran signal est réellement affiché
- *
- * Flux 2 gestes conservé :
- *   CHG-1 : GPS auto quand l'écran signal s'active (via onScreenEnter export)
- *   CHG-2 : Grille hiérarchisée : prioritaires (56px) > favoris > accordéon
- *   CHG-3 : Envoi immédiat dès ligne tapée + GPS prêt ; file d'attente 3s max
- *   CHG-4 : Qualité collapse/expand — ne bloque pas l'envoi
+ * js/signal.js — V3.5
+ * - 4 chips prioritaires max (depuis favoris localStorage)
+ * - Fallback sur ['1','4','7','15'] si aucun favori
+ * - Sans label "LIGNES FRÉQUENTES", juste la grille
+ * - Bouton "Toutes les lignes" pleine largeur en dessous
  */
 
 import * as store  from './store.js';
@@ -19,13 +12,13 @@ import { API_BASE, LIGNES_CONNUES, SESSION_PREFIX } from './constants.js';
 import { generateUUID } from './utils.js';
 import { incrementScore } from './mylines.js';
 
-// ── État module ───────────────────────────────────────────
+// ── État ──────────────────────────────────────────────────
 let _selectedLigne   = null;
 let _selectedQual    = null;
-let _geolocData      = null;      // { lat, lon, nearest_stop, snapped, distance_m }
-let _geolocPending   = false;     // GPS en cours de recherche
-let _pendingLigne    = null;      // ligne tapée pendant que GPS tourne
-let _pendingTimer    = null;      // timer 3s max
+let _geolocData      = null;
+let _geolocPending   = false;
+let _pendingLigne    = null;
+let _pendingTimer    = null;
 let _mapSignal       = null;
 let _userMarker      = null;
 let _mapReady        = false;
@@ -34,8 +27,22 @@ let _onSuccessRef    = null;
 
 const SESSION_ID = `${SESSION_PREFIX}${generateUUID()}`;
 
-// Lignes affichées en priorité, chips plus grandes
-const PRIORITY_LINES = ['1', '4', '7', '8', '10', '15'];
+// 4 lignes par défaut si pas de favoris
+const DEFAULT_PRIORITY = ['1', '4', '7', '15'];
+
+function _getPriorityLines() {
+  try {
+    const favs = JSON.parse(localStorage.getItem('xetu_fav_lines') || '[]');
+    // Les 4 dernières lignes utilisées, ou les 4 defaults
+    const recent = favs.filter(l => LIGNES_CONNUES.has(l)).slice(0, 4);
+    if (recent.length === 4) return recent;
+    // Compléter avec les defaults si moins de 4 favoris
+    const fill = DEFAULT_PRIORITY.filter(l => !recent.includes(l));
+    return [...recent, ...fill].slice(0, 4);
+  } catch {
+    return DEFAULT_PRIORITY;
+  }
+}
 
 // ── Init ──────────────────────────────────────────────────
 
@@ -44,15 +51,8 @@ export function initSignal({ onSuccess }) {
   _buildLigneGrid();
   _attachEvents(onSuccess);
   store.subscribe('favLines', () => _buildLigneGrid());
-  // ⚠️  PAS d'IntersectionObserver ici, PAS d'écouteur sur btn-see-bus.
-  // app.js appelle onScreenEnter() quand il navigue vers 'signal'.
 }
 
-/**
- * Appelé par app.js chaque fois qu'on bascule vers screen-signal.
- * Exemple dans app.js : initSignal({ onSuccess, onScreenEnter })
- * puis dans goTo() : if (screenId === 'signal') signalScreenEnter()
- */
 export function onScreenEnter() {
   if (!_mapReady) { _initMap(); _mapReady = true; }
   if (!_geolocData && !_geolocPending) _startAutoGPS();
@@ -63,8 +63,9 @@ export function onScreenEnter() {
 function _initMap() {
   _mapSignal = L.map('map-signal', { zoomControl: false, attributionControl: false })
     .setView([14.716, -17.467], 14);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    { maxZoom: 19, subdomains: 'abcd' }).addTo(_mapSignal);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19, subdomains: 'abc',
+  }).addTo(_mapSignal);
 }
 
 function _updateUserMarker(lat, lon) {
@@ -78,7 +79,7 @@ function _updateUserMarker(lat, lon) {
   _mapSignal.setView([lat, lon], 15);
 }
 
-// ── GPS automatique (CHG-1) ───────────────────────────────
+// ── GPS auto ──────────────────────────────────────────────
 
 async function _startAutoGPS() {
   if (_geolocPending || _geolocData) return;
@@ -86,41 +87,31 @@ async function _startAutoGPS() {
     _showGeoStatus('⚠️ GPS non disponible — entre l\'arrêt manuellement', 'geo-warn');
     return;
   }
-
   _geolocPending = true;
   _showGpsSpinner(true);
   _updateSendBtn();
-
   try {
-    const position = await new Promise((resolve, reject) => {
+    const pos = await new Promise((resolve, reject) =>
       navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 8000,
-        maximumAge: 30000,
-      });
-    });
-
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
+        enableHighAccuracy: true, timeout: 8000, maximumAge: 30000,
+      })
+    );
+    const { latitude: lat, longitude: lon } = pos.coords;
     _geolocData = { lat, lon, nearest_stop: null, snapped: false, distance_m: null };
-
     _updateUserMarker(lat, lon);
     _showGpsSpinner(false);
     _showMapLabel(true);
     _showGeoStatus('📍 Position GPS capturée', 'geo-ok');
-
-    // Snap sur l'arrêt si une ligne est déjà sélectionnée
+    const _gpsBtn = document.getElementById('btn-gps');
+    if (_gpsBtn) { _gpsBtn.disabled = false; _gpsBtn.textContent = '✓ GPS'; }
     if (_selectedLigne) await _snapAndFill(lat, lon, _selectedLigne);
-
-    // CHG-3 : ligne en attente → envoyer maintenant
     if (_pendingLigne) {
       clearTimeout(_pendingTimer);
-      _pendingTimer   = null;
-      _selectedLigne  = _pendingLigne;
-      _pendingLigne   = null;
+      _pendingTimer  = null;
+      _selectedLigne = _pendingLigne;
+      _pendingLigne  = null;
       await _handleSend(_onSuccessRef);
     }
-
   } catch (err) {
     _geolocData = null;
     _showGpsSpinner(false);
@@ -134,7 +125,6 @@ async function _startAutoGPS() {
   }
 }
 
-// Snap + pré-remplir le champ arrêt
 async function _snapAndFill(lat, lon, ligne) {
   try {
     const snap = await _snapToStop(lat, lon, ligne);
@@ -150,41 +140,31 @@ async function _snapAndFill(lat, lon, ligne) {
   } catch { /* silencieux */ }
 }
 
-// ── Bouton GPS manuel (fallback) ──────────────────────────
+// ── GPS manuel ────────────────────────────────────────────
 
 async function _handleGPS() {
   if (_geolocPending) return;
-
   const btn = document.getElementById('btn-gps');
   if (btn) { btn.disabled = true; btn.textContent = '⏳'; }
-
-  _geolocData    = null;
-  _geolocPending = true;
-
+  _geolocData = null; _geolocPending = true;
   try {
-    const position = await new Promise((resolve, reject) => {
+    const pos = await new Promise((resolve, reject) => {
       if (!navigator.geolocation) { reject(new Error('NOT_SUPPORTED')); return; }
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true, timeout: 10000, maximumAge: 0,
       });
     });
-
-    const lat = position.coords.latitude;
-    const lon = position.coords.longitude;
+    const { latitude: lat, longitude: lon } = pos.coords;
     _geolocData = { lat, lon, nearest_stop: null, snapped: false, distance_m: null };
     _updateUserMarker(lat, lon);
     _showMapLabel(true);
-
     if (_selectedLigne) await _snapAndFill(lat, lon, _selectedLigne);
     else _showGeoStatus('📍 Position capturée · sélectionne une ligne', 'geo-ok');
-
     if (btn) btn.textContent = '✓ GPS';
-
   } catch (err) {
     _geolocData = null;
     let msg = 'GPS indisponible.';
-    if (err.code === 1) msg = 'GPS refusé. Active la localisation dans Réglages.';
-    else if (err.code === 2) msg = 'Position indisponible.';
+    if (err.code === 1) msg = 'GPS refusé. Active la localisation.';
     else if (err.code === 3) msg = 'Délai GPS dépassé.';
     _showGeoStatus(`⚠️ ${msg}`, 'geo-err');
     if (btn) { btn.disabled = false; btn.textContent = '📍 GPS'; }
@@ -194,62 +174,48 @@ async function _handleGPS() {
   }
 }
 
-// ── Grille hiérarchisée (CHG-2) ───────────────────────────
+// ── Grille — structure épurée ─────────────────────────────
 
 function _buildLigneGrid() {
   const grid = document.getElementById('ligne-grid');
   if (!grid) return;
 
-  let favs = [];
-  try { favs = JSON.parse(localStorage.getItem('xetu_fav_lines') || '[]').slice(0, 3); }
-  catch {}
-  const favExtra = favs.filter(l => !PRIORITY_LINES.includes(l));
+  const priority = _getPriorityLines();
+  const otherCount = [...LIGNES_CONNUES].length - priority.length;
 
-  let html = '';
+  // 4 chips + bouton "Toutes" pleine largeur en dessous
+  let html = `<div class="sg-grid-wrap">
+    <div class="sg-priority-grid">`;
 
-  // Section 1 — Prioritaires
-  html += `<div class="ligne-section">
-    <div class="ligne-section-label">Lignes fréquentes</div>
-    <div class="ligne-chips-row">`;
-  PRIORITY_LINES.forEach(l => {
-    html += `<button class="ligne-chip ligne-chip--priority${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
+  priority.forEach(l => {
+    const sel = l === _selectedLigne ? ' sg-chip--selected' : '';
+    html += `<button class="sg-chip${sel}" data-ligne="${l}">${l}</button>`;
   });
-  html += `</div></div>`;
 
-  // Section 2 — Favoris personnels (si hors prioritaires)
-  if (favExtra.length > 0) {
-    html += `<div class="ligne-section">
-      <div class="ligne-section-label">Mes favoris</div>
-      <div class="ligne-chips-row">`;
-    favExtra.forEach(l => {
-      html += `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
-    });
-    html += `</div></div>`;
-  }
-
-  // Section 3 — Accordéon "Toutes les lignes"
-  const otherCount = [...LIGNES_CONNUES].length - PRIORITY_LINES.length;
-  html += `<div class="ligne-section">
-    <button class="btn-all-lines" id="btn-all-lines">
+  html += `</div>
+    <button class="sg-expand-btn" id="btn-all-lines">
       <span>Toutes les lignes (+${otherCount})</span>
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chevron-all${_allLinesVisible ? ' rotated' : ''}">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+           stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+           style="transition:transform 0.2s;${_allLinesVisible ? 'transform:rotate(180deg)' : ''}">
         <polyline points="6 9 12 15 18 9"/>
       </svg>
     </button>`;
 
   if (_allLinesVisible) {
-    html += `<div class="ligne-search-wrap">
-      <input type="text" id="ligne-search-input" class="ligne-search-input"
-             placeholder="Chercher une ligne…" autocomplete="off" maxlength="20">
+    html += `<div class="sg-search-wrap">
+      <input type="text" id="ligne-search-input" class="sg-search"
+             placeholder="Chercher une ligne…" autocomplete="off" maxlength="10">
     </div>
-    <div class="ligne-chips-row ligne-chips-all" id="all-lines-grid">`;
+    <div class="sg-all-grid" id="all-lines-grid">`;
     _getSortedLines().forEach(l => {
-      html += `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
+      const sel = l === _selectedLigne ? ' sg-chip--selected' : '';
+      html += `<button class="sg-chip${sel}" data-ligne="${l}">${l}</button>`;
     });
     html += `</div>`;
   }
-  html += `</div>`;
 
+  html += `</div>`;
   grid.innerHTML = html;
   _attachGridEvents(grid);
 }
@@ -260,15 +226,18 @@ function _getSortedLines(filter = '') {
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     return a.localeCompare(b);
   });
-  if (filter) { const f = filter.toLowerCase(); all = all.filter(l => l.toLowerCase().includes(f)); }
+  if (filter) {
+    const f = filter.toLowerCase();
+    all = all.filter(l => l.toLowerCase().includes(f));
+  }
   return all;
 }
 
 function _attachGridEvents(grid) {
   grid.querySelectorAll('[data-ligne]').forEach(btn => {
     btn.addEventListener('click', () => {
-      grid.querySelectorAll('.ligne-chip').forEach(b => b.classList.remove('selected'));
-      btn.classList.add('selected');
+      grid.querySelectorAll('[data-ligne]').forEach(b => b.classList.remove('sg-chip--selected'));
+      btn.classList.add('sg-chip--selected');
       _selectLigne(btn.dataset.ligne);
     });
   });
@@ -283,59 +252,55 @@ function _attachGridEvents(grid) {
     const filter  = e.target.value.trim();
     const allGrid = document.getElementById('all-lines-grid');
     if (!allGrid) return;
-    allGrid.innerHTML = _getSortedLines(filter).map(l =>
-      `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`
-    ).join('');
+    allGrid.innerHTML = _getSortedLines(filter).map(l => {
+      const sel = l === _selectedLigne ? ' sg-chip--selected' : '';
+      return `<button class="sg-chip${sel}" data-ligne="${l}">${l}</button>`;
+    }).join('');
     allGrid.querySelectorAll('[data-ligne]').forEach(btn => {
       btn.addEventListener('click', () => {
-        document.querySelectorAll('.ligne-chip').forEach(b => b.classList.remove('selected'));
-        btn.classList.add('selected');
+        document.querySelectorAll('[data-ligne]').forEach(b => b.classList.remove('sg-chip--selected'));
+        btn.classList.add('sg-chip--selected');
         _selectLigne(btn.dataset.ligne);
       });
     });
   });
 }
 
-// ── Sélection ligne + envoi immédiat (CHG-3) ─────────────
+// ── Sélection ligne ───────────────────────────────────────
 
 function _selectLigne(ligne) {
   _selectedLigne = ligne;
   _saveFavoriteLine(ligne);
   _updateSendBtn();
 
-  // Snap GPS si position connue mais pas encore snappée
   if (_geolocData?.lat && !_geolocData.snapped) {
     _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
 
-  // GPS en cours → mettre la ligne en attente, timer 3s
   if (_geolocPending) {
     _pendingLigne = ligne;
     clearTimeout(_pendingTimer);
     _showGeoStatus('⏳ Localisation GPS en cours…', 'geo-warn');
     _pendingTimer = setTimeout(() => {
-      _pendingLigne = null;
-      _pendingTimer = null;
-      _handleSend(_onSuccessRef); // timeout : envoyer sans GPS précis
+      _pendingLigne = null; _pendingTimer = null;
+      _handleSend(_onSuccessRef);
     }, 3000);
     return;
   }
 
-  // GPS prêt + arrêt connu → envoi immédiat
   const arret = document.getElementById('arret-input')?.value.trim() || '';
   if (_geolocData?.lat && (_geolocData.snapped || arret.length >= 2)) {
     _handleSend(_onSuccessRef);
   }
 }
 
-// ── Snap sur arrêt ────────────────────────────────────────
+// ── Snap ──────────────────────────────────────────────────
 
 async function _snapToStop(lat, lon, ligne) {
   const routes   = await _loadRoutes();
   const key      = String(ligne).toUpperCase();
   const lineData = routes[key] || routes[String(ligne)];
   if (!lineData) return { snapped: false };
-
   const stops = lineData.arrets || lineData.stops || [];
   let best = null, bestDist = Infinity;
   for (const s of stops) {
@@ -359,24 +324,30 @@ async function _loadRoutes() {
 }
 
 function _haversine(a, b, c, d) {
-  const R = 6371000, p1 = a * Math.PI / 180, p2 = c * Math.PI / 180;
-  const dp = (c - a) * Math.PI / 180, dl = (d - b) * Math.PI / 180;
-  const x  = Math.sin(dp/2)**2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2)**2;
-  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
+  const R = 6371000, p1 = a * Math.PI/180, p2 = c * Math.PI/180;
+  const dp = (c-a)*Math.PI/180, dl = (d-b)*Math.PI/180;
+  const x = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
 }
 
-// ── Helpers UI ────────────────────────────────────────────
+// ── UI helpers ────────────────────────────────────────────
 
 function _showGpsSpinner(show) {
   const spinner = document.getElementById('gps-spinner');
-  if (spinner) spinner.hidden = !show;
-  const label = document.getElementById('signal-map-label');
-  if (label && show) label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Localisation en cours…`;
+  if (!spinner) return;
+  spinner.hidden = !show;
+  spinner.style.display = show ? 'flex' : 'none';
 }
 
 function _showMapLabel(active) {
   const label = document.getElementById('signal-map-label');
-  if (label) label.innerHTML = `<span class="pos-dot ${active ? 'pos-dot--active' : 'pos-dot--wait'}"></span> ${active ? 'Ta position GPS' : 'Position en attente'}`;
+  if (!label) return;
+  label.hidden = false;
+  if (active) {
+    label.innerHTML = `<span class="pos-dot pos-dot--active"></span> Ta position GPS`;
+  } else {
+    label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Position en attente`;
+  }
 }
 
 function _showGeoStatus(text, cls) {
@@ -387,30 +358,24 @@ function _showGeoStatus(text, cls) {
   el.hidden      = false;
 }
 
-// ── Bouton envoyer ────────────────────────────────────────
-
 function _updateSendBtn() {
   const arret  = document.getElementById('arret-input')?.value.trim() || '';
   const hasGps = !!(_geolocData?.lat);
   const ok     = !!_selectedLigne && (arret.length >= 2 || hasGps);
   const btn    = document.getElementById('btn-send');
   const hint   = document.getElementById('send-hint');
-
-  if (btn) {
-    btn.disabled = !ok;
-    btn.classList.toggle('btn-send--pulse', ok);
-  }
+  if (btn) { btn.disabled = !ok; btn.classList.toggle('btn-send--pulse', ok); }
   if (hint) {
-    if (_geolocPending && !_selectedLigne) hint.textContent = '⏳ GPS en cours… sélectionne une ligne';
-    else if (!_selectedLigne)              hint.textContent = 'Sélectionne une ligne';
-    else if (!ok)                          hint.textContent = 'Indique l\'arrêt ou attends le GPS';
+    if (!_selectedLigne)                      hint.textContent = 'Sélectionne une ligne';
+    else if (_geolocPending)                  hint.textContent = '⏳ GPS en cours…';
+    else if (!ok)                             hint.textContent = 'Indique l\'arrêt ou attends le GPS';
     else if (hasGps && _geolocData?.nearest_stop) hint.textContent = `📍 ${_geolocData.nearest_stop}`;
-    else if (hasGps)                       hint.textContent = '📍 Position GPS sera envoyée';
-    else                                   hint.textContent = 'Prêt à envoyer';
+    else if (hasGps)                          hint.textContent = '📍 Position GPS prête';
+    else                                      hint.textContent = 'Prêt à envoyer';
   }
 }
 
-// ── Qualité optionnelle (CHG-4) ───────────────────────────
+// ── Qualité ───────────────────────────────────────────────
 
 function _initQualityTags() {
   document.getElementById('btn-quality-toggle')?.addEventListener('click', () => {
@@ -419,7 +384,7 @@ function _initQualityTags() {
     if (!panel) return;
     const isOpen = !panel.hidden;
     panel.hidden = isOpen;
-    if (btn) btn.textContent = isOpen ? '＋ Ajouter une observation (optionnel)' : '－ Masquer les observations';
+    if (btn) btn.textContent = isOpen ? '＋ Ajouter une observation (optionnel)' : '－ Masquer';
   });
   document.querySelectorAll('.quality-tag').forEach(tag => {
     tag.addEventListener('click', () => {
@@ -443,10 +408,9 @@ async function _handleSend(onSuccess) {
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; btn.classList.remove('btn-send--pulse'); }
 
   const payload = {
-    ligne:      _selectedLigne,
-    arret,
-    source:     hasGps ? 'web_geoloc' : 'web_dashboard',
-    client_ts:  new Date().toISOString(),
+    ligne: _selectedLigne, arret,
+    source:    hasGps ? 'web_geoloc' : 'web_dashboard',
+    client_ts: new Date().toISOString(),
     session_id: SESSION_ID,
   };
   if (_selectedQual) payload.observation = _selectedQual;
@@ -480,14 +444,10 @@ async function _handleSend(onSuccess) {
 // ── Reset ─────────────────────────────────────────────────
 
 function _reset() {
-  _selectedLigne   = null;
-  _selectedQual    = null;
-  _geolocData      = null;
-  _geolocPending   = false;
-  _pendingLigne    = null;
-  _allLinesVisible = false;
-  clearTimeout(_pendingTimer);
-  _pendingTimer = null;
+  _selectedLigne = null; _selectedQual = null;
+  _geolocData = null; _geolocPending = false;
+  _pendingLigne = null; _allLinesVisible = false;
+  clearTimeout(_pendingTimer); _pendingTimer = null;
 
   const arretInput = document.getElementById('arret-input');
   if (arretInput) arretInput.value = '';
@@ -502,6 +462,9 @@ function _reset() {
   if (qualBtn) qualBtn.textContent = '＋ Ajouter une observation (optionnel)';
   if (_mapSignal && _userMarker) { _mapSignal.removeLayer(_userMarker); _userMarker = null; }
   _showMapLabel(false);
+  // Remettre le label visible au reset
+  const mapLabel = document.getElementById('signal-map-label');
+  if (mapLabel) mapLabel.hidden = false;
   _buildLigneGrid();
   _updateSendBtn();
 }
@@ -513,7 +476,8 @@ function _saveFavoriteLine(ligne) {
     const raw  = localStorage.getItem('xetu_fav_lines') || '[]';
     const favs = JSON.parse(raw);
     if (!favs.includes(ligne)) {
-      const newFavs = [ligne, ...favs].slice(0, 3);
+      // Garder les 4 dernières lignes utilisées
+      const newFavs = [ligne, ...favs].slice(0, 4);
       localStorage.setItem('xetu_fav_lines', JSON.stringify(newFavs));
       store.set('favLines', newFavs);
     }

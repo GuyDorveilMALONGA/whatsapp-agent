@@ -1,6 +1,10 @@
 /**
- * js/app.js — V2.2
+ * js/app.js — V2.3
  * FIX DEMO_MODE : _loadData() ne touche pas les bus démo
+ * FIX V2.3 : intégration signal.js V3.1
+ *   - import onScreenEnter depuis signal.js
+ *   - goTo('signal') appelle signalScreenEnter()
+ *   - btn-see-bus sans { capture: true } (était la cause du crash carte noire)
  */
 
 import * as store   from './store.js';
@@ -10,7 +14,7 @@ import { REFRESH_SEC } from './constants.js';
 import { fetchBuses, fetchLeaderboard } from './api.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
 import { initHome }    from './home.js';
-import { initSignal }  from './signal.js';
+import { initSignal, onScreenEnter as signalScreenEnter } from './signal.js';
 import { initChat }    from './chat.js';
 import { initMylines } from './mylines.js';
 
@@ -19,9 +23,8 @@ const _navBtns    = document.querySelectorAll('.nav-btn');
 const _screens    = document.querySelectorAll('.screen');
 
 // ── Mode démo ─────────────────────────────────────────────
-// true  → bus démo L1 + L4 hardcodés, API Railway ignorée
 // false → données réelles depuis Railway/Supabase
-const DEMO_MODE = true;
+const DEMO_MODE = false;
 
 // ── Navigation ────────────────────────────────────────────
 
@@ -32,6 +35,9 @@ export function goTo(screenId) {
     document.querySelector(`[data-screen="${screenId}"]`)?.classList.add('active');
   }
   document.getElementById(`screen-${screenId}`)?.classList.add('active');
+
+  // FIX V2.3 : déclencher GPS auto quand on arrive sur l'écran signal
+  if (screenId === 'signal') signalScreenEnter();
 }
 
 _navBtns.forEach(btn => btn.addEventListener('click', () => goTo(btn.dataset.screen)));
@@ -157,7 +163,6 @@ function _startTimer() {
 // ── Données ───────────────────────────────────────────────
 
 async function _loadData() {
-  if (DEMO_MODE) return; // ← démo active : ne pas écraser les bus L1+L4
   try {
     const [busRes, lbRes] = await Promise.allSettled([fetchBuses(), fetchLeaderboard()]);
     const buses  = busRes.status === 'fulfilled' ? busRes.value.buses || [] : store.get('buses') || [];
@@ -204,8 +209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('online',  () => Toast.info('Connexion rétablie ✅'));
   window.addEventListener('offline', () => Toast.error('Hors ligne'));
 
-  // SW désactivé en dev local — activé uniquement en prod.
-  // Plus besoin de vider le cache à chaque modif.
+  // SW désactivé en dev local — activé uniquement en prod
   const _isProd = location.hostname !== 'localhost'
                && location.hostname !== '127.0.0.1'
                && location.protocol !== 'file:';
@@ -213,7 +217,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   if ('serviceWorker' in navigator && _isProd) {
     navigator.serviceWorker.register('/sw.js').catch(e => console.warn('[SW]', e));
   } else if ('serviceWorker' in navigator && !_isProd) {
-    // Désinscrire le SW existant pour repartir propre en dev
     navigator.serviceWorker.getRegistrations()
       .then(regs => regs.forEach(r => r.unregister()))
       .catch(() => {});

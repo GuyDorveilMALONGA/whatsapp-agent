@@ -1,6 +1,5 @@
 /**
- * js/home.js — Xëtu V2.1 FINAL
- *
+ * js/home.js — V2.2
  * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
  * FIX-2  Tooltips = stop.nom uniquement
  * FIX-4  Carte vide au démarrage, tracé à la demande
@@ -10,23 +9,17 @@
  * FIX-8  Couleur par hash HSL
  * FIX-9  minutes_ago incrémenté, bus expire après 20 min
  * FIX-10 Zoom centré Dakar centre
+ * FIX V2.2 :
+ *   - Tuiles OSM standard (fonctionne en local, pas de CORS)
+ *   - DEMO_BUSES supprimé — les bus viennent uniquement de l'API
+ *   - Animation vitesse corrigée : _ANIM_SPEED réduit + dt cappé à 50ms
  */
 
 import * as store  from './store.js';
 import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './utils.js';
 import { initReader, updateReader, hide as hideReader } from './reader.js';
 
-const AVATARS      = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
-const DEMO_TTL_MIN = 20;
-
-// ── État carte ────────────────────────────────────────────
-let _map               = null;
-let _busMarkers        = {};
-let _activeCol         = 'buses';
-let _selectedBusId     = null;
-let _activePolyline    = null;
-let _activeStopMarkers = [];
-let _animState         = null;
+const AVATARS = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
 
 // ── FIX-8 : couleur par hash HSL ─────────────────────────
 function _lineColor(ligne) {
@@ -36,7 +29,7 @@ function _lineColor(ligne) {
   return `hsl(${Math.abs(hash) % 360}, 72%, 58%)`;
 }
 
-// ── GTFS L1 + L4 ─────────────────────────────────────────
+// ── GTFS L1 + L4 (tracés pour animation quand ces lignes sont signalées) ──
 const _GTFS = {
   '1': {
     color: _lineColor('1'),
@@ -160,12 +153,14 @@ const _GTFS = {
   },
 };
 
-// ── Bus démo — _NOW fixé UNE SEULE FOIS au chargement ────
-const _NOW = Date.now();
-const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:_NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:_NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
-];
+// ── État carte ────────────────────────────────────────────
+let _map               = null;
+let _busMarkers        = {};
+let _activeCol         = 'buses';
+let _selectedBusId     = null;
+let _activePolyline    = null;
+let _activeStopMarkers = [];
+let _animState         = null;
 
 // ── Init ──────────────────────────────────────────────────
 export function initHome({ onSeeBus }) {
@@ -174,34 +169,18 @@ export function initHome({ onSeeBus }) {
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
-  requestAnimationFrame(() => {
-    _refreshDemoBuses();
-    setInterval(_refreshDemoBuses, 30_000);
-  });
-}
-
-// ── FIX-9 : refresh démos ─────────────────────────────────
-function _refreshDemoBuses() {
-  const now   = Date.now();
-  const buses = DEMO_BUSES
-    .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
-    .map(b => ({
-      ...b,
-      minutes_ago: Math.round((now - b._born) / 60_000),
-      name: _GTFS[b.ligne]
-        ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
-        : `Ligne ${b.ligne}`,
-    }));
-  store.set('buses', buses);
-  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) _deselectBus();
+  // Pas de DEMO_BUSES — les bus viennent uniquement du store (API)
 }
 
 // ── Carte ─────────────────────────────────────────────────
 function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
     .setView([14.693, -17.452], 14);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_matter/{z}/{x}/{y}{r}.png',
-    { maxZoom: 19, subdomains: 'abcd' }).addTo(_map);
+  // OSM standard — fonctionne toujours en local (pas de CORS)
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    subdomains: 'abc',
+  }).addTo(_map);
   requestAnimationFrame(() => requestAnimationFrame(() => {
     _map.invalidateSize({ animate: false });
   }));
@@ -214,7 +193,7 @@ function _selectBus(busId) {
   _stopAnim();
   _clearActiveLine();
 
-  const bus  = DEMO_BUSES.find(b => b.id === busId);
+  const bus  = (store.get('buses') || []).find(b => b.id === busId);
   const data = bus ? _GTFS[bus.ligne] : null;
   if (!data || !bus) return;
 
@@ -224,7 +203,7 @@ function _selectBus(busId) {
     color, weight: 4, opacity: 0.88, lineJoin: 'round', lineCap: 'round',
   }).addTo(_map);
 
-  // FIX-1 : arrêts discrets, non cliquables — le reader s'en charge
+  // FIX-1 : arrêts discrets, non cliquables
   data.arrets.forEach((stop, idx) => {
     const isT   = idx === 0 || idx === data.arrets.length - 1;
     const circle = L.circleMarker([stop.lat, stop.lon], {
@@ -258,14 +237,32 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-const ANIM_SPEED = 0.00004;
+// FIX V2.2 : vitesse réduite (0.00002 au lieu de 0.00004) + dt cappé 50ms
+const ANIM_SPEED = 0.00002;
 
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
+
+  // Positionner le bus sur l'arrêt signalé si on le trouve dans le tracé
+  let startIdx = 0;
+  if (bus.position) {
+    const posLower = bus.position.toLowerCase();
+    const arretIdx = data.arrets.findIndex(a => a.nom.toLowerCase().includes(posLower) || posLower.includes(a.nom.toLowerCase()));
+    if (arretIdx > 0) {
+      // Trouver le point du tracé le plus proche de cet arrêt
+      const arret = data.arrets[arretIdx];
+      let bestDist = Infinity;
+      coords.forEach(([lat, lon], i) => {
+        const d = (lat - arret.lat) ** 2 + (lon - arret.lon) ** 2;
+        if (d < bestDist) { bestDist = d; startIdx = i; }
+      });
+    }
+  }
+
   const state = {
     ligne: bus.ligne, arrets: data.arrets,
-    coords, idx: bus.traceStartIdx ?? 0, progress: 0,
+    coords, idx: startIdx, progress: 0,
     lastTs: null, rafId: null, stopped: false,
   };
   _animState = state;
@@ -274,7 +271,8 @@ function _startAnim(bus, data) {
   function tick(ts) {
     if (state.stopped) return;
     if (!state.lastTs) state.lastTs = ts;
-    const dt = Math.min(ts - state.lastTs, 80);
+    // FIX V2.2 : cap dt à 50ms pour éviter les sauts après mise en veille/tab switch
+    const dt = Math.min(ts - state.lastTs, 50);
     state.lastTs = ts;
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
@@ -283,7 +281,7 @@ function _startAnim(bus, data) {
       state.rafId = requestAnimationFrame(tick); return;
     }
     const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.02;
+    state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.005;
     if (state.progress >= 1) {
       state.progress -= 1;
       state.idx = (state.idx + 1) % (coords.length - 1);
@@ -389,14 +387,14 @@ function _renderCols() {
 function _renderBuses(buses) {
   const el = document.getElementById('col-buses');
   if (!el) return;
-  if (!buses.length) {
+  if (!buses || !buses.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🚌</div><div class="empty-text">Aucun bus actif.<br>Sois le premier à signaler !</div></div>`;
     return;
   }
   el.innerHTML = buses.map((b, i) => {
     const data  = _GTFS[b.ligne];
     const color = _busAgeColor(b.minutes_ago);
-    const label = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
+    const label = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : (b.name || `Ligne ${b.ligne}`);
     const isSel = b.id === _selectedBusId;
     return `<div class="bus-card anim-up${isSel?' bus-card--selected':''}" style="animation-delay:${i*.04}s;cursor:pointer" data-bus-id="${b.id}">
       <div class="bus-card-header">
@@ -404,7 +402,7 @@ function _renderBuses(buses) {
         <span class="bus-name">${label}</span>
         <span class="bus-age ${getAgeClass(b.minutes_ago)}">${formatAgeShort(b.minutes_ago)}</span>
       </div>
-      <div class="bus-position">📍 ${b.position}</div>
+      <div class="bus-position">📍 ${b.position || b.arret_estime || '—'}</div>
     </div>`;
   }).join('');
   el.querySelectorAll('[data-bus-id]').forEach(card => {
@@ -417,7 +415,7 @@ function _renderBuses(buses) {
 function _renderTop(lb) {
   const el = document.getElementById('col-top');
   if (!el) return;
-  if (!lb.length) {
+  if (!lb || !lb.length) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-text">Pas encore de données.</div></div>`;
     return;
   }
@@ -431,6 +429,7 @@ function _renderTop(lb) {
 }
 
 function _initSeeBus(onSeeBus) {
+  // FIX V2.3 : pas de { capture: true } — ne jamais intercepter le clic avant goTo()
   document.getElementById('btn-see-bus')?.addEventListener('click', onSeeBus);
 }
 

@@ -2,13 +2,12 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#0A0F1E">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Xëtu">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/assets/icons/icon-192.png">
 <link rel="icon" type="image/png" sizes="192x192" href="/assets/icons/icon-192.png">
@@ -22,171 +21,13 @@
 <link rel="stylesheet" href="css/components.css">
 <link rel="stylesheet" href="css/map.css">
 <link rel="stylesheet" href="css/overlay-styles.css">
-<style>
-/* ── signal.js V3.0 — styles supplémentaires ─────────────── */
-
-/* GPS spinner overlay sur la carte */
-.gps-spinner-overlay {
-  position: absolute;
-  bottom: 10px; left: 50%; transform: translateX(-50%);
-  z-index: 11;
-  background: rgba(10,15,30,0.9);
-  backdrop-filter: blur(4px);
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 9999px;
-  padding: 6px 16px;
-  display: flex; align-items: center; gap: 5px;
-  font-size: 12px; color: var(--text-dim);
-  white-space: nowrap;
-}
-.gps-spinner-dot {
-  width: 6px; height: 6px; border-radius: 50%;
-  background: var(--orange);
-  animation: gpsSpinnerBounce 1.1s infinite ease-in-out;
-}
-.gps-spinner-dot:nth-child(2) { animation-delay: 0.18s; }
-.gps-spinner-dot:nth-child(3) { animation-delay: 0.36s; }
-@keyframes gpsSpinnerBounce {
-  0%,60%,100% { transform: translateY(0); opacity: 0.4; }
-  30% { transform: translateY(-5px); opacity: 1; }
-}
-
-/* Dot de localisation en cours (jaune pulsant) */
-.pos-dot--locating {
-  background: var(--yellow);
-  animation: pulse 0.8s infinite;
-}
-
-/* ── Grille lignes hiérarchisée (CHG-2) ─────────────────── */
-
-.ligne-section { margin-bottom: 14px; }
-
-.ligne-section-label {
-  font-size: 10px; font-weight: 600;
-  color: var(--muted); text-transform: uppercase;
-  letter-spacing: 0.07em; margin-bottom: 8px;
-}
-
-.ligne-chips-row {
-  display: flex; flex-wrap: wrap; gap: 8px;
-}
-
-/* Chips prioritaires — plus grandes, plus visibles */
-.ligne-chip--priority {
-  height: 56px !important;
-  font-size: 16px !important;
-  font-weight: 800 !important;
-  min-width: 56px;
-  padding: 0 12px;
-  border-radius: var(--radius-md);
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  color: var(--text-dim);
-  cursor: pointer;
-  transition: all var(--t-fast);
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.ligne-chip--priority:hover { border-color: var(--orange-border); color: var(--text); }
-.ligne-chip--priority.selected {
-  background: var(--orange); border-color: var(--orange);
-  color: #fff; box-shadow: var(--shadow-orange);
-}
-
-/* Chips normales — inchangées (utilise .ligne-chip de components.css) */
-/* override height pour les chips dans les chips-row */
-.ligne-chips-row .ligne-chip {
-  padding: 10px 14px;
-}
-
-/* Zone toutes les lignes scrollable */
-.ligne-chips-all {
-  max-height: 160px;
-  overflow-y: auto;
-  padding: 4px 0;
-}
-
-/* Bouton accordéon "Toutes les lignes" */
-.btn-all-lines {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%;
-  padding: 10px 14px;
-  background: var(--surface2);
-  border: 1px dashed rgba(255,255,255,0.12);
-  border-radius: var(--radius-md);
-  color: var(--muted);
-  font-size: 13px; font-weight: 500;
-  font-family: 'Inter', sans-serif;
-  cursor: pointer;
-  transition: all var(--t-fast);
-  margin-bottom: 10px;
-}
-.btn-all-lines:hover { color: var(--text); border-color: var(--orange-border); }
-
-.chevron-all {
-  transition: transform var(--t-fast);
-  flex-shrink: 0;
-}
-.chevron-all.rotated { transform: rotate(180deg); }
-
-/* Champ recherche dans accordéon */
-.ligne-search-wrap { margin-bottom: 10px; }
-.ligne-search-input {
-  width: 100%;
-  background: var(--surface3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 9px 14px;
-  font-size: 13px; color: var(--text);
-  font-family: 'Inter', sans-serif;
-  outline: none;
-  transition: border-color var(--t-fast);
-}
-.ligne-search-input:focus { border-color: var(--orange-border); }
-.ligne-search-input::placeholder { color: var(--muted); }
-
-/* ── Bouton envoi pulsant quand prêt (CHG-3) ─────────────── */
-.btn-send--pulse {
-  animation: sendPulse 1.8s ease-in-out infinite;
-}
-@keyframes sendPulse {
-  0%, 100% { box-shadow: var(--shadow-orange); }
-  50% { box-shadow: 0 0 0 6px rgba(255,107,53,0.2), var(--shadow-orange); }
-}
-
-/* ── Qualité collapse (CHG-4) ────────────────────────────── */
-.form-section--quality { margin-top: 4px; }
-
-.btn-quality-toggle {
-  width: 100%;
-  background: none;
-  border: none;
-  padding: 8px 0;
-  font-size: 12px; color: var(--muted);
-  font-family: 'Inter', sans-serif;
-  cursor: pointer;
-  text-align: left;
-  transition: color var(--t-fast);
-}
-.btn-quality-toggle:hover { color: var(--text-dim); }
-
-#quality-panel { padding-top: 8px; }
-
-/* Hint à côté du titre section */
-.form-section-hint {
-  font-size: 10px; color: var(--muted);
-  font-weight: 400; text-transform: none;
-  margin-left: 6px; opacity: 0.8;
-}
-</style>
+<link rel="stylesheet" href="css/signal-grid.css">
 </head>
 <body>
 <div id="app">
 
-  <!-- HEADER — statut + menu seulement -->
   <header id="app-header">
-    <div id="ws-status-btn" class="ws-status-dot-only ws-status--connecting">
-      <span class="ws-dot"></span>
-    </div>
+    <div id="ws-status-btn" class="ws-status-dot-only ws-status--connecting"><span class="ws-dot"></span></div>
     <div class="refresh-timer" id="timer">30s</div>
     <div style="flex:1"></div>
     <button class="btn-menu" id="btn-menu" aria-label="Menu">
@@ -194,13 +35,10 @@
     </button>
   </header>
 
-  <!-- MENU PLEIN ÉCRAN -->
   <div class="menu-overlay" id="menu-overlay" hidden>
     <div class="menu-panel">
       <button class="menu-close" id="menu-close" aria-label="Fermer">
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
-          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-        </svg>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
       <nav class="menu-list">
         <a class="menu-item" href="https://t.me/XetuBot" target="_blank" rel="noopener">
@@ -231,7 +69,6 @@
     </div>
   </div>
 
-  <!-- POPUP AVIS -->
   <div class="popup-overlay" id="popup-avis" hidden>
     <div class="popup-card">
       <div class="popup-title">Notez Xëtu</div>
@@ -250,7 +87,6 @@
     </div>
   </div>
 
-  <!-- POPUP CONTACT -->
   <div class="popup-overlay" id="popup-contact" hidden>
     <div class="popup-card">
       <div class="popup-title">Nous contacter</div>
@@ -259,145 +95,97 @@
         <a class="contact-item" href="tel:+221XXXXXXXXX">
           <div class="contact-icon contact-icon--call">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </div>
-          <span>Appel</span>
+          </div><span>Appel</span>
         </a>
-        <a class="contact-item" href="/cdn-cgi/l/email-protection#5f3c30312b3e3c2b1f273a2b2a712c31">
+        <a class="contact-item" href="mailto:hello@xetu.sn">
           <div class="contact-icon contact-icon--mail">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          </div>
-          <span>Mail</span>
+          </div><span>Mail</span>
         </a>
         <a class="contact-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener">
           <div class="contact-icon contact-icon--wa">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          </div>
-          <span>WhatsApp</span>
+          </div><span>WhatsApp</span>
         </a>
         <a class="contact-item" href="https://instagram.com/xetu_dakar" target="_blank" rel="noopener">
           <div class="contact-icon contact-icon--ig">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
-          </div>
-          <span>Instagram</span>
+          </div><span>Instagram</span>
         </a>
       </div>
       <button class="popup-btn popup-btn--cancel" id="contact-close" style="width:100%;margin-top:8px">Fermer</button>
     </div>
   </div>
 
-  <!-- ÉCRANS -->
   <main id="screens">
 
     <!-- ACCUEIL -->
     <section class="screen active" id="screen-home">
-  <div id="map-home"></div>
-
-  <div id="bus-reader" hidden>
-    <div class="reader-scroll"></div>
-  </div>
-
-  <div class="see-bus-wrap">
-    <div class="see-bus-label">SIGNALER UN BUS</div>
-    <button class="btn-see-bus" id="btn-see-bus">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/>
-        <line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/>
-        <line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/>
-      </svg>
-      Je vois un bus ici
-    </button>
-  </div>
-
-  <div class="home-bottom">
-    <div class="home-cols-header">
-      <div class="home-col-tabs">
-        <button class="col-tab active" data-col="buses">Bus actifs</button>
-        <button class="col-tab" data-col="top">Top signaleurs</button>
+      <div id="map-home"></div>
+      <div id="bus-reader" hidden><div class="reader-scroll"></div></div>
+      <div class="see-bus-wrap">
+        <div class="see-bus-label">SIGNALER UN BUS</div>
+        <button class="btn-see-bus" id="btn-see-bus">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3" fill="currentColor"/><line x1="12" y1="2" x2="12" y2="5"/><line x1="12" y1="19" x2="12" y2="22"/><line x1="2" y1="12" x2="5" y2="12"/><line x1="19" y1="12" x2="22" y2="12"/></svg>
+          Je vois un bus ici
+        </button>
       </div>
-    </div>
-    <div class="home-cols">
-      <div class="home-col active" id="col-buses"></div>
-      <div class="home-col" id="col-top"></div>
-    </div>
-  </div>
-</section>
+      <div class="home-bottom">
+        <div class="home-cols-header">
+          <div class="home-col-tabs">
+            <button class="col-tab active" data-col="buses">Bus actifs</button>
+            <button class="col-tab" data-col="top">Top signaleurs</button>
+          </div>
+        </div>
+        <div class="home-cols">
+          <div class="home-col active" id="col-buses"></div>
+          <div class="home-col" id="col-top"></div>
+        </div>
+      </div>
+    </section>
 
-    <!-- ═══════════════════════════════════════════════════════
-         SIGNALEMENT — V3.0 (flux 2 gestes)
-         CHG-1 : GPS auto au démarrage → spinner dans la carte
-         CHG-2 : Grille hiérarchisée (prioritaires + favoris + accordéon)
-         CHG-3 : Envoi immédiat dès ligne tapée + GPS prêt
-         CHG-4 : Qualité collapse/expand — visuellement secondaire
-         ═══════════════════════════════════════════════════════ -->
+    <!-- SIGNALEMENT -->
     <section class="screen" id="screen-signal">
-
-      <!-- Topbar retour -->
       <div class="signal-topbar">
         <button class="btn-back" id="btn-back-signal" aria-label="Retour">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
-          </svg>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
         </button>
         <span class="signal-topbar-title">Signaler un bus</span>
       </div>
 
-      <!-- Carte mini avec label position -->
       <div class="signal-map-wrap">
         <div id="map-signal"></div>
-
-        <!-- CHG-1 : spinner GPS automatique (visible pendant la recherche) -->
         <div id="gps-spinner" class="gps-spinner-overlay" hidden>
           <span class="gps-spinner-dot"></span>
           <span class="gps-spinner-dot"></span>
           <span class="gps-spinner-dot"></span>
         </div>
-
         <div class="signal-map-label" id="signal-map-label">
-          <span id="signal-pos-dot" class="pos-dot pos-dot--wait"></span>
+          <span class="pos-dot pos-dot--wait"></span>
           Position en attente
         </div>
       </div>
 
-      <!-- Corps scrollable -->
       <div class="signal-body">
-
-        <!-- Section 1 : Quelle ligne ? -->
-        <!-- CHG-2 : ligne-grid est maintenant géré par signal.js (_buildLigneGrid)
-             avec 3 zones : prioritaires (56px) > favoris > accordéon "Toutes" -->
         <div class="form-section">
           <div class="form-section-title">Quelle ligne ?</div>
-          <div class="ligne-grid" id="ligne-grid">
-            <!-- Rempli dynamiquement par signal.js -->
-          </div>
+          <div id="ligne-grid"></div>
         </div>
-
-        <!-- Section 2 : À quel arrêt ? (GPS auto pré-remplit ce champ) -->
         <div class="form-section">
           <div class="form-section-title">
             À quel arrêt ?
-            <span class="form-section-hint" id="arret-section-hint">GPS en cours…</span>
+            <span class="form-section-hint" id="arret-section-hint"></span>
           </div>
           <div class="arret-wrap">
-            <input type="text" class="arret-input" id="arret-input"
-                   placeholder="Pré-rempli par GPS ou tape l'arrêt"
-                   autocomplete="off" maxlength="80">
-            <!-- Bouton GPS manuel : fallback si l'auto échoue -->
-            <button class="btn-gps" id="btn-gps" type="button" aria-label="Utiliser ma position GPS">📍 GPS</button>
+            <input type="text" class="arret-input" id="arret-input" placeholder="Pré-rempli par GPS ou tape l'arrêt" autocomplete="off" maxlength="80">
+            <button class="btn-gps" id="btn-gps" type="button">📍 GPS</button>
           </div>
-          <!-- Statut géoloc (succès / warning / erreur) -->
           <div class="geoloc-status" id="geoloc-status" hidden></div>
         </div>
-
-        <!-- Bouton principal d'envoi — CHG-3 : pulsant quand prêt -->
         <button class="btn-send" id="btn-send" disabled>Envoyer le signalement</button>
-        <p class="send-hint" id="send-hint">⏳ GPS en cours… sélectionne une ligne</p>
-
-        <!-- Section 3 : Qualité — CHG-4 : collapse par défaut, secondaire -->
+        <p class="send-hint" id="send-hint">Sélectionne une ligne</p>
         <div class="form-section form-section--quality">
-          <button class="btn-quality-toggle" id="btn-quality-toggle" type="button">
-            ＋ Ajouter une observation (optionnel)
-          </button>
-          <!-- Panel qualité masqué par défaut -->
+          <button class="btn-quality-toggle" id="btn-quality-toggle" type="button">＋ Ajouter une observation (optionnel)</button>
           <div id="quality-panel" hidden>
             <div class="quality-tags">
               <button class="quality-tag" data-val="bondé">🔴 Bondé</button>
@@ -407,11 +195,10 @@
             </div>
           </div>
         </div>
-
-      </div><!-- /signal-body -->
+      </div>
     </section>
 
-    <!-- ITINÉRAIRE = chat Xëtu -->
+    <!-- ITINÉRAIRE -->
     <section class="screen" id="screen-itin">
       <div class="chat-header-bar">
         <div>
@@ -422,19 +209,14 @@
           </div>
         </div>
       </div>
-      <!-- Message statique — NE PAS TOUCHER, zéro token WS -->
       <div class="chat-messages" id="chat-messages" role="log" aria-live="polite">
         <div class="chat-msg chat-msg--bot">
-          <div class="chat-bubble">
-            Salam ! Je suis Xëtu 🚌<br>
-            Pose-moi une question sur les bus de Dakar ou signale une position directement ici.
-          </div>
+          <div class="chat-bubble">Salam ! Je suis Xëtu 🚌<br>Pose-moi une question sur les bus de Dakar ou signale une position directement ici.</div>
         </div>
       </div>
       <div class="chat-suggestions" id="chat-suggestions"></div>
       <div class="chat-composer">
-        <input class="chat-input" id="chat-input" type="text"
-               placeholder="Comment aller à Sandaga ?…" maxlength="500" autocomplete="off">
+        <input class="chat-input" id="chat-input" type="text" placeholder="Comment aller à Sandaga ?…" maxlength="500" autocomplete="off">
         <button class="chat-send-btn" id="chat-send-btn" disabled>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -444,30 +226,16 @@
     <!-- MES LIGNES -->
     <section class="screen" id="screen-mylines">
       <div class="mylines-body">
-
-        <!-- Section 1 : Abonnements -->
         <div class="mylines-section-title">Mes abonnements</div>
         <div class="mylines-hint">Abonne-toi à une ligne pour recevoir des alertes.</div>
         <div id="subscriptions-list" class="mylines-list"></div>
         <button class="btn-subscribe" id="btn-subscribe">+ S'abonner à une ligne</button>
-
-        <!-- Séparateur -->
         <div class="mylines-divider"></div>
-
-        <!-- Section 2 : Mon score -->
         <div class="mylines-section-title">Mon score</div>
         <div class="mylines-hint">Nombre de fois que tu as aidé la communauté.</div>
-        <div class="score-card" id="score-card">
-          <div class="score-number" id="score-number">0</div>
-          <div class="score-label">signalements</div>
-          <div class="score-badge" id="score-badge">Nouveau</div>
-        </div>
-
-        <!-- Espace pub future -->
+        <div class="score-card" id="score-card"></div>
         <div class="mylines-ad-space" aria-hidden="true"></div>
       </div>
-
-      <!-- Modal abonnement -->
       <div class="subscribe-modal" id="subscribe-modal" hidden>
         <div class="subscribe-modal-inner">
           <div class="subscribe-modal-title">S'abonner à une ligne</div>
@@ -482,30 +250,23 @@
 
   </main>
 
-  <!-- BOTTOM NAV -->
   <nav class="bottom-nav">
     <button class="nav-btn active" data-screen="home">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/>
-        <rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/>
-      </svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
       Accueil
     </button>
     <button class="nav-btn" data-screen="itin">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="10" r="4"/>
-        <path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/>
-      </svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="10" r="4"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>
       Itinéraire
     </button>
     <button class="nav-btn" data-screen="mylines">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
-      </svg>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
       Mes lignes
     </button>
   </nav>
 
 </div>
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
-<script data-cfasync="fals
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
