@@ -273,25 +273,16 @@ function _selectLigne(ligne) {
   _saveFavoriteLine(ligne);
   _updateSendBtn();
 
+  // Snap GPS si position connue mais pas encore snappée sur cette ligne
   if (_geolocData?.lat && !_geolocData.snapped) {
     _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
-
-  if (_geolocPending) {
-    _pendingLigne = ligne;
-    clearTimeout(_pendingTimer);
-    _showGeoStatus('⏳ Localisation GPS en cours…', 'geo-warn');
-    _pendingTimer = setTimeout(() => {
-      _pendingLigne = null; _pendingTimer = null;
-      _handleSend(_onSuccessRef);
-    }, 3000);
-    return;
+  // Snap si déjà snappé mais on change de ligne
+  else if (_geolocData?.lat && _geolocData.snapped) {
+    _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
 
-  const arret = document.getElementById('arret-input')?.value.trim() || '';
-  if (_geolocData?.lat && (_geolocData.snapped || arret.length >= 2)) {
-    _handleSend(_onSuccessRef);
-  }
+  // Ne jamais envoyer automatiquement — l'usager appuie sur le bouton
 }
 
 // ── Snap ──────────────────────────────────────────────────
