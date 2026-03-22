@@ -1,10 +1,8 @@
 /**
- * js/reader.js — Xëtu V1.0
+ * js/reader.js — Xëtu V1.1
  * Bandeau "arrêt courant" affiché au-dessus du bouton "Je vois un bus ici"
- * quand un bus est sélectionné et animé sur la carte.
  *
- * Reçoit des updates via updateReader(busId, ligne, arrets, currentIdx).
- * Masqué automatiquement quand aucun bus n'est sélectionné.
+ * FIX V1.1 : SCROLL_SPEED 0.4 → 0.02, PAUSE_MS 2000 → 3500
  */
 
 let _el       = null;
@@ -24,32 +22,25 @@ export function initReader() {
 
 // ── API publique ──────────────────────────────────────────
 
-/**
- * Met à jour le bandeau avec la progression actuelle du bus.
- * @param {string} ligne
- * @param {Array}  arrets   — liste des arrêts [{nom}]
- * @param {number} idx      — index de l'arrêt courant
- */
 export function updateReader(ligne, arrets, idx) {
   if (!_el || !_scrollEl || !arrets?.length) return;
 
   const color = _lineColor(ligne);
 
-  // Construire la chaîne : arrêts avec l'arrêt courant mis en avant
   const parts = arrets.map((a, i) => {
     const nom = a.nom || a.name || `Arrêt ${i + 1}`;
     if (i === idx) {
-      return `<span class="reader-current" style="color:${color}">${nom}</span>`;
+      return `<span class="reader-current" style="color:${color};font-weight:700;text-decoration:underline">${nom}</span>`;
     }
     if (i < idx) {
-      return `<span class="reader-past">${nom}</span>`;
+      return `<span class="reader-past" style="opacity:0.4">${nom}</span>`;
     }
     return `<span class="reader-future">${nom}</span>`;
   });
 
   _scrollEl.innerHTML =
-    `<span class="reader-badge" style="background:${color}">Bus ${ligne}</span>` +
-    parts.join('<span class="reader-sep">›</span>');
+    `<span class="reader-badge" style="background:${color};color:#fff;padding:2px 8px;border-radius:4px;font-weight:700;margin-right:8px">Bus ${ligne}</span>` +
+    parts.join('<span class="reader-sep" style="margin:0 4px;opacity:0.4">›</span>');
 
   show();
   _startScroll();
@@ -68,8 +59,8 @@ export function hide() {
 
 // ── Scroll automatique ────────────────────────────────────
 
-const SCROLL_SPEED = 0.4; // px/frame
-const PAUSE_MS     = 2000;
+const SCROLL_SPEED = 0.02;  // px/frame — lent et lisible
+const PAUSE_MS     = 3500;  // pause à la fin avant reset
 
 function _startScroll() {
   _stopScroll();
@@ -92,14 +83,12 @@ function _tick() {
   const contentW   = _scrollEl.scrollWidth;
 
   if (contentW <= containerW) {
-    // Pas besoin de scroller
     _stopScroll();
     return;
   }
 
   _scrollX += SCROLL_SPEED;
 
-  // Arrivé à la fin → pause puis reset
   if (_scrollX > contentW - containerW + 40) {
     _paused = true;
     setTimeout(() => {
@@ -121,6 +110,5 @@ function _lineColor(ligne) {
   for (let i = 0; i < ligne.length; i++) {
     hash = ligne.charCodeAt(i) + ((hash << 5) - hash);
   }
-  const hue = Math.abs(hash) % 360;
-  return `hsl(${hue}, 70%, 55%)`;
+  return `hsl(${Math.abs(hash) % 360}, 70%, 55%)`;
 }

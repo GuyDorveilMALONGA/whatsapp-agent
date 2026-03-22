@@ -1,13 +1,15 @@
 /**
- * js/home.js — Xëtu V2.0
+ * js/home.js — Xëtu V2.1
  *
- * FIX-1  Arrêts petits, adaptatifs au zoom, pane overlayPane (sous markers bus)
+ * FIX-1  Points d'arrêts discrets, décoratifs uniquement, non cliquables
  * FIX-2  Tooltips = stop.nom uniquement, jamais coords GPS
  * FIX-4  Carte vide au démarrage, tracé uniquement sur clic bus
  * FIX-5  RAF uniquement sur le bus sélectionné, switch propre
  * FIX-6  Reader bandeau arrêt courant (reader.js)
  * FIX-7  Tracé chargé à la demande, retiré du DOM au switch
  * FIX-8  Couleur par hash HSL (unicité garantie)
+ * FIX-9  minutes_ago incrémenté en temps réel, bus expire après 20 min
+ * FIX-10 Zoom centré Dakar, pas Parcelles
  * DEMO   Bus 1 + Bus 4 hardcodés, animation tracé réel GTFS
  */
 
@@ -17,14 +19,17 @@ import { initReader, updateReader, hide as hideReader } from './reader.js';
 
 const AVATARS = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
 
+// ── Constantes démo ───────────────────────────────────────
+const DEMO_TTL_MIN = 20; // bus expire après 20 min
+
 // ── État carte ────────────────────────────────────────────
-let _map              = null;
-let _busMarkers       = {};
-let _activeCol        = 'buses';
-let _selectedBusId    = null;
-let _activePolyline   = null;
+let _map               = null;
+let _busMarkers        = {};
+let _activeCol         = 'buses';
+let _selectedBusId     = null;
+let _activePolyline    = null;
 let _activeStopMarkers = [];
-let _animState        = null;
+let _animState         = null;
 
 // ── FIX-8 : couleur par hash HSL ─────────────────────────
 
@@ -162,10 +167,10 @@ const _GTFS = {
   },
 };
 
-// Bus démo — positions initiales sur le tracé réel
+// ── Bus démo — _born = timestamp création ─────────────────
 const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, minutes_ago:2, reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, minutes_ago:1, reporter:'****', traceStartIdx:0  },
+  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born: Date.now() - 2*60*1000, reporter:'****', traceStartIdx:26 },
+  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born: Date.now() - 1*60*1000, reporter:'****', traceStartIdx:0  },
 ];
 
 // ── Init ──────────────────────────────────────────────────
@@ -177,45 +182,45 @@ export function initHome({ onSeeBus }) {
   _initSeeBus(onSeeBus);
   _subscribeStore();
 
-  // store.set APRÈS _subscribeStore et _initMap — map est prête
-  const demoBuses = DEMO_BUSES.map(b => ({
-    ...b,
-    name: _GTFS[b.ligne]
-      ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
-      : `Ligne ${b.ligne}`,
-  }));
-  // Délai 1 frame pour que Leaflet finisse son init
-  requestAnimationFrame(() => store.set('buses', demoBuses));
+  // Lancer les démos après 1 frame (Leaflet doit être prêt)
+  requestAnimationFrame(() => {
+    _refreshDemoBuses();
+    setInterval(_refreshDemoBuses, 30_000);
+  });
 }
 
-// ── Carte — FIX-4 : vide au démarrage ────────────────────
+// ── FIX-9 : refresh démos — minutes_ago + expiration ─────
+
+function _refreshDemoBuses() {
+  const now  = Date.now();
+  const buses = DEMO_BUSES
+    .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
+    .map(b => ({
+      ...b,
+      minutes_ago: Math.round((now - b._born) / 60_000),
+      name: _GTFS[b.ligne]
+        ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
+        : `Ligne ${b.ligne}`,
+    }));
+
+  store.set('buses', buses);
+
+  // Si bus sélectionné vient d'expirer → déselectionner
+  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) {
+    _deselectBus();
+  }
+}
+
+// ── Carte — FIX-4 + FIX-10 ───────────────────────────────
 
 function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
-    .setView([14.716, -17.467], 13);
+    .setView([14.693, -17.452], 13); // centré Dakar centre
 
   L.tileLayer(
     'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
     { maxZoom: 19, subdomains: 'abcd' }
   ).addTo(_map);
-
-  // FIX-1 : re-render tailles arrêts au zoom
-  _map.on('zoomend', _refreshStopSizes);
-}
-
-// ── FIX-1 : radius adaptatif ──────────────────────────────
-
-function _stopRadius() {
-  if (!_map) return 3;
-  const z = _map.getZoom();
-  if (z >= 16) return 6;
-  if (z >= 14) return 4;
-  return 3;
-}
-
-function _refreshStopSizes() {
-  const r = _stopRadius();
-  _activeStopMarkers.forEach(m => m.setRadius(r));
 }
 
 // ── Sélection bus → tracé + arrêts + animation ────────────
@@ -225,7 +230,7 @@ function _selectBus(busId) {
   _selectedBusId = busId;
 
   _stopAnim();
-  _clearActiveLine();   // FIX-7 : retire du DOM
+  _clearActiveLine();
 
   const bus  = DEMO_BUSES.find(b => b.id === busId);
   const data = bus ? _GTFS[bus.ligne] : null;
@@ -233,35 +238,28 @@ function _selectBus(busId) {
 
   const color = data.color;
 
-  // Polyline (FIX-7 : à la demande)
+  // Polyline tracé
   _activePolyline = L.polyline(data.trace, {
     color, weight: 4, opacity: 0.88, lineJoin: 'round', lineCap: 'round',
   }).addTo(_map);
 
-  // Arrêts (FIX-1 + FIX-2)
-  const r = _stopRadius();
+  // FIX-1 : arrêts discrets, décoratifs, non cliquables
   data.arrets.forEach((stop, idx) => {
-    const isT = idx === 0 || idx === data.arrets.length - 1;
+    const isT   = idx === 0 || idx === data.arrets.length - 1;
     const circle = L.circleMarker([stop.lat, stop.lon], {
-      radius:      isT ? r + 2 : r,
-      color,
-      weight:      isT ? 2 : 1,
-      fillColor:   isT ? color : '#fff',
-      fillOpacity: isT ? 1 : 0.85,
-    })
-    // FIX-2 : nom uniquement
-    .bindTooltip(stop.nom, {
-      direction: 'top', offset: [0, -r - 2],
-      className: 'stop-tip', permanent: false, opacity: 0.95,
-    })
-    .addTo(_map);
-    circle.on('click', () => circle.openTooltip());
+      radius:      isT ? 4 : 2,
+      color:       isT ? color : 'rgba(255,255,255,0.25)',
+      weight:      1,
+      fillColor:   isT ? color : 'rgba(255,255,255,0.15)',
+      fillOpacity: 1,
+      interactive: false, // pas cliquable sur mobile — reader s'en charge
+    }).addTo(_map);
     _activeStopMarkers.push(circle);
   });
 
-  _map.fitBounds(_activePolyline.getBounds(), { padding: [30, 30], maxZoom: 14 });
+  _map.fitBounds(_activePolyline.getBounds(), { padding: [40, 40], maxZoom: 12 });
   _refreshBusMarkers();
-  _startAnim(bus, data);   // FIX-5 : un seul RAF
+  _startAnim(bus, data);
 }
 
 function _deselectBus() {
@@ -280,7 +278,7 @@ function _clearActiveLine() {
 
 // ── Animation FIX-5 ───────────────────────────────────────
 
-const ANIM_SPEED = 0.00004; // degrés/ms
+const ANIM_SPEED = 0.00004;
 
 function _startAnim(bus, data) {
   const coords = data.trace;
@@ -349,27 +347,24 @@ function _nearestArretIdx(lat, lon, arrets) {
 function _updateMarkers(buses) {
   if (!_map) return;
   const ids = new Set(buses.map(b => String(b.id)));
-  // Retirer les markers disparus
   Object.keys(_busMarkers).forEach(id => {
     if (!ids.has(id)) { _map.removeLayer(_busMarkers[id]); delete _busMarkers[id]; }
   });
-  // Créer uniquement les nouveaux — NE PAS recréer les existants
   buses.forEach(b => {
     if (b.lat && b.lng && !_busMarkers[b.id]) {
       _busMarkers[b.id] = _makeBusMarker(b);
     }
   });
-  // Pas de _refreshBusMarkers() ici — ça détruirait les listeners actifs
 }
 
 function _busAgeColor(minutes_ago) {
-  if (minutes_ago <= 5)  return '#00D67F';  // vert  — frais
-  if (minutes_ago <= 15) return '#FFD166';  // jaune — vieux
-  return '#FF4757';                         // rouge — périmé
+  if (minutes_ago <= 5)  return '#00D67F';
+  if (minutes_ago <= 15) return '#FFD166';
+  return '#FF4757';
 }
 
 function _makeBusMarker(bus) {
-  const markerColor = _busAgeColor(bus.minutes_ago);  // couleur temporelle
+  const markerColor = _busAgeColor(bus.minutes_ago);
   const isSelected  = bus.id === _selectedBusId;
   const size        = isSelected ? 40 : 34;
 
@@ -389,8 +384,6 @@ function _makeBusMarker(bus) {
   const marker = L.marker([bus.lat, bus.lng], { icon, zIndexOffset: isSelected ? 1000 : 0 })
     .addTo(_map);
 
-  // PAS de bindPopup — le popup Leaflet intercepte le click event
-  // et empêche _selectBus de s'exécuter. On gère le clic directement.
   marker.on('click', (e) => {
     L.DomEvent.stopPropagation(e);
     _selectedBusId === bus.id ? _deselectBus() : _selectBus(bus.id);
@@ -399,8 +392,6 @@ function _makeBusMarker(bus) {
 }
 
 function _refreshBusMarkers() {
-  // Mettre à jour uniquement l'icône (taille + bordure selected/non-selected)
-  // sans recréer le marker — préserve les listeners et la position animée
   const buses = store.get('buses') || [];
   buses.forEach(b => {
     const mk = _busMarkers[b.id];
@@ -451,7 +442,7 @@ function _renderBuses(buses) {
   }
   el.innerHTML = buses.map((b, i) => {
     const data        = _GTFS[b.ligne];
-    const markerColor = _busAgeColor(b.minutes_ago);  // badge = couleur temporelle
+    const markerColor = _busAgeColor(b.minutes_ago);
     const label       = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
     const isSel       = b.id === _selectedBusId;
     return `<div class="bus-card anim-up${isSel?' bus-card--selected':''}" style="animation-delay:${i*.04}s;cursor:pointer" data-bus-id="${b.id}">
