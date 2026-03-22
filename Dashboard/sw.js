@@ -1,6 +1,7 @@
 /**
- * sw.js — Xëtu PWA Service Worker V4
- * Sprint démo L1/L4 : home.js V2.0 + reader.js ajouté
+ * sw.js — Xëtu PWA Service Worker V5
+ * CHG-SW : CACHE_VERSION xetu-v5 → force l'invalidation du cache sur tous les navigateurs.
+ * Règle BUG-6 (cache stale) et par effet de bord BUG-2 (_NOW gelé).
  */
 
 const CACHE_VERSION = 'xetu-v5';
