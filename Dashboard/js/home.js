@@ -177,14 +177,15 @@ export function initHome({ onSeeBus }) {
   _initSeeBus(onSeeBus);
   _subscribeStore();
 
-  // Alimenter le store avec les bus démo
+  // store.set APRÈS _subscribeStore et _initMap — map est prête
   const demoBuses = DEMO_BUSES.map(b => ({
     ...b,
     name: _GTFS[b.ligne]
       ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
       : `Ligne ${b.ligne}`,
   }));
-  store.set('buses', demoBuses);
+  // Délai 1 frame pour que Leaflet finisse son init
+  requestAnimationFrame(() => store.set('buses', demoBuses));
 }
 
 // ── Carte — FIX-4 : vide au démarrage ────────────────────
@@ -348,11 +349,17 @@ function _nearestArretIdx(lat, lon, arrets) {
 function _updateMarkers(buses) {
   if (!_map) return;
   const ids = new Set(buses.map(b => String(b.id)));
+  // Retirer les markers disparus
   Object.keys(_busMarkers).forEach(id => {
     if (!ids.has(id)) { _map.removeLayer(_busMarkers[id]); delete _busMarkers[id]; }
   });
-  buses.forEach(b => { if (b.lat && b.lng && !_busMarkers[b.id]) _busMarkers[b.id] = _makeBusMarker(b); });
-  _refreshBusMarkers();
+  // Créer uniquement les nouveaux — NE PAS recréer les existants
+  buses.forEach(b => {
+    if (b.lat && b.lng && !_busMarkers[b.id]) {
+      _busMarkers[b.id] = _makeBusMarker(b);
+    }
+  });
+  // Pas de _refreshBusMarkers() ici — ça détruirait les listeners actifs
 }
 
 function _busAgeColor(minutes_ago) {
@@ -394,11 +401,29 @@ function _makeBusMarker(bus) {
 }
 
 function _refreshBusMarkers() {
+  // Mettre à jour uniquement l'icône (taille + bordure selected/non-selected)
+  // sans recréer le marker — préserve les listeners et la position animée
   const buses = store.get('buses') || [];
-  Object.keys(_busMarkers).forEach(id => {
-    _map.removeLayer(_busMarkers[id]); delete _busMarkers[id];
+  buses.forEach(b => {
+    const mk = _busMarkers[b.id];
+    if (!mk) return;
+    const isSelected  = b.id === _selectedBusId;
+    const markerColor = _busAgeColor(b.minutes_ago);
+    const size        = isSelected ? 40 : 34;
+    mk.setIcon(L.divIcon({
+      html: `<div style="
+        width:${size}px;height:${size}px;border-radius:50%;background:${markerColor};
+        border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
+        box-shadow:0 2px 12px rgba(0,0,0,0.5);
+        display:flex;align-items:center;justify-content:center;
+        font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
+        font-weight:700;color:#fff;">${b.ligne}</div>`,
+      iconSize:   [size, size],
+      iconAnchor: [size/2, size/2],
+      className:  '',
+    }));
+    mk.setZIndexOffset(isSelected ? 1000 : 0);
   });
-  buses.forEach(b => { if (b.lat && b.lng) _busMarkers[b.id] = _makeBusMarker(b); });
 }
 
 // ── Tabs ──────────────────────────────────────────────────
