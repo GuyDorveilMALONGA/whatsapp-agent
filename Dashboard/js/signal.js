@@ -1,16 +1,20 @@
 /**
- * js/signal.js — V3.0
- * Flux signalement 2 gestes pour démo Dem Dikk.
+ * js/signal.js — V3.1
+ * FIX crash V3.0 :
+ *   - Suppression { capture: true } sur btn-see-bus qui interceptait goTo()
+ *   - IntersectionObserver remplacé par un hook appelé depuis app.js
+ *   - _startAutoGPS() ne se déclenche plus au chargement de la page,
+ *     seulement quand l'écran signal est réellement affiché
  *
- * CHG-1 : GPS automatique dès que l'écran s'ouvre (IntersectionObserver)
- * CHG-2 : Grille hiérarchisée — 6 prioritaires (56px) > favoris > "Toutes" avec recherche
- * CHG-3 : Envoi immédiat ligne tapée + GPS prêt. Si GPS en cours → file d'attente 3s max
- * CHG-4 : Qualité optionnelle visuellement secondaire (collapse/expand)
+ * Flux 2 gestes conservé :
+ *   CHG-1 : GPS auto quand l'écran signal s'active (via onScreenEnter export)
+ *   CHG-2 : Grille hiérarchisée : prioritaires (56px) > favoris > accordéon
+ *   CHG-3 : Envoi immédiat dès ligne tapée + GPS prêt ; file d'attente 3s max
+ *   CHG-4 : Qualité collapse/expand — ne bloque pas l'envoi
  */
 
 import * as store  from './store.js';
 import * as Toast  from './toast.js';
-import { GeolocError } from './geoloc.js';
 import { API_BASE, LIGNES_CONNUES, SESSION_PREFIX } from './constants.js';
 import { generateUUID } from './utils.js';
 import { incrementScore } from './mylines.js';
@@ -21,16 +25,16 @@ let _selectedQual    = null;
 let _geolocData      = null;      // { lat, lon, nearest_stop, snapped, distance_m }
 let _geolocPending   = false;     // GPS en cours de recherche
 let _pendingLigne    = null;      // ligne tapée pendant que GPS tourne
-let _pendingTimer    = null;      // timer 3s max d'attente GPS
+let _pendingTimer    = null;      // timer 3s max
 let _mapSignal       = null;
 let _userMarker      = null;
 let _mapReady        = false;
-let _allLinesVisible = false;     // état accordéon "Toutes les lignes"
-let _onSuccessRef    = null;      // callback conservée pour envoi auto
+let _allLinesVisible = false;
+let _onSuccessRef    = null;
 
 const SESSION_ID = `${SESSION_PREFIX}${generateUUID()}`;
 
-// Lignes prioritaires — toujours en haut, chips plus grandes
+// Lignes affichées en priorité, chips plus grandes
 const PRIORITY_LINES = ['1', '4', '7', '8', '10', '15'];
 
 // ── Init ──────────────────────────────────────────────────
@@ -40,25 +44,18 @@ export function initSignal({ onSuccess }) {
   _buildLigneGrid();
   _attachEvents(onSuccess);
   store.subscribe('favLines', () => _buildLigneGrid());
+  // ⚠️  PAS d'IntersectionObserver ici, PAS d'écouteur sur btn-see-bus.
+  // app.js appelle onScreenEnter() quand il navigue vers 'signal'.
+}
 
-  // CHG-1 : GPS automatique quand l'écran signal devient visible
-  const screen = document.getElementById('screen-signal');
-  if (screen) {
-    const observer = new IntersectionObserver((entries) => {
-      if (entries[0].isIntersecting) {
-        if (!_mapReady) { _initMap(); _mapReady = true; }
-        if (!_geolocData && !_geolocPending) _startAutoGPS();
-      }
-    });
-    observer.observe(screen);
-  }
-
-  // Backup : déclenché par le bouton "Je vois un bus ici"
-  document.getElementById('btn-see-bus')?.addEventListener('click', () => {
-    setTimeout(() => {
-      if (!_geolocData && !_geolocPending) _startAutoGPS();
-    }, 150);
-  }, { capture: true });
+/**
+ * Appelé par app.js chaque fois qu'on bascule vers screen-signal.
+ * Exemple dans app.js : initSignal({ onSuccess, onScreenEnter })
+ * puis dans goTo() : if (screenId === 'signal') signalScreenEnter()
+ */
+export function onScreenEnter() {
+  if (!_mapReady) { _initMap(); _mapReady = true; }
+  if (!_geolocData && !_geolocPending) _startAutoGPS();
 }
 
 // ── Carte ─────────────────────────────────────────────────
@@ -75,7 +72,7 @@ function _updateUserMarker(lat, lon) {
   if (_userMarker) _mapSignal.removeLayer(_userMarker);
   const icon = L.divIcon({
     html: `<div style="width:16px;height:16px;border-radius:50%;background:#3b82f6;border:3px solid #fff;box-shadow:0 2px 8px rgba(59,130,246,0.7)"></div>`,
-    iconAnchor: [8, 8], className: '',
+    iconAnchor: [8, 8], className: 'xetu-bus-marker',
   });
   _userMarker = L.marker([lat, lon], { icon }).addTo(_mapSignal);
   _mapSignal.setView([lat, lon], 15);
@@ -85,6 +82,10 @@ function _updateUserMarker(lat, lon) {
 
 async function _startAutoGPS() {
   if (_geolocPending || _geolocData) return;
+  if (!navigator.geolocation) {
+    _showGeoStatus('⚠️ GPS non disponible — entre l\'arrêt manuellement', 'geo-warn');
+    return;
+  }
 
   _geolocPending = true;
   _showGpsSpinner(true);
@@ -92,10 +93,6 @@ async function _startAutoGPS() {
 
   try {
     const position = await new Promise((resolve, reject) => {
-      if (!navigator.geolocation) {
-        reject(new GeolocError('NOT_SUPPORTED', 'GPS non disponible'));
-        return;
-      }
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true,
         timeout: 8000,
@@ -108,40 +105,36 @@ async function _startAutoGPS() {
     _geolocData = { lat, lon, nearest_stop: null, snapped: false, distance_m: null };
 
     _updateUserMarker(lat, lon);
-    _showMapLabel(true);
     _showGpsSpinner(false);
+    _showMapLabel(true);
     _showGeoStatus('📍 Position GPS capturée', 'geo-ok');
 
-    // Snap si une ligne est déjà sélectionnée
-    if (_selectedLigne) {
-      await _snapAndFill(lat, lon, _selectedLigne);
-    }
+    // Snap sur l'arrêt si une ligne est déjà sélectionnée
+    if (_selectedLigne) await _snapAndFill(lat, lon, _selectedLigne);
 
-    // CHG-3 : une ligne était en attente → envoyer maintenant
+    // CHG-3 : ligne en attente → envoyer maintenant
     if (_pendingLigne) {
       clearTimeout(_pendingTimer);
-      _pendingTimer = null;
-      const ligneToSend = _pendingLigne;
-      _pendingLigne = null;
-      _selectedLigne = ligneToSend;
+      _pendingTimer   = null;
+      _selectedLigne  = _pendingLigne;
+      _pendingLigne   = null;
       await _handleSend(_onSuccessRef);
     }
 
   } catch (err) {
     _geolocData = null;
     _showGpsSpinner(false);
-    let msg = 'GPS indisponible — précise l\'arrêt manuellement';
+    let msg = 'GPS indisponible — entre l\'arrêt manuellement';
     if (err.code === 1) msg = 'GPS refusé — entre l\'arrêt à la main';
     else if (err.code === 3) msg = 'GPS trop lent — entre l\'arrêt manuellement';
     _showGeoStatus(`⚠️ ${msg}`, 'geo-warn');
-    // Non bloquant : l'utilisateur peut saisir l'arrêt
   } finally {
     _geolocPending = false;
     _updateSendBtn();
   }
 }
 
-// Snap + pré-remplir champ arrêt
+// Snap + pré-remplir le champ arrêt
 async function _snapAndFill(lat, lon, ligne) {
   try {
     const snap = await _snapToStop(lat, lon, ligne);
@@ -149,17 +142,15 @@ async function _snapAndFill(lat, lon, ligne) {
       _geolocData.nearest_stop = snap.name;
       _geolocData.snapped      = true;
       _geolocData.distance_m   = snap.dist;
-      const arretInput = document.getElementById('arret-input');
-      if (arretInput && !arretInput.value.trim()) {
-        arretInput.value = snap.name;
-      }
+      const el = document.getElementById('arret-input');
+      if (el && !el.value.trim()) el.value = snap.name;
       _showGeoStatus(`📍 ${snap.name} · à ${snap.dist} m`, 'geo-ok');
       _updateSendBtn();
     }
-  } catch { /* snap échoué silencieusement */ }
+  } catch { /* silencieux */ }
 }
 
-// ── Bouton GPS manuel (fallback si auto échoué) ───────────
+// ── Bouton GPS manuel (fallback) ──────────────────────────
 
 async function _handleGPS() {
   if (_geolocPending) return;
@@ -171,12 +162,8 @@ async function _handleGPS() {
   _geolocPending = true;
 
   try {
-    if (navigator.permissions) {
-      const perm = await navigator.permissions.query({ name: 'geolocation' });
-      if (perm.state === 'denied') throw new GeolocError('DENIED', 'GPS refusé. Active la localisation.');
-    }
-
     const position = await new Promise((resolve, reject) => {
+      if (!navigator.geolocation) { reject(new Error('NOT_SUPPORTED')); return; }
       navigator.geolocation.getCurrentPosition(resolve, reject, {
         enableHighAccuracy: true, timeout: 10000, maximumAge: 0,
       });
@@ -188,19 +175,15 @@ async function _handleGPS() {
     _updateUserMarker(lat, lon);
     _showMapLabel(true);
 
-    if (_selectedLigne) {
-      await _snapAndFill(lat, lon, _selectedLigne);
-    } else {
-      _showGeoStatus('📍 Position capturée · sélectionne une ligne', 'geo-ok');
-    }
+    if (_selectedLigne) await _snapAndFill(lat, lon, _selectedLigne);
+    else _showGeoStatus('📍 Position capturée · sélectionne une ligne', 'geo-ok');
 
     if (btn) btn.textContent = '✓ GPS';
 
   } catch (err) {
     _geolocData = null;
     let msg = 'GPS indisponible.';
-    if (err instanceof GeolocError) msg = err.message;
-    else if (err.code === 1) msg = 'GPS refusé. Active la localisation dans Réglages.';
+    if (err.code === 1) msg = 'GPS refusé. Active la localisation dans Réglages.';
     else if (err.code === 2) msg = 'Position indisponible.';
     else if (err.code === 3) msg = 'Délai GPS dépassé.';
     _showGeoStatus(`⚠️ ${msg}`, 'geo-err');
@@ -220,54 +203,51 @@ function _buildLigneGrid() {
   let favs = [];
   try { favs = JSON.parse(localStorage.getItem('xetu_fav_lines') || '[]').slice(0, 3); }
   catch {}
-
-  // Favoris qui ne sont pas déjà dans les prioritaires
   const favExtra = favs.filter(l => !PRIORITY_LINES.includes(l));
 
   let html = '';
 
-  // ── Section 1 : lignes prioritaires (toujours visibles) ──
-  html += `<div class="ligne-section">`;
-  html += `<div class="ligne-section-label">Lignes fréquentes</div>`;
-  html += `<div class="ligne-chips-row">`;
+  // Section 1 — Prioritaires
+  html += `<div class="ligne-section">
+    <div class="ligne-section-label">Lignes fréquentes</div>
+    <div class="ligne-chips-row">`;
   PRIORITY_LINES.forEach(l => {
     html += `<button class="ligne-chip ligne-chip--priority${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
   });
   html += `</div></div>`;
 
-  // ── Section 2 : favoris personnels (si hors prioritaires) ──
+  // Section 2 — Favoris personnels (si hors prioritaires)
   if (favExtra.length > 0) {
-    html += `<div class="ligne-section">`;
-    html += `<div class="ligne-section-label">Mes favoris</div>`;
-    html += `<div class="ligne-chips-row">`;
+    html += `<div class="ligne-section">
+      <div class="ligne-section-label">Mes favoris</div>
+      <div class="ligne-chips-row">`;
     favExtra.forEach(l => {
       html += `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
     });
     html += `</div></div>`;
   }
 
-  // ── Section 3 : accordéon "Toutes les lignes" ──
-  const otherCount = LIGNES_CONNUES.size - PRIORITY_LINES.length;
-  html += `<div class="ligne-section">`;
-  html += `<button class="btn-all-lines" id="btn-all-lines">
-    <span>Toutes les lignes (+${otherCount})</span>
-    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chevron-all${_allLinesVisible ? ' rotated' : ''}">
-      <polyline points="6 9 12 15 18 9"/>
-    </svg>
-  </button>`;
+  // Section 3 — Accordéon "Toutes les lignes"
+  const otherCount = [...LIGNES_CONNUES].length - PRIORITY_LINES.length;
+  html += `<div class="ligne-section">
+    <button class="btn-all-lines" id="btn-all-lines">
+      <span>Toutes les lignes (+${otherCount})</span>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="chevron-all${_allLinesVisible ? ' rotated' : ''}">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
+    </button>`;
 
   if (_allLinesVisible) {
     html += `<div class="ligne-search-wrap">
       <input type="text" id="ligne-search-input" class="ligne-search-input"
              placeholder="Chercher une ligne…" autocomplete="off" maxlength="20">
-    </div>`;
-    html += `<div class="ligne-chips-row ligne-chips-all" id="all-lines-grid">`;
+    </div>
+    <div class="ligne-chips-row ligne-chips-all" id="all-lines-grid">`;
     _getSortedLines().forEach(l => {
       html += `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`;
     });
     html += `</div>`;
   }
-
   html += `</div>`;
 
   grid.innerHTML = html;
@@ -280,15 +260,11 @@ function _getSortedLines(filter = '') {
     if (!isNaN(na) && !isNaN(nb)) return na - nb;
     return a.localeCompare(b);
   });
-  if (filter) {
-    const f = filter.toLowerCase();
-    all = all.filter(l => l.toLowerCase().includes(f));
-  }
+  if (filter) { const f = filter.toLowerCase(); all = all.filter(l => l.toLowerCase().includes(f)); }
   return all;
 }
 
 function _attachGridEvents(grid) {
-  // Chips de ligne — toutes sections
   grid.querySelectorAll('[data-ligne]').forEach(btn => {
     btn.addEventListener('click', () => {
       grid.querySelectorAll('.ligne-chip').forEach(b => b.classList.remove('selected'));
@@ -297,22 +273,17 @@ function _attachGridEvents(grid) {
     });
   });
 
-  // Accordéon "Toutes les lignes"
   grid.querySelector('#btn-all-lines')?.addEventListener('click', () => {
     _allLinesVisible = !_allLinesVisible;
     _buildLigneGrid();
-    if (_allLinesVisible) {
-      setTimeout(() => document.getElementById('ligne-search-input')?.focus(), 50);
-    }
+    if (_allLinesVisible) setTimeout(() => document.getElementById('ligne-search-input')?.focus(), 50);
   });
 
-  // Recherche dans toutes les lignes
   grid.querySelector('#ligne-search-input')?.addEventListener('input', (e) => {
     const filter  = e.target.value.trim();
     const allGrid = document.getElementById('all-lines-grid');
     if (!allGrid) return;
-    const filtered = _getSortedLines(filter);
-    allGrid.innerHTML = filtered.map(l =>
+    allGrid.innerHTML = _getSortedLines(filter).map(l =>
       `<button class="ligne-chip${l === _selectedLigne ? ' selected' : ''}" data-ligne="${l}">${l}</button>`
     ).join('');
     allGrid.querySelectorAll('[data-ligne]').forEach(btn => {
@@ -332,26 +303,25 @@ function _selectLigne(ligne) {
   _saveFavoriteLine(ligne);
   _updateSendBtn();
 
-  // Snap GPS sur cette ligne si position déjà connue mais pas encore snappée
+  // Snap GPS si position connue mais pas encore snappée
   if (_geolocData?.lat && !_geolocData.snapped) {
     _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
 
-  // GPS en cours → enregistrer la ligne, attendre max 3s
+  // GPS en cours → mettre la ligne en attente, timer 3s
   if (_geolocPending) {
     _pendingLigne = ligne;
     clearTimeout(_pendingTimer);
     _showGeoStatus('⏳ Localisation GPS en cours…', 'geo-warn');
     _pendingTimer = setTimeout(() => {
-      // Timeout 3s : GPS trop lent, envoyer sans position précise
       _pendingLigne = null;
       _pendingTimer = null;
-      _handleSend(_onSuccessRef);
+      _handleSend(_onSuccessRef); // timeout : envoyer sans GPS précis
     }, 3000);
     return;
   }
 
-  // GPS déjà prêt + arrêt connu → envoi immédiat
+  // GPS prêt + arrêt connu → envoi immédiat
   const arret = document.getElementById('arret-input')?.value.trim() || '';
   if (_geolocData?.lat && (_geolocData.snapped || arret.length >= 2)) {
     _handleSend(_onSuccessRef);
@@ -361,7 +331,7 @@ function _selectLigne(ligne) {
 // ── Snap sur arrêt ────────────────────────────────────────
 
 async function _snapToStop(lat, lon, ligne) {
-  const routes = await _loadRoutes();
+  const routes   = await _loadRoutes();
   const key      = String(ligne).toUpperCase();
   const lineData = routes[key] || routes[String(ligne)];
   if (!lineData) return { snapped: false };
@@ -401,18 +371,12 @@ function _showGpsSpinner(show) {
   const spinner = document.getElementById('gps-spinner');
   if (spinner) spinner.hidden = !show;
   const label = document.getElementById('signal-map-label');
-  if (label && show) {
-    label.innerHTML = `<span class="pos-dot pos-dot--locating"></span> Localisation en cours…`;
-  }
+  if (label && show) label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Localisation en cours…`;
 }
 
 function _showMapLabel(active) {
-  const dot   = document.getElementById('signal-pos-dot');
   const label = document.getElementById('signal-map-label');
-  if (dot)   dot.className = `pos-dot ${active ? 'pos-dot--active' : 'pos-dot--wait'}`;
-  if (label && active) {
-    label.innerHTML = `<span class="pos-dot pos-dot--active"></span> Ta position GPS`;
-  }
+  if (label) label.innerHTML = `<span class="pos-dot ${active ? 'pos-dot--active' : 'pos-dot--wait'}"></span> ${active ? 'Ta position GPS' : 'Position en attente'}`;
 }
 
 function _showGeoStatus(text, cls) {
@@ -436,25 +400,17 @@ function _updateSendBtn() {
     btn.disabled = !ok;
     btn.classList.toggle('btn-send--pulse', ok);
   }
-
   if (hint) {
-    if (_geolocPending && !_selectedLigne) {
-      hint.textContent = '⏳ GPS en cours… sélectionne une ligne';
-    } else if (!_selectedLigne) {
-      hint.textContent = 'Sélectionne une ligne';
-    } else if (!ok) {
-      hint.textContent = 'Indique l\'arrêt ou attends le GPS';
-    } else if (hasGps && _geolocData?.nearest_stop) {
-      hint.textContent = `📍 ${_geolocData.nearest_stop}`;
-    } else if (hasGps) {
-      hint.textContent = '📍 Position GPS sera envoyée';
-    } else {
-      hint.textContent = 'Prêt à envoyer';
-    }
+    if (_geolocPending && !_selectedLigne) hint.textContent = '⏳ GPS en cours… sélectionne une ligne';
+    else if (!_selectedLigne)              hint.textContent = 'Sélectionne une ligne';
+    else if (!ok)                          hint.textContent = 'Indique l\'arrêt ou attends le GPS';
+    else if (hasGps && _geolocData?.nearest_stop) hint.textContent = `📍 ${_geolocData.nearest_stop}`;
+    else if (hasGps)                       hint.textContent = '📍 Position GPS sera envoyée';
+    else                                   hint.textContent = 'Prêt à envoyer';
   }
 }
 
-// ── Qualité optionnelle (CHG-4 : collapse/expand) ─────────
+// ── Qualité optionnelle (CHG-4) ───────────────────────────
 
 function _initQualityTags() {
   document.getElementById('btn-quality-toggle')?.addEventListener('click', () => {
@@ -463,11 +419,8 @@ function _initQualityTags() {
     if (!panel) return;
     const isOpen = !panel.hidden;
     panel.hidden = isOpen;
-    if (btn) btn.textContent = isOpen
-      ? '＋ Ajouter une observation (optionnel)'
-      : '－ Masquer les observations';
+    if (btn) btn.textContent = isOpen ? '＋ Ajouter une observation (optionnel)' : '－ Masquer les observations';
   });
-
   document.querySelectorAll('.quality-tag').forEach(tag => {
     tag.addEventListener('click', () => {
       const isSel = tag.classList.contains('selected');
@@ -483,12 +436,10 @@ function _initQualityTags() {
 async function _handleSend(onSuccess) {
   const arretRaw = document.getElementById('arret-input')?.value.trim() || '';
   const hasGps   = !!(_geolocData?.lat);
-
   if (!_selectedLigne || (!arretRaw && !hasGps)) return;
 
   const arret = arretRaw || _geolocData?.nearest_stop || 'Position GPS';
-
-  const btn = document.getElementById('btn-send');
+  const btn   = document.getElementById('btn-send');
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; btn.classList.remove('btn-send--pulse'); }
 
   const payload = {
@@ -550,10 +501,7 @@ function _reset() {
   const qualBtn = document.getElementById('btn-quality-toggle');
   if (qualBtn) qualBtn.textContent = '＋ Ajouter une observation (optionnel)';
   if (_mapSignal && _userMarker) { _mapSignal.removeLayer(_userMarker); _userMarker = null; }
-  const dot   = document.getElementById('signal-pos-dot');
-  const label = document.getElementById('signal-map-label');
-  if (dot)   dot.className = 'pos-dot pos-dot--wait';
-  if (label) label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Position en attente`;
+  _showMapLabel(false);
   _buildLigneGrid();
   _updateSendBtn();
 }

@@ -10,7 +10,7 @@ import { REFRESH_SEC } from './constants.js';
 import { fetchBuses, fetchLeaderboard } from './api.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
 import { initHome }    from './home.js';
-import { initSignal }  from './signal.js';
+import { initSignal, onScreenEnter as signalScreenEnter } from './signal.js';
 import { initChat }    from './chat.js';
 import { initMylines } from './mylines.js';
 
@@ -21,7 +21,7 @@ const _screens    = document.querySelectorAll('.screen');
 // ── Mode démo ─────────────────────────────────────────────
 // true  → bus démo L1 + L4 hardcodés, API Railway ignorée
 // false → données réelles depuis Railway/Supabase
-const DEMO_MODE = false;
+const DEMO_MODE = true;
 
 // ── Navigation ────────────────────────────────────────────
 
@@ -32,6 +32,8 @@ export function goTo(screenId) {
     document.querySelector(`[data-screen="${screenId}"]`)?.classList.add('active');
   }
   document.getElementById(`screen-${screenId}`)?.classList.add('active');
+  // CHG-1 : notifier signal.js que son écran est actif → GPS auto
+  if (screenId === 'signal') signalScreenEnter();
 }
 
 _navBtns.forEach(btn => btn.addEventListener('click', () => goTo(btn.dataset.screen)));
