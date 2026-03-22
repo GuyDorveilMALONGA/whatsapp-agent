@@ -1,5 +1,5 @@
 /**
- * js/home.js — Xëtu V2.1 FINAL
+ * js/home.js — Xëtu V2.2
  *
  * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
  * FIX-2  Tooltips = stop.nom uniquement
@@ -10,6 +10,7 @@
  * FIX-8  Couleur par hash HSL
  * FIX-9  minutes_ago incrémenté, bus expire après 20 min
  * FIX-10 Zoom centré Dakar centre
+ * B3     setView sur le bus au lieu de fitBounds sur tout le tracé
  */
 
 import * as store  from './store.js';
@@ -213,7 +214,9 @@ function _selectBus(busId) {
     _activeStopMarkers.push(circle);
   });
 
-  _map.fitBounds(_activePolyline.getBounds(), { padding: [40, 40], maxZoom: 13 });
+  // B3 fix : setView centré sur la position du bus (coords GPS du signalement)
+  // au lieu de fitBounds sur tout le tracé qui dézoomait sur toute la presqu'île.
+  _map.setView([bus.lat, bus.lng], 15, { animate: true, duration: 0.5 });
   _refreshBusMarkers();
   _startAnim(bus, data);
 }
