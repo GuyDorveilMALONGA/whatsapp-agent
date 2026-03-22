@@ -1,26 +1,23 @@
 /**
- * js/home.js — Xëtu V2.1
+ * js/home.js — Xëtu V2.1 FINAL
  *
- * FIX-1  Points d'arrêts discrets, décoratifs uniquement, non cliquables
- * FIX-2  Tooltips = stop.nom uniquement, jamais coords GPS
- * FIX-4  Carte vide au démarrage, tracé uniquement sur clic bus
- * FIX-5  RAF uniquement sur le bus sélectionné, switch propre
- * FIX-6  Reader bandeau arrêt courant (reader.js)
- * FIX-7  Tracé chargé à la demande, retiré du DOM au switch
- * FIX-8  Couleur par hash HSL (unicité garantie)
- * FIX-9  minutes_ago incrémenté en temps réel, bus expire après 20 min
- * FIX-10 Zoom centré Dakar, pas Parcelles
- * DEMO   Bus 1 + Bus 4 hardcodés, animation tracé réel GTFS
+ * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
+ * FIX-2  Tooltips = stop.nom uniquement
+ * FIX-4  Carte vide au démarrage, tracé à la demande
+ * FIX-5  RAF uniquement sur le bus sélectionné
+ * FIX-6  Reader bandeau arrêt courant
+ * FIX-7  Tracé retiré du DOM au switch
+ * FIX-8  Couleur par hash HSL
+ * FIX-9  minutes_ago incrémenté, bus expire après 20 min
+ * FIX-10 Zoom centré Dakar centre
  */
 
 import * as store  from './store.js';
 import { getAgeClass, formatAgeShort, getRankSymbol, getRankClass } from './utils.js';
 import { initReader, updateReader, hide as hideReader } from './reader.js';
 
-const AVATARS = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
-
-// ── Constantes démo ───────────────────────────────────────
-const DEMO_TTL_MIN = 20; // bus expire après 20 min
+const AVATARS      = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
+const DEMO_TTL_MIN = 20;
 
 // ── État carte ────────────────────────────────────────────
 let _map               = null;
@@ -32,21 +29,17 @@ let _activeStopMarkers = [];
 let _animState         = null;
 
 // ── FIX-8 : couleur par hash HSL ─────────────────────────
-
 function _lineColor(ligne) {
   let hash = 0;
-  const s  = String(ligne);
-  for (let i = 0; i < s.length; i++) {
-    hash = s.charCodeAt(i) + ((hash << 5) - hash);
-  }
+  for (let i = 0; i < String(ligne).length; i++)
+    hash = String(ligne).charCodeAt(i) + ((hash << 5) - hash);
   return `hsl(${Math.abs(hash) % 360}, 72%, 58%)`;
 }
 
-// ── Données GTFS embarquées L1 + L4 ──────────────────────
-
+// ── GTFS L1 + L4 ─────────────────────────────────────────
 const _GTFS = {
   '1': {
-    color:      _lineColor('1'),
+    color: _lineColor('1'),
     terminus_a: 'Parcelles Assainies',
     terminus_b: 'Place Leclerc',
     trace: [
@@ -114,7 +107,7 @@ const _GTFS = {
     ],
   },
   '4': {
-    color:      _lineColor('4'),
+    color: _lineColor('4'),
     terminus_a: 'Liberté 5',
     terminus_b: 'Place Leclerc',
     trace: [
@@ -167,35 +160,29 @@ const _GTFS = {
   },
 };
 
-// ── Bus démo — _born fixé UNE SEULE FOIS au chargement du module ─────────────
-// Ne pas mettre Date.now() dans un objet littéral rechargeable — ça se recalcule
-// à chaque hot-reload et les bus ne disparaissent jamais.
+// ── Bus démo — _NOW fixé UNE SEULE FOIS au chargement ────
 const _NOW = Date.now();
 const DEMO_BUSES = [
-  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born: _NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
-  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born: _NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
+  { id:'demo-1', ligne:'1', position:'Universite Cheikh A Diop', lat:14.69355,  lng:-17.462633, _born:_NOW - 2*60*1000, reporter:'****', traceStartIdx:26 },
+  { id:'demo-4', ligne:'4', position:'Terminus Dieuppeul',       lat:14.723283, lng:-17.459117, _born:_NOW - 1*60*1000, reporter:'****', traceStartIdx:0  },
 ];
 
 // ── Init ──────────────────────────────────────────────────
-
 export function initHome({ onSeeBus }) {
   initReader();
   _initMap();
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
-
-  // Lancer les démos après 1 frame (Leaflet doit être prêt)
   requestAnimationFrame(() => {
     _refreshDemoBuses();
     setInterval(_refreshDemoBuses, 30_000);
   });
 }
 
-// ── FIX-9 : refresh démos — minutes_ago + expiration ─────
-
+// ── FIX-9 : refresh démos ─────────────────────────────────
 function _refreshDemoBuses() {
-  const now  = Date.now();
+  const now   = Date.now();
   const buses = DEMO_BUSES
     .filter(b => (now - b._born) / 60_000 < DEMO_TTL_MIN)
     .map(b => ({
@@ -205,33 +192,22 @@ function _refreshDemoBuses() {
         ? `${_GTFS[b.ligne].terminus_a} ↔ ${_GTFS[b.ligne].terminus_b}`
         : `Ligne ${b.ligne}`,
     }));
-
   store.set('buses', buses);
-
-  // Si bus sélectionné vient d'expirer → déselectionner
-  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) {
-    _deselectBus();
-  }
+  if (_selectedBusId && !buses.find(b => b.id === _selectedBusId)) _deselectBus();
 }
 
-// ── Carte — FIX-4 + FIX-10 ───────────────────────────────
-
+// ── Carte ─────────────────────────────────────────────────
 function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
-    .setView([14.693, -17.452], 13); // centré Dakar centre
-
-  L.tileLayer(
-    'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    { maxZoom: 19, subdomains: 'abcd' }
-  ).addTo(_map);
+    .setView([14.693, -17.452], 13);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+    { maxZoom: 19, subdomains: 'abcd' }).addTo(_map);
 }
 
-// ── Sélection bus → tracé + arrêts + animation ────────────
-
+// ── Sélection bus ─────────────────────────────────────────
 function _selectBus(busId) {
   if (_selectedBusId === busId) { _deselectBus(); return; }
   _selectedBusId = busId;
-
   _stopAnim();
   _clearActiveLine();
 
@@ -241,21 +217,20 @@ function _selectBus(busId) {
 
   const color = data.color;
 
-  // Polyline tracé
   _activePolyline = L.polyline(data.trace, {
     color, weight: 4, opacity: 0.88, lineJoin: 'round', lineCap: 'round',
   }).addTo(_map);
 
-  // FIX-1 : arrêts discrets, décoratifs, non cliquables
+  // FIX-1 : arrêts discrets, non cliquables — le reader s'en charge
   data.arrets.forEach((stop, idx) => {
     const isT   = idx === 0 || idx === data.arrets.length - 1;
     const circle = L.circleMarker([stop.lat, stop.lon], {
       radius:      isT ? 4 : 2,
-      color:       isT ? color : 'rgba(255,255,255,0.25)',
+      color:       isT ? color : 'rgba(255,255,255,0.2)',
       weight:      1,
-      fillColor:   isT ? color : 'rgba(255,255,255,0.15)',
+      fillColor:   isT ? color : 'rgba(255,255,255,0.1)',
       fillOpacity: 1,
-      interactive: false, // pas cliquable sur mobile — reader s'en charge
+      interactive: false,
     }).addTo(_map);
     _activeStopMarkers.push(circle);
   });
@@ -279,21 +254,18 @@ function _clearActiveLine() {
   _activeStopMarkers = [];
 }
 
-// ── Animation FIX-5 ───────────────────────────────────────
-
+// ── Animation ─────────────────────────────────────────────
 const ANIM_SPEED = 0.00004;
 
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
-
   const state = {
-    busId: bus.id, ligne: bus.ligne, arrets: data.arrets,
+    ligne: bus.ligne, arrets: data.arrets,
     coords, idx: bus.traceStartIdx ?? 0, progress: 0,
     lastTs: null, rafId: null, stopped: false,
   };
   _animState = state;
-
   const mk = _busMarkers[bus.id];
 
   function tick(ts) {
@@ -301,29 +273,22 @@ function _startAnim(bus, data) {
     if (!state.lastTs) state.lastTs = ts;
     const dt = Math.min(ts - state.lastTs, 80);
     state.lastTs = ts;
-
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
     if (!a || !b) {
       state.idx = 0; state.progress = 0;
       state.rafId = requestAnimationFrame(tick); return;
     }
-
     const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
     state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.02;
-
     if (state.progress >= 1) {
       state.progress -= 1;
       state.idx = (state.idx + 1) % (coords.length - 1);
     }
-
     const lat = a[0] + (b[0]-a[0]) * state.progress;
     const lon = a[1] + (b[1]-a[1]) * state.progress;
     if (mk) mk.setLatLng([lat, lon]);
-
-    // FIX-6 : update reader
     updateReader(state.ligne, state.arrets, _nearestArretIdx(lat, lon, state.arrets));
-
     state.rafId = requestAnimationFrame(tick);
   }
   state.rafId = requestAnimationFrame(tick);
@@ -346,7 +311,6 @@ function _nearestArretIdx(lat, lon, arrets) {
 }
 
 // ── Markers bus ───────────────────────────────────────────
-
 function _updateMarkers(buses) {
   if (!_map) return;
   const ids = new Set(buses.map(b => String(b.id)));
@@ -354,39 +318,23 @@ function _updateMarkers(buses) {
     if (!ids.has(id)) { _map.removeLayer(_busMarkers[id]); delete _busMarkers[id]; }
   });
   buses.forEach(b => {
-    if (b.lat && b.lng && !_busMarkers[b.id]) {
+    if (b.lat && b.lng && !_busMarkers[b.id])
       _busMarkers[b.id] = _makeBusMarker(b);
-    }
   });
 }
 
-function _busAgeColor(minutes_ago) {
-  if (minutes_ago <= 5)  return '#00D67F';
-  if (minutes_ago <= 15) return '#FFD166';
-  return '#FF4757';
+function _busAgeColor(min) {
+  return min <= 5 ? '#00D67F' : min <= 15 ? '#FFD166' : '#FF4757';
 }
 
 function _makeBusMarker(bus) {
-  const markerColor = _busAgeColor(bus.minutes_ago);
-  const isSelected  = bus.id === _selectedBusId;
-  const size        = isSelected ? 40 : 34;
-
-  const icon = L.divIcon({
-    html: `<div style="
-      width:${size}px;height:${size}px;border-radius:50%;background:${markerColor};
-      border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
-      box-shadow:0 2px 12px rgba(0,0,0,0.5);
-      display:flex;align-items:center;justify-content:center;
-      font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
-      font-weight:700;color:#fff;">${bus.ligne}</div>`,
-    iconSize:   [size, size],
-    iconAnchor: [size/2, size/2],
-    className:  '',
-  });
-
-  const marker = L.marker([bus.lat, bus.lng], { icon, zIndexOffset: isSelected ? 1000 : 0 })
-    .addTo(_map);
-
+  const color      = _busAgeColor(bus.minutes_ago);
+  const isSelected = bus.id === _selectedBusId;
+  const size       = isSelected ? 40 : 34;
+  const marker     = L.marker([bus.lat, bus.lng], {
+    icon: _busIcon(bus.ligne, color, size, isSelected),
+    zIndexOffset: isSelected ? 1000 : 0,
+  }).addTo(_map);
   marker.on('click', (e) => {
     L.DomEvent.stopPropagation(e);
     _selectedBusId === bus.id ? _deselectBus() : _selectBus(bus.id);
@@ -394,32 +342,31 @@ function _makeBusMarker(bus) {
   return marker;
 }
 
+function _busIcon(ligne, color, size, isSelected) {
+  return L.divIcon({
+    html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
+      border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
+      box-shadow:0 2px 12px rgba(0,0,0,0.5);
+      display:flex;align-items:center;justify-content:center;
+      font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
+      font-weight:700;color:#fff;">${ligne}</div>`,
+    iconSize: [size, size], iconAnchor: [size/2, size/2], className: '',
+  });
+}
+
 function _refreshBusMarkers() {
   const buses = store.get('buses') || [];
   buses.forEach(b => {
     const mk = _busMarkers[b.id];
     if (!mk) return;
-    const isSelected  = b.id === _selectedBusId;
-    const markerColor = _busAgeColor(b.minutes_ago);
-    const size        = isSelected ? 40 : 34;
-    mk.setIcon(L.divIcon({
-      html: `<div style="
-        width:${size}px;height:${size}px;border-radius:50%;background:${markerColor};
-        border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
-        box-shadow:0 2px 12px rgba(0,0,0,0.5);
-        display:flex;align-items:center;justify-content:center;
-        font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
-        font-weight:700;color:#fff;">${b.ligne}</div>`,
-      iconSize:   [size, size],
-      iconAnchor: [size/2, size/2],
-      className:  '',
-    }));
+    const isSelected = b.id === _selectedBusId;
+    const size       = isSelected ? 40 : 34;
+    mk.setIcon(_busIcon(b.ligne, _busAgeColor(b.minutes_ago), size, isSelected));
     mk.setZIndexOffset(isSelected ? 1000 : 0);
   });
 }
 
 // ── Tabs ──────────────────────────────────────────────────
-
 function _initTabs() {
   document.querySelectorAll('.col-tab').forEach(btn => {
     btn.addEventListener('click', () => {
@@ -444,13 +391,13 @@ function _renderBuses(buses) {
     return;
   }
   el.innerHTML = buses.map((b, i) => {
-    const data        = _GTFS[b.ligne];
-    const markerColor = _busAgeColor(b.minutes_ago);
-    const label       = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
-    const isSel       = b.id === _selectedBusId;
+    const data  = _GTFS[b.ligne];
+    const color = _busAgeColor(b.minutes_ago);
+    const label = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
+    const isSel = b.id === _selectedBusId;
     return `<div class="bus-card anim-up${isSel?' bus-card--selected':''}" style="animation-delay:${i*.04}s;cursor:pointer" data-bus-id="${b.id}">
       <div class="bus-card-header">
-        <span class="bus-badge" style="background:${markerColor}">Bus ${b.ligne}</span>
+        <span class="bus-badge" style="background:${color}">Bus ${b.ligne}</span>
         <span class="bus-name">${label}</span>
         <span class="bus-age ${getAgeClass(b.minutes_ago)}">${formatAgeShort(b.minutes_ago)}</span>
       </div>

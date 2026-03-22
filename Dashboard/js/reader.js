@@ -1,6 +1,7 @@
 /**
- * js/reader.js — Xëtu V1.2
- * FIX V1.2 : scroll basé sur deltaTime (ms) — 22px/sec indépendant du framerate
+ * js/reader.js — Xëtu V1.2 FINAL
+ * FIX : scroll basé sur deltaTime réel (px/sec) — indépendant du framerate
+ * Le CSS du bandeau est injecté ici directement pour garantir son existence
  */
 
 let _el       = null;
@@ -10,16 +11,70 @@ let _scrollX  = 0;
 let _paused   = false;
 let _lastTs   = null;
 
-// ── Init ──────────────────────────────────────────────────
+const SCROLL_PX_PER_SEC = 25;   // px/seconde — lent, lisible
+const PAUSE_MS          = 4000; // pause à la fin avant reset
+
+// ── Init : injecte le CSS si absent + récupère les éléments ──
 
 export function initReader() {
-  _el = document.getElementById('bus-reader');
+  _injectCSS();
+  _el       = document.getElementById('bus-reader');
   _scrollEl = _el?.querySelector('.reader-scroll');
-  if (!_el) return;
+  if (!_el) { console.warn('[Reader] #bus-reader introuvable'); return; }
   hide();
 }
 
-// ── API publique ──────────────────────────────────────────
+// ── CSS injecté en JS — garantit que le style existe ─────────
+
+function _injectCSS() {
+  if (document.getElementById('reader-style')) return;
+  const style = document.createElement('style');
+  style.id    = 'reader-style';
+  style.textContent = `
+    #bus-reader {
+      position: relative;
+      width: 100%;
+      overflow: hidden;
+      background: var(--surface2, #1a2235);
+      border-bottom: 1px solid var(--border, rgba(255,255,255,0.07));
+      padding: 8px 14px;
+      flex-shrink: 0;
+      height: 36px;
+      display: flex;
+      align-items: center;
+      white-space: nowrap;
+    }
+    #bus-reader[hidden] { display: none !important; }
+    .reader-scroll {
+      display: inline-flex;
+      align-items: center;
+      gap: 0;
+      white-space: nowrap;
+      will-change: transform;
+      font-size: 12px;
+      color: var(--text-dim, #c4cde0);
+    }
+    .reader-badge {
+      border-radius: 4px;
+      padding: 2px 8px;
+      font-weight: 700;
+      font-size: 11px;
+      margin-right: 10px;
+      flex-shrink: 0;
+    }
+    .reader-current {
+      font-weight: 700;
+      text-decoration: underline;
+      font-size: 12px;
+    }
+    .reader-past    { opacity: 0.35; font-size: 12px; }
+    .reader-future  { opacity: 0.75; font-size: 12px; }
+    .reader-sep     { margin: 0 5px; opacity: 0.3; font-size: 11px; }
+  `;
+  document.head.appendChild(style);
+}
+
+// ── API publique ──────────────────────────────────────────────
 
 export function updateReader(ligne, arrets, idx) {
   if (!_el || !_scrollEl || !arrets?.length) return;
@@ -28,18 +83,14 @@ export function updateReader(ligne, arrets, idx) {
 
   const parts = arrets.map((a, i) => {
     const nom = a.nom || a.name || `Arrêt ${i + 1}`;
-    if (i === idx) {
-      return `<span class="reader-current" style="color:${color};font-weight:700;text-decoration:underline">${nom}</span>`;
-    }
-    if (i < idx) {
-      return `<span class="reader-past" style="opacity:0.4">${nom}</span>`;
-    }
-    return `<span class="reader-future">${nom}</span>`;
+    if (i === idx)  return `<span class="reader-current" style="color:${color}">${nom}</span>`;
+    if (i < idx)    return `<span class="reader-past">${nom}</span>`;
+    return              `<span class="reader-future">${nom}</span>`;
   });
 
   _scrollEl.innerHTML =
-    `<span class="reader-badge" style="background:${color};color:#fff;padding:2px 8px;border-radius:4px;font-weight:700;margin-right:8px">Bus ${ligne}</span>` +
-    parts.join('<span class="reader-sep" style="margin:0 4px;opacity:0.4">›</span>');
+    `<span class="reader-badge" style="background:${color};color:#fff">Bus ${ligne}</span>` +
+    parts.join('<span class="reader-sep">›</span>');
 
   show();
   _startScroll();
@@ -57,10 +108,7 @@ export function hide() {
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
 }
 
-// ── Scroll basé sur le temps (indépendant du framerate) ──
-
-const SCROLL_PX_PER_SEC = 22;  // 22px/seconde — lent et lisible
-const PAUSE_MS          = 3500;
+// ── Scroll basé sur le temps réel ────────────────────────────
 
 function _startScroll() {
   _stopScroll();
@@ -68,7 +116,14 @@ function _startScroll() {
   _paused  = false;
   _lastTs  = null;
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
-  _rafId = requestAnimationFrame(_tick);
+
+  // Attendre 1 frame que le DOM soit rendu avant de mesurer
+  requestAnimationFrame(() => {
+    requestAnimationFrame((ts) => {
+      _lastTs = ts;
+      _rafId  = requestAnimationFrame(_tick);
+    });
+  });
 }
 
 function _stopScroll() {
@@ -77,24 +132,24 @@ function _stopScroll() {
 }
 
 function _tick(ts) {
-  if (!_scrollEl) return;
-
+  if (!_scrollEl || !_el) return;
   if (_paused) { _lastTs = ts; _rafId = requestAnimationFrame(_tick); return; }
 
-  if (!_lastTs) _lastTs = ts;
-  const dt = Math.min(ts - _lastTs, 100);
-  _lastTs  = ts;
-
-  const containerW = _el.offsetWidth;
+  const dt         = Math.min(ts - (_lastTs || ts), 100); // cap 100ms
+  _lastTs          = ts;
+  const containerW = _el.getBoundingClientRect().width;
   const contentW   = _scrollEl.scrollWidth;
 
-  if (contentW <= containerW) { _stopScroll(); return; }
+  // Pas besoin de scroller si le contenu rentre
+  if (contentW <= containerW + 10) { _stopScroll(); return; }
 
   _scrollX += (SCROLL_PX_PER_SEC * dt) / 1000;
 
-  if (_scrollX > contentW - containerW + 40) {
-    _paused  = true;
-    _scrollX = contentW - containerW + 40;
+  const maxScroll = contentW - containerW;
+  if (_scrollX >= maxScroll) {
+    _scrollX = maxScroll;
+    _scrollEl.style.transform = `translateX(-${_scrollX}px)`;
+    _paused = true;
     setTimeout(() => {
       _scrollX = 0;
       if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
@@ -107,12 +162,11 @@ function _tick(ts) {
   _rafId = requestAnimationFrame(_tick);
 }
 
-// ── Couleur par hash ligne (FIX-8) ───────────────────────
+// ── Couleur par hash ──────────────────────────────────────────
 
 function _lineColor(ligne) {
   let hash = 0;
-  for (let i = 0; i < ligne.length; i++) {
-    hash = ligne.charCodeAt(i) + ((hash << 5) - hash);
-  }
+  for (let i = 0; i < String(ligne).length; i++)
+    hash = String(ligne).charCodeAt(i) + ((hash << 5) - hash);
   return `hsl(${Math.abs(hash) % 360}, 70%, 55%)`;
 }
