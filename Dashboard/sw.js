@@ -1,10 +1,9 @@
 /**
  * sw.js — Xëtu PWA Service Worker V5
- * CHG-SW : CACHE_VERSION xetu-v5 → force l'invalidation du cache sur tous les navigateurs.
- * Règle BUG-6 (cache stale) et par effet de bord BUG-2 (_NOW gelé).
+ * xetu-v7 : fix BUG-2 définitif — localStorage pour âge réel des bus démo
  */
 
-const CACHE_VERSION = 'xetu-v5';
+const CACHE_VERSION = 'xetu-v7';
 const CACHE_NAME    = CACHE_VERSION;
 
 const PRECACHE_URLS = [
