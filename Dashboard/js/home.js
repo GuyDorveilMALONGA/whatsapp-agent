@@ -355,14 +355,20 @@ function _updateMarkers(buses) {
   _refreshBusMarkers();
 }
 
+function _busAgeColor(minutes_ago) {
+  if (minutes_ago <= 5)  return '#00D67F';  // vert  — frais
+  if (minutes_ago <= 15) return '#FFD166';  // jaune — vieux
+  return '#FF4757';                         // rouge — périmé
+}
+
 function _makeBusMarker(bus) {
-  const color      = _lineColor(bus.ligne);
-  const isSelected = bus.id === _selectedBusId;
-  const size       = isSelected ? 40 : 34;
+  const markerColor = _busAgeColor(bus.minutes_ago);  // couleur temporelle
+  const isSelected  = bus.id === _selectedBusId;
+  const size        = isSelected ? 40 : 34;
 
   const icon = L.divIcon({
     html: `<div style="
-      width:${size}px;height:${size}px;border-radius:50%;background:${color};
+      width:${size}px;height:${size}px;border-radius:50%;background:${markerColor};
       border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
       box-shadow:0 2px 12px rgba(0,0,0,0.5);
       display:flex;align-items:center;justify-content:center;
@@ -374,7 +380,12 @@ function _makeBusMarker(bus) {
   });
 
   const marker = L.marker([bus.lat, bus.lng], { icon, zIndexOffset: isSelected ? 1000 : 0 })
-    .addTo(_map);
+    .addTo(_map)
+    .bindPopup(
+      `<b>Bus ${bus.ligne}</b><br>${bus.position}<br>` +
+      `<span style="color:${markerColor}">Il y a ${bus.minutes_ago} min</span>`,
+      { closeButton: false, maxWidth: 200 }
+    );
 
   marker.on('click', () => {
     _selectedBusId === bus.id ? _deselectBus() : _selectBus(bus.id);
@@ -416,13 +427,13 @@ function _renderBuses(buses) {
     return;
   }
   el.innerHTML = buses.map((b, i) => {
-    const data  = _GTFS[b.ligne];
-    const color = _lineColor(b.ligne);
-    const label = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
-    const isSel = b.id === _selectedBusId;
+    const data        = _GTFS[b.ligne];
+    const markerColor = _busAgeColor(b.minutes_ago);  // badge = couleur temporelle
+    const label       = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : b.name;
+    const isSel       = b.id === _selectedBusId;
     return `<div class="bus-card anim-up${isSel?' bus-card--selected':''}" style="animation-delay:${i*.04}s;cursor:pointer" data-bus-id="${b.id}">
       <div class="bus-card-header">
-        <span class="bus-badge" style="background:${color}">Bus ${b.ligne}</span>
+        <span class="bus-badge" style="background:${markerColor}">Bus ${b.ligne}</span>
         <span class="bus-name">${label}</span>
         <span class="bus-age ${getAgeClass(b.minutes_ago)}">${formatAgeShort(b.minutes_ago)}</span>
       </div>
