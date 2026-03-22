@@ -1,68 +1,48 @@
 /**
  * sw.js — Xëtu PWA Service Worker V5
- * xetu-v10 : position deterministe synchronisee : fix vitesse anim + reader reset auto + DEMO_MODE=false — localStorage pour âge réel des bus démo
+ * Fix carte noire : home.js V3.0 + app.js V2.3 + signal.js V3.1
+ *
+ * STRATÉGIE RÉSEAU FIRST (plus de précache agressif) :
+ * - Toujours essayer le réseau en premier
+ * - Cache = fallback hors-ligne uniquement
+ * - Plus jamais besoin d'incrémenter la version pour forcer un refresh
  */
 
-const CACHE_VERSION = 'xetu-v12';
-const CACHE_NAME    = CACHE_VERSION;
+const CACHE_NAME = 'xetu-v12';
 
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/css/variables.css',
-  '/css/base.css',
-  '/css/components.css',
-  '/css/map.css',
-  '/css/overlay-styles.css',
-  '/js/app.js',
-  '/js/home.js',
-  '/js/reader.js',
-  '/js/signal.js',
-  '/js/chat.js',
-  '/js/mylines.js',
-  '/js/api.js',
-  '/js/store.js',
-  '/js/utils.js',
-  '/js/ws.js',
-  '/js/push.js',
-  '/js/geoloc.js',
-  '/js/toast.js',
-  '/js/constants.js',
-];
+// Plus de PRECACHE_URLS — on ne précache plus rien au install.
+// Les fichiers sont cachés dynamiquement après chaque fetch réseau réussi.
+// Résultat : le navigateur voit toujours les nouveaux fichiers dès le premier chargement.
 
 self.addEventListener('install', (event) => {
-  self.skipWaiting();
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) =>
-      cache.addAll(PRECACHE_URLS).catch((err) => {
-        console.warn('[SW] Précache partiel:', err);
-      })
-    )
-  );
+  self.skipWaiting(); // Prend le contrôle immédiatement
 });
 
 self.addEventListener('activate', (event) => {
+  // Supprimer TOUS les anciens caches (xetu-v1 à xetu-v11)
   event.waitUntil(
-    caches.keys().then((keys) =>
-      Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      )
-    ).then(() => self.clients.claim())
+    caches.keys()
+      .then((keys) => Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))))
+      .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  if (url.hostname.includes('railway.app') || url.hostname.includes('supabase.co')) return;
+  // Ne pas intercepter : API Railway, Supabase, WebSocket, tuiles carto
+  if (url.hostname.includes('railway.app'))   return;
+  if (url.hostname.includes('supabase.co'))   return;
+  if (url.hostname.includes('cartocdn.com'))  return;
+  if (url.hostname.includes('stadiamaps.com')) return;
   if (event.request.url.startsWith('ws://') || event.request.url.startsWith('wss://')) return;
-  if (url.hostname.includes('cartocdn.com') || url.hostname.includes('stadiamaps.com')) return;
 
+  // Stratégie Network First : réseau → cache si hors-ligne
   event.respondWith(
     fetch(event.request)
       .then((response) => {
-        if (response.ok) {
+        // Mettre en cache uniquement les réponses valides GET
+        if (response.ok && event.request.method === 'GET') {
           const clone = response.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
         }

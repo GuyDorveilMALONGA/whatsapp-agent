@@ -10,7 +10,7 @@ import { REFRESH_SEC } from './constants.js';
 import { fetchBuses, fetchLeaderboard } from './api.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
 import { initHome }    from './home.js';
-import { initSignal, onScreenEnter as signalScreenEnter } from './signal.js';
+import { initSignal }  from './signal.js';
 import { initChat }    from './chat.js';
 import { initMylines } from './mylines.js';
 
@@ -32,8 +32,6 @@ export function goTo(screenId) {
     document.querySelector(`[data-screen="${screenId}"]`)?.classList.add('active');
   }
   document.getElementById(`screen-${screenId}`)?.classList.add('active');
-  // CHG-1 : notifier signal.js que son écran est actif → GPS auto
-  if (screenId === 'signal') signalScreenEnter();
 }
 
 _navBtns.forEach(btn => btn.addEventListener('click', () => goTo(btn.dataset.screen)));
@@ -206,8 +204,19 @@ document.addEventListener('DOMContentLoaded', async () => {
   window.addEventListener('online',  () => Toast.info('Connexion rétablie ✅'));
   window.addEventListener('offline', () => Toast.error('Hors ligne'));
 
-  if ('serviceWorker' in navigator) {
+  // SW désactivé en dev local — activé uniquement en prod.
+  // Plus besoin de vider le cache à chaque modif.
+  const _isProd = location.hostname !== 'localhost'
+               && location.hostname !== '127.0.0.1'
+               && location.protocol !== 'file:';
+
+  if ('serviceWorker' in navigator && _isProd) {
     navigator.serviceWorker.register('/sw.js').catch(e => console.warn('[SW]', e));
+  } else if ('serviceWorker' in navigator && !_isProd) {
+    // Désinscrire le SW existant pour repartir propre en dev
+    navigator.serviceWorker.getRegistrations()
+      .then(regs => regs.forEach(r => r.unregister()))
+      .catch(() => {});
   }
 
   if (new URLSearchParams(location.search).get('action') === 'report') goTo('signal');
