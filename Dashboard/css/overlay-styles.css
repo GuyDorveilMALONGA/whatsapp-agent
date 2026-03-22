@@ -3,6 +3,14 @@
    Tooltips arrêts + Reader bandeau arrêt courant
    ════════════════════════════════════════════════════════ */
 
+/* ── BUG-4 fix : neutralise les styles Leaflet par défaut sur divIcon ── */
+.xetu-bus-marker {
+  background:  none !important;
+  border:      none !important;
+  box-shadow:  none !important;
+  outline:     none !important;
+}
+
 /* ── Tooltip arrêt (FIX-2 : nom uniquement) ─────────────── */
 
 .stop-tip {
