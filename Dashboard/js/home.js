@@ -461,8 +461,11 @@ function _renderFilterBar(buses) {
       if (!bus) return;
 
       _activeFilter = ligne;
-      // Appel _selectBus exactement comme un tap sur le marker
       _selectBus(bus.id);
+      // Zoom fluide sur le bus sélectionné
+      if (_map && bus.lat && bus.lng) {
+        _map.flyTo([bus.lat, bus.lng], 15, { animate: true, duration: 0.8 });
+      }
       _renderFilterBar(busesCurrent);
       _renderBuses(busesCurrent);
     });

@@ -1,9 +1,7 @@
 /**
- * js/reader.js — Xëtu V2.0
- * BUG-1 fix : scroll qui s'arrête après la première pause
- *   - Pendant la pause : on ne re-planifie PAS le tick (économie CPU)
- *   - Après la pause : le setTimeout relance _startScroll() proprement
- *   - !important sur display:flex garantit que getBoundingClientRect donne une vraie valeur
+ * js/reader.js — Xëtu V2.1
+ * V2.1 : #bus-reader ancré en bas de #map-home (position absolute)
+ *        Ne déborde plus sur le bouton "Signaler un bus"
  */
 
 let _el         = null;
@@ -27,7 +25,7 @@ export function initReader() {
   hide();
 }
 
-// ── CSS — !important sur display et width pour forcer la mesure ──
+// ── CSS ───────────────────────────────────────────────────────
 
 function _injectCSS() {
   if (document.getElementById('reader-style')) return;
@@ -35,15 +33,21 @@ function _injectCSS() {
   style.id    = 'reader-style';
   style.textContent = `
     #bus-reader {
-      position: relative !important;
+      position: absolute !important;
+      bottom: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      z-index: 400 !important;
       display: flex !important;
       align-items: center !important;
       width: 100% !important;
       height: 36px !important;
       overflow: hidden !important;
       flex-shrink: 0 !important;
-      background: var(--surface2, #1a2235);
-      border-bottom: 1px solid var(--border, rgba(255,255,255,0.07));
+      background: rgba(10,15,30,0.82);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border-top: 1px solid var(--border, rgba(255,255,255,0.07));
       padding: 0 14px;
       box-sizing: border-box;
     }
@@ -111,20 +115,18 @@ export function hide() {
 // ── Scroll ────────────────────────────────────────────────────
 
 function _startScroll() {
-  _stopScroll();  // annule tout cycle précédent proprement
+  _stopScroll();
 
   _scrollX = 0;
   _paused  = false;
   _lastTs  = null;
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
 
-  // 2 frames d'attente : garantit que le DOM est peint et que
-  // getBoundingClientRect() / scrollWidth retournent des valeurs réelles.
   requestAnimationFrame(() => {
     requestAnimationFrame((ts) => {
       const containerW = _el ? _el.getBoundingClientRect().width : 0;
       const contentW   = _scrollEl ? _scrollEl.scrollWidth : 0;
-      if (contentW <= containerW + 10) return; // tout tient — pas de scroll
+      if (contentW <= containerW + 10) return;
       _lastTs = ts;
       _rafId  = requestAnimationFrame(_tick);
     });
@@ -141,11 +143,9 @@ function _stopScroll() {
 function _tick(ts) {
   if (!_scrollEl || !_el) return;
 
-  // cap 100ms pour éviter les sauts après tab switch ou mise en veille
   const dt     = Math.min(ts - (_lastTs || ts), 100);
   _lastTs      = ts;
 
-  // re-mesurer à chaque tick — résistant aux redimensionnements
   const containerW = _el.getBoundingClientRect().width;
   const contentW   = _scrollEl.scrollWidth;
 
@@ -160,21 +160,19 @@ function _tick(ts) {
   const maxScroll = contentW - containerW;
 
   if (_scrollX >= maxScroll) {
-    // Fin du défilement — afficher la fin, puis pause, puis relancer
     _scrollX = maxScroll;
     _scrollEl.style.transform = `translateX(-${_scrollX}px)`;
-    _rafId = null;  // stop le RAF — le setTimeout reprend le contrôle
+    _rafId = null;
     _pauseTimer = setTimeout(() => {
       _scrollX = 0;
       if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
       _pauseTimer = null;
-      // Relancer un cycle complet proprement (avec les 2 frames d'attente)
       requestAnimationFrame((ts2) => {
         _lastTs = ts2;
         _rafId  = requestAnimationFrame(_tick);
       });
     }, PAUSE_MS);
-    return;  // NE PAS re-planifier _tick ici — le setTimeout s'en charge
+    return;
   }
 
   _scrollEl.style.transform = `translateX(-${_scrollX}px)`;

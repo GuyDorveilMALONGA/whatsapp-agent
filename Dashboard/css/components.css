@@ -12,7 +12,7 @@
 /* ══ ACCUEIL ══════════════════════════════════════════════ */
 
 .see-bus-wrap {
-  padding: 14px 14px 10px;
+  padding: 8px 14px;
   background: var(--surface); border-bottom: 1px solid var(--border); flex-shrink: 0;
 }
 .see-bus-label {
@@ -51,14 +51,15 @@
 .home-filter-bar {
   display: flex;
   gap: 6px;
-  padding: 10px 14px 6px;
-  /* Retrait du padding horizontal de .home-cols-header (14px) pour
-     compenser et aligner les chips avec les tabs au-dessus */
+  padding: 8px 14px 6px;
   margin-left: -14px;
   margin-right: -14px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
   -webkit-overflow-scrolling: touch;
+  background: var(--surface2);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
 }
 .home-filter-bar[hidden] { display: none; }
 .home-filter-bar::-webkit-scrollbar { display: none; }
