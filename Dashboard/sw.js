@@ -3,7 +3,7 @@
  * Sprint démo L1/L4 : home.js V2.0 + reader.js ajouté
  */
 
-const CACHE_VERSION = 'xetu-v4';
+const CACHE_VERSION = 'xetu-v5';
 const CACHE_NAME    = CACHE_VERSION;
 
 const PRECACHE_URLS = [
