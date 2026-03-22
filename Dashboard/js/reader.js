@@ -1,80 +1,93 @@
 /**
- * js/reader.js — Xëtu V1.2 FINAL
- * FIX : scroll basé sur deltaTime réel (px/sec) — indépendant du framerate
- * Le CSS du bandeau est injecté ici directement pour garantir son existence
+ * js/reader.js — Xëtu V2.0
+ *
+ * CORRECTIONS V2.0 (BUG-1) :
+ *   - La mesure offsetWidth/scrollWidth se faisait AVANT que le DOM soit peint
+ *     → containerW = 0 → scroll instantané (vitesse folle).
+ *   - Fix : _startScroll() attend 2 frames RAF avant de mesurer, puis re-mesure
+ *     à chaque tick (le contenu peut changer dynamiquement).
+ *   - Fix CSS : le style est injecté avec `display:flex` et `width:100%` explicites,
+ *     plus de dépendance à un fichier CSS externe qui peut arriver après le JS.
+ *   - Vitesse : 28 px/seconde — lisible sur mobile 4 pouces.
+ *   - Pause de 3s en fin de défilement avant reset.
+ *   - hide() annule le RAF proprement pour éviter les fuites mémoire.
  */
 
-let _el       = null;
-let _scrollEl = null;
-let _rafId    = null;
-let _scrollX  = 0;
-let _paused   = false;
-let _lastTs   = null;
+let _el        = null;
+let _scrollEl  = null;
+let _rafId     = null;
+let _scrollX   = 0;
+let _paused    = false;
+let _lastTs    = null;
+let _pauseTimer = null;
 
-const SCROLL_PX_PER_SEC = 25;   // px/seconde — lent, lisible
-const PAUSE_MS          = 4000; // pause à la fin avant reset
+const SCROLL_PX_PER_SEC = 28;
+const PAUSE_MS          = 3000;
 
-// ── Init : injecte le CSS si absent + récupère les éléments ──
+// ── Init ──────────────────────────────────────────────────
 
 export function initReader() {
   _injectCSS();
   _el       = document.getElementById('bus-reader');
   _scrollEl = _el?.querySelector('.reader-scroll');
   if (!_el) { console.warn('[Reader] #bus-reader introuvable'); return; }
-  hide();
+  _el.hidden = true;
 }
 
-// ── CSS injecté en JS — garantit que le style existe ─────────
+// ── CSS injecté en JS — priorité maximale ─────────────────
+// On utilise !important sur les propriétés critiques pour mesure.
 
 function _injectCSS() {
   if (document.getElementById('reader-style')) return;
   const style = document.createElement('style');
-  style.id    = 'reader-style';
+  style.id = 'reader-style';
   style.textContent = `
     #bus-reader {
-      position: relative;
-      width: 100%;
-      overflow: hidden;
+      position: relative !important;
+      display: flex !important;
+      align-items: center !important;
+      width: 100% !important;
+      height: 36px !important;
+      overflow: hidden !important;
+      flex-shrink: 0 !important;
       background: var(--surface2, #1a2235);
       border-bottom: 1px solid var(--border, rgba(255,255,255,0.07));
-      padding: 8px 14px;
-      flex-shrink: 0;
-      height: 36px;
-      display: flex;
-      align-items: center;
-      white-space: nowrap;
+      padding: 0 14px;
+      box-sizing: border-box;
     }
     #bus-reader[hidden] { display: none !important; }
+
     .reader-scroll {
-      display: inline-flex;
+      display: inline-flex !important;
       align-items: center;
       gap: 0;
-      white-space: nowrap;
+      white-space: nowrap !important;
       will-change: transform;
       font-size: 12px;
       color: var(--text-dim, #c4cde0);
+      /* NE PAS mettre width:100% ici — on veut scrollWidth > containerW */
     }
+
     .reader-badge {
+      display: inline-flex;
+      align-items: center;
       border-radius: 4px;
       padding: 2px 8px;
       font-weight: 700;
       font-size: 11px;
+      color: #fff;
       margin-right: 10px;
       flex-shrink: 0;
     }
-    .reader-current {
-      font-weight: 700;
-      text-decoration: underline;
-      font-size: 12px;
-    }
-    .reader-past    { opacity: 0.35; font-size: 12px; }
-    .reader-future  { opacity: 0.75; font-size: 12px; }
-    .reader-sep     { margin: 0 5px; opacity: 0.3; font-size: 11px; }
+    .reader-sep     { margin: 0 5px; opacity: 0.3; font-size: 11px; flex-shrink: 0; }
+    .reader-past    { opacity: 0.35; font-size: 12px; flex-shrink: 0; }
+    .reader-current { font-weight: 700; text-decoration: underline; font-size: 12px; flex-shrink: 0; }
+    .reader-future  { opacity: 0.75; font-size: 12px; flex-shrink: 0; }
   `;
   document.head.appendChild(style);
 }
 
-// ── API publique ──────────────────────────────────────────────
+// ── API publique ──────────────────────────────────────────
 
 export function updateReader(ligne, arrets, idx) {
   if (!_el || !_scrollEl || !arrets?.length) return;
@@ -83,13 +96,14 @@ export function updateReader(ligne, arrets, idx) {
 
   const parts = arrets.map((a, i) => {
     const nom = a.nom || a.name || `Arrêt ${i + 1}`;
-    if (i === idx)  return `<span class="reader-current" style="color:${color}">${nom}</span>`;
-    if (i < idx)    return `<span class="reader-past">${nom}</span>`;
-    return              `<span class="reader-future">${nom}</span>`;
+    const safe = _esc(nom);
+    if (i === idx)  return `<span class="reader-current" style="color:${color}">${safe}</span>`;
+    if (i < idx)    return `<span class="reader-past">${safe}</span>`;
+    return              `<span class="reader-future">${safe}</span>`;
   });
 
   _scrollEl.innerHTML =
-    `<span class="reader-badge" style="background:${color};color:#fff">Bus ${ligne}</span>` +
+    `<span class="reader-badge" style="background:${color}">Bus ${_esc(String(ligne))}</span>` +
     parts.join('<span class="reader-sep">›</span>');
 
   show();
@@ -103,12 +117,9 @@ export function show() {
 export function hide() {
   if (_el) _el.hidden = true;
   _stopScroll();
-  _scrollX = 0;
-  _lastTs  = null;
-  if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
 }
 
-// ── Scroll basé sur le temps réel ────────────────────────────
+// ── Scroll ────────────────────────────────────────────────
 
 function _startScroll() {
   _stopScroll();
@@ -117,56 +128,91 @@ function _startScroll() {
   _lastTs  = null;
   if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
 
-  // Attendre 1 frame que le DOM soit rendu avant de mesurer
+  // CHG-1 : attendre 2 frames pour que le navigateur ait calculé les dimensions.
+  // Sans ça, scrollWidth = 0 au moment de la mesure.
   requestAnimationFrame(() => {
-    requestAnimationFrame((ts) => {
-      _lastTs = ts;
-      _rafId  = requestAnimationFrame(_tick);
+    requestAnimationFrame(() => {
+      // Vérifier qu'il y a vraiment quelque chose à scroller
+      const containerW = _el ? _el.getBoundingClientRect().width : 0;
+      const contentW   = _scrollEl ? _scrollEl.scrollWidth : 0;
+      if (contentW <= containerW + 10) {
+        // Tout tient dans le bandeau — pas de scroll nécessaire
+        return;
+      }
+      _rafId = requestAnimationFrame(_tick);
     });
   });
 }
 
 function _stopScroll() {
-  if (_rafId) cancelAnimationFrame(_rafId);
-  _rafId = null;
+  if (_rafId) { cancelAnimationFrame(_rafId); _rafId = null; }
+  if (_pauseTimer) { clearTimeout(_pauseTimer); _pauseTimer = null; }
+  _paused = false;
+  _lastTs = null;
 }
 
 function _tick(ts) {
-  if (!_scrollEl || !_el) return;
-  if (_paused) { _lastTs = ts; _rafId = requestAnimationFrame(_tick); return; }
+  if (!_scrollEl || !_el || _paused) {
+    // Pendant la pause on re-planifie quand même pour reprendre
+    if (_paused) _rafId = requestAnimationFrame(_tick);
+    return;
+  }
 
-  const dt         = Math.min(ts - (_lastTs || ts), 100); // cap 100ms
-  _lastTs          = ts;
+  // CHG-2 : cap à 100ms pour éviter les sauts après tab switch / mise en veille
+  const dt = _lastTs ? Math.min(ts - _lastTs, 100) : 16;
+  _lastTs  = ts;
+
+  // CHG-3 : re-mesurer à chaque tick (résistant aux redimensionnements)
   const containerW = _el.getBoundingClientRect().width;
   const contentW   = _scrollEl.scrollWidth;
 
-  // Pas besoin de scroller si le contenu rentre
-  if (contentW <= containerW + 10) { _stopScroll(); return; }
+  if (contentW <= containerW + 10) {
+    // Plus rien à scroller (ex: contenu changé entre deux ticks)
+    _stopScroll();
+    _scrollX = 0;
+    _scrollEl.style.transform = 'translateX(0)';
+    return;
+  }
 
   _scrollX += (SCROLL_PX_PER_SEC * dt) / 1000;
-
   const maxScroll = contentW - containerW;
+
   if (_scrollX >= maxScroll) {
     _scrollX = maxScroll;
     _scrollEl.style.transform = `translateX(-${_scrollX}px)`;
     _paused = true;
-    setTimeout(() => {
+
+    // Pause → reset → reprise
+    _pauseTimer = setTimeout(() => {
       _scrollX = 0;
+      _paused  = false;
+      _lastTs  = null;
       if (_scrollEl) _scrollEl.style.transform = 'translateX(0)';
-      _paused = false;
+      // Laisser un frame pour que le reset soit peint avant de reprendre
+      requestAnimationFrame(() => {
+        _rafId = requestAnimationFrame(_tick);
+      });
     }, PAUSE_MS);
-  } else {
-    _scrollEl.style.transform = `translateX(-${_scrollX}px)`;
+
+    return; // on ne re-planifie pas — le setTimeout s'en charge
   }
 
+  _scrollEl.style.transform = `translateX(-${_scrollX}px)`;
   _rafId = requestAnimationFrame(_tick);
 }
 
-// ── Couleur par hash ──────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────
 
 function _lineColor(ligne) {
   let hash = 0;
   for (let i = 0; i < String(ligne).length; i++)
     hash = String(ligne).charCodeAt(i) + ((hash << 5) - hash);
   return `hsl(${Math.abs(hash) % 360}, 70%, 55%)`;
+}
+
+function _esc(str) {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
