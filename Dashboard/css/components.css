@@ -1,5 +1,9 @@
 /* ════════════════════════════════════════════════════════
-   css/components.css — V2.4
+   css/components.css — V2.5
+   AJOUTS V2.5 :
+   - BUG-4 fix : .xetu-bus-marker neutralise les styles Leaflet par défaut
+   NOTE : #bus-reader est géré ENTIÈREMENT par reader.js (_injectCSS).
+          Ne pas ajouter de styles pour #bus-reader ici — conflit garanti.
    ════════════════════════════════════════════════════════ */
 
 /* ══ ACCUEIL ══════════════════════════════════════════════ */
@@ -66,6 +70,15 @@
 }
 .empty-icon  { font-size: 28px; }
 .empty-text  { font-size: 12px; text-align: center; }
+
+/* ══ BUG-4 FIX V2.5 : marker Leaflet sans styles parasites ══ */
+/* Leaflet ajoute background/border blanc par défaut sur les divIcon.
+   className:'xetu-bus-marker' dans home.js + cette règle = cercle pur. */
+.xetu-bus-marker {
+  background: none !important;
+  border:     none !important;
+  box-shadow: none !important;
+}
 
 /* ══ SIGNALEMENT ══════════════════════════════════════════ */
 

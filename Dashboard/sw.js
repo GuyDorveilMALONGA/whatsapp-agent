@@ -8,7 +8,7 @@
  * - Plus jamais besoin d'incrémenter la version pour forcer un refresh
  */
 
-const CACHE_NAME = 'xetu-v13';
+const CACHE_NAME = 'xetu-v14';
 
 // ── Dev guard : se désinscrire immédiatement en localhost ──
 // Permet de tester sans SW qui intercepte les fichiers modifiés.

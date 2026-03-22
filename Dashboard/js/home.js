@@ -1,5 +1,5 @@
 /**
- * js/home.js — V2.2
+ * js/home.js — V2.3
  * FIX-1  Points d'arrêts discrets, décoratifs, non cliquables
  * FIX-2  Tooltips = stop.nom uniquement
  * FIX-4  Carte vide au démarrage, tracé à la demande
@@ -13,6 +13,13 @@
  *   - Tuiles OSM standard (fonctionne en local, pas de CORS)
  *   - DEMO_BUSES supprimé — les bus viennent uniquement de l'API
  *   - Animation vitesse corrigée : _ANIM_SPEED réduit + dt cappé à 50ms
+ * FIX V2.3 :
+ *   - CHG-1 : Vitesse animation en m/s réels via Haversine (7 m/s ≈ 25 km/h)
+ *             Remplace ANIM_SPEED en degrés non normalisé → plus de survol des arrêts serrés
+ *   - CHG-2 : Throttle updateReader — appelé uniquement quand l'index d'arrêt change
+ *             Évite le reflow DOM à 60fps qui empêchait le reader d'être peint
+ *   - CHG-3 : Affichage immédiat de l'arrêt de départ dès _startAnim (lastArretIdx init)
+ *   - BUG-4 : className 'xetu-bus-marker' sur divIcon (à coupler avec CSS)
  */
 
 import * as store  from './store.js';
@@ -169,14 +176,12 @@ export function initHome({ onSeeBus }) {
   _initTabs();
   _initSeeBus(onSeeBus);
   _subscribeStore();
-  // Pas de DEMO_BUSES — les bus viennent uniquement du store (API)
 }
 
 // ── Carte ─────────────────────────────────────────────────
 function _initMap() {
   _map = L.map('map-home', { zoomControl: false, attributionControl: false })
     .setView([14.693, -17.452], 14);
-  // OSM standard — fonctionne toujours en local (pas de CORS)
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     maxZoom: 19,
     subdomains: 'abc',
@@ -237,8 +242,19 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-// FIX V2.2 : vitesse réduite (0.00002 au lieu de 0.00004) + dt cappé 50ms
-const ANIM_SPEED = 0.00002;
+// CHG-1 V2.3 : vitesse en m/s réels via Haversine — indépendant de la longueur des segments
+// 7 m/s ≈ 25 km/h (bus Dakar en circulation)
+const _ANIM_SPEED_MS = 7;
+
+// Haversine local — retourne la distance en mètres entre deux points [lat, lon]
+function _haversineM(a, b) {
+  const R = 6371000, p = Math.PI / 180;
+  const dLat = (b[0] - a[0]) * p;
+  const dLon = (b[1] - a[1]) * p;
+  const x = Math.sin(dLat / 2) ** 2 +
+            Math.cos(a[0] * p) * Math.cos(b[0] * p) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(x));
+}
 
 function _startAnim(bus, data) {
   const coords = data.trace;
@@ -248,9 +264,10 @@ function _startAnim(bus, data) {
   let startIdx = 0;
   if (bus.position) {
     const posLower = bus.position.toLowerCase();
-    const arretIdx = data.arrets.findIndex(a => a.nom.toLowerCase().includes(posLower) || posLower.includes(a.nom.toLowerCase()));
+    const arretIdx = data.arrets.findIndex(a =>
+      a.nom.toLowerCase().includes(posLower) || posLower.includes(a.nom.toLowerCase())
+    );
     if (arretIdx > 0) {
-      // Trouver le point du tracé le plus proche de cet arrêt
       const arret = data.arrets[arretIdx];
       let bestDist = Infinity;
       coords.forEach(([lat, lon], i) => {
@@ -260,10 +277,17 @@ function _startAnim(bus, data) {
     }
   }
 
+  // CHG-2 : lastArretIdx = -1 force l'affichage immédiat de l'arrêt de départ
   const state = {
-    ligne: bus.ligne, arrets: data.arrets,
-    coords, idx: startIdx, progress: 0,
-    lastTs: null, rafId: null, stopped: false,
+    ligne:        bus.ligne,
+    arrets:       data.arrets,
+    coords,
+    idx:          startIdx,
+    progress:     0,
+    lastTs:       null,
+    rafId:        null,
+    stopped:      false,
+    lastArretIdx: -1,
   };
   _animState = state;
   const mk = _busMarkers[bus.id];
@@ -271,25 +295,41 @@ function _startAnim(bus, data) {
   function tick(ts) {
     if (state.stopped) return;
     if (!state.lastTs) state.lastTs = ts;
-    // FIX V2.2 : cap dt à 50ms pour éviter les sauts après mise en veille/tab switch
+    // dt cappé à 50ms pour éviter les sauts après mise en veille / tab switch
     const dt = Math.min(ts - state.lastTs, 50);
     state.lastTs = ts;
+
     const a = coords[state.idx];
     const b = coords[state.idx + 1];
     if (!a || !b) {
       state.idx = 0; state.progress = 0;
       state.rafId = requestAnimationFrame(tick); return;
     }
-    const segLen = Math.sqrt((b[0]-a[0])**2 + (b[1]-a[1])**2);
-    state.progress += segLen > 0 ? (ANIM_SPEED * dt) / segLen : 0.005;
+
+    // CHG-1 : longueur du segment en mètres réels (Haversine)
+    // step = fraction du segment à parcourir en dt ms à _ANIM_SPEED_MS m/s
+    // dt en ms → /1000 = secondes → * _ANIM_SPEED_MS = mètres → / segLenM = fraction
+    const segLenM = _haversineM(a, b);
+    const step    = segLenM > 1 ? (_ANIM_SPEED_MS * dt) / (segLenM * 1000) : 0.001;
+
+    state.progress += step;
     if (state.progress >= 1) {
       state.progress -= 1;
       state.idx = (state.idx + 1) % (coords.length - 1);
     }
-    const lat = a[0] + (b[0]-a[0]) * state.progress;
-    const lon = a[1] + (b[1]-a[1]) * state.progress;
+
+    const lat = a[0] + (b[0] - a[0]) * state.progress;
+    const lon = a[1] + (b[1] - a[1]) * state.progress;
     if (mk) mk.setLatLng([lat, lon]);
-    updateReader(state.ligne, state.arrets, _nearestArretIdx(lat, lon, state.arrets));
+
+    // CHG-2 : reconstruire le reader UNIQUEMENT si l'arrêt le plus proche a changé
+    // → évite 60 reflows/sec qui empêchaient le reader d'être peint par le navigateur
+    const nearestIdx = _nearestArretIdx(lat, lon, state.arrets);
+    if (nearestIdx !== state.lastArretIdx) {
+      state.lastArretIdx = nearestIdx;
+      updateReader(state.ligne, state.arrets, nearestIdx);
+    }
+
     state.rafId = requestAnimationFrame(tick);
   }
   state.rafId = requestAnimationFrame(tick);
@@ -305,7 +345,7 @@ function _stopAnim() {
 function _nearestArretIdx(lat, lon, arrets) {
   let best = 0, bestD = Infinity;
   arrets.forEach((a, i) => {
-    const d = (a.lat-lat)**2 + (a.lon-lon)**2;
+    const d = (a.lat - lat) ** 2 + (a.lon - lon) ** 2;
     if (d < bestD) { bestD = d; best = i; }
   });
   return best;
@@ -346,12 +386,14 @@ function _makeBusMarker(bus) {
 function _busIcon(ligne, color, size, isSelected) {
   return L.divIcon({
     html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};
-      border:3px solid rgba(255,255,255,${isSelected?'0.95':'0.7'});
+      border:3px solid rgba(255,255,255,${isSelected ? '0.95' : '0.7'});
       box-shadow:0 2px 12px rgba(0,0,0,0.5);
       display:flex;align-items:center;justify-content:center;
-      font-family:Inter,sans-serif;font-size:${isSelected?'13':'11'}px;
+      font-family:Inter,sans-serif;font-size:${isSelected ? '13' : '11'}px;
       font-weight:700;color:#fff;">${ligne}</div>`,
-    iconSize: [size, size], iconAnchor: [size/2, size/2], className: '',
+    iconSize:   [size, size],
+    iconAnchor: [size / 2, size / 2],
+    className:  'xetu-bus-marker',  // BUG-4 fix : neutralise les styles Leaflet par défaut
   });
 }
 
@@ -396,7 +438,7 @@ function _renderBuses(buses) {
     const color = _busAgeColor(b.minutes_ago);
     const label = data ? `${data.terminus_a} ↔ ${data.terminus_b}` : (b.name || `Ligne ${b.ligne}`);
     const isSel = b.id === _selectedBusId;
-    return `<div class="bus-card anim-up${isSel?' bus-card--selected':''}" style="animation-delay:${i*.04}s;cursor:pointer" data-bus-id="${b.id}">
+    return `<div class="bus-card anim-up${isSel ? ' bus-card--selected' : ''}" style="animation-delay:${i * .04}s;cursor:pointer" data-bus-id="${b.id}">
       <div class="bus-card-header">
         <span class="bus-badge" style="background:${color}">Bus ${b.ligne}</span>
         <span class="bus-name">${label}</span>
@@ -419,17 +461,16 @@ function _renderTop(lb) {
     el.innerHTML = `<div class="empty-state"><div class="empty-icon">🏆</div><div class="empty-text">Pas encore de données.</div></div>`;
     return;
   }
-  el.innerHTML = lb.slice(0,10).map((u,i) => `
-    <div class="lb-card anim-up" style="animation-delay:${i*.04}s">
+  el.innerHTML = lb.slice(0, 10).map((u, i) => `
+    <div class="lb-card anim-up" style="animation-delay:${i * .04}s">
       <span class="lb-rank ${getRankClass(u.rank)}">${getRankSymbol(u.rank)}</span>
-      <span class="lb-avatar">${AVATARS[i%AVATARS.length]}</span>
-      <div class="lb-info"><div class="lb-name">${u.name||'Anonyme'}</div><div class="lb-badge">${u.badge||'Contributeur'}</div></div>
-      <span class="lb-count">${u.count||0}</span>
+      <span class="lb-avatar">${AVATARS[i % AVATARS.length]}</span>
+      <div class="lb-info"><div class="lb-name">${u.name || 'Anonyme'}</div><div class="lb-badge">${u.badge || 'Contributeur'}</div></div>
+      <span class="lb-count">${u.count || 0}</span>
     </div>`).join('');
 }
 
 function _initSeeBus(onSeeBus) {
-  // FIX V2.3 : pas de { capture: true } — ne jamais intercepter le clic avant goTo()
   document.getElementById('btn-see-bus')?.addEventListener('click', onSeeBus);
 }
 
