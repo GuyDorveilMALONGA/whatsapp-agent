@@ -1,11 +1,11 @@
 """
-db/queries.py — V5.3
+db/queries.py — V5.4
 Règle absolue : SEUL fichier qui touche Supabase.
 
-MIGRATIONS V5.3 depuis V5.2 :
-  - NOUVEAU : is_recent_gps_signalement(phone, window_seconds) — anti-spam GPS (30s)
-  - NOUVEAU : save_signalement_gps(ligne, arret, phone, ttl_minutes) — TTL paramétrable
-    Ces deux fonctions sont utilisées exclusivement par api/tracking.py.
+MIGRATIONS V5.4 depuis V5.3 :
+  - save_signalement() accepte lat/lon optionnels
+    Envoyés par api/report.py V1.1 quand source="web_geoloc"
+    Stockés dans la table si les colonnes existent, ignorés sinon.
 """
 from datetime import datetime, timedelta, timezone, date
 import logging
@@ -88,14 +88,6 @@ def get_recent_messages(conversation_id: str, limit: int = 10) -> list[dict]:
 
 
 def count_messages(conversation_id: str) -> int:
-    """
-    NOUVEAU V5.1 — Compte le nombre de messages d'une conversation.
-    Utilise count="exact" côté Supabase pour éviter de rapatrier les lignes.
-    Utilisé par main.py V8.2 pour détecter la première visite :
-        if queries.count_messages(conv_id) == 0:
-            await send_fn(phone, WELCOME_MESSAGE)
-    Fail safe : retourne 1 en cas d'erreur (évite d'envoyer le welcome en boucle).
-    """
     db = get_client()
     try:
         res = (db.table("messages")
@@ -105,16 +97,12 @@ def count_messages(conversation_id: str) -> int:
         return res.count or 0
     except Exception as e:
         logger.error(f"[count_messages] conv_id={conversation_id} — erreur: {e}")
-        return 1  # fail safe : on suppose qu'il y a déjà des messages
+        return 1
 
 
 # ── Signalements ──────────────────────────────────────────
 
 def is_signalement_doublon(ligne: str, arret: str, phone: str) -> bool:
-    """
-    Retourne True si doublon détecté dans la fenêtre.
-    Fail open si Supabase KO.
-    """
     db    = get_client()
     now   = datetime.now(timezone.utc)
     since = (now - timedelta(seconds=DEDUP_WINDOW_SECONDS)).isoformat()
@@ -133,13 +121,12 @@ def is_signalement_doublon(ligne: str, arret: str, phone: str) -> bool:
         return False
 
 
-def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
+def save_signalement(ligne: str, arret: str, phone: str,
+                     lat: float | None = None,
+                     lon: float | None = None) -> dict | None:
     """
-    FIX D1 : Anti-doublon via check explicite + insert.
-    La race condition TOCTOU est atténuée par la fenêtre de 2 min.
-    Pour une protection absolue, ajouter un UNIQUE index côté Supabase :
-      CREATE UNIQUE INDEX idx_signalement_dedup
-      ON signalements (ligne, position, phone, (timestamp::date));
+    V5.4 : accepte lat/lon optionnels envoyés par api/report.py
+    quand source="web_geoloc". Stockés si les colonnes existent en DB.
     """
     if is_signalement_doublon(ligne, arret, phone):
         logger.info(f"[Dedup] Doublon ignoré — {phone[-4:]} ligne={ligne} arret={arret}")
@@ -148,15 +135,32 @@ def save_signalement(ligne: str, arret: str, phone: str) -> dict | None:
 
     db = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=SIGNALEMENT_TTL_MINUTES)
-    res = db.table("signalements").insert({
+
+    row = {
         "ligne":      ligne,
         "position":   arret,
         "phone":      phone,
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp":  datetime.now(timezone.utc).isoformat(),
         "expires_at": expires_at.isoformat(),
         "valide":     True,
-    }).execute()
-    return res.data[0]
+    }
+    if lat is not None:
+        row["lat"] = lat
+    if lon is not None:
+        row["lon"] = lon
+
+    try:
+        res = db.table("signalements").insert(row).execute()
+        return res.data[0]
+    except Exception as e:
+        # Si lat/lon causent une erreur (colonnes absentes), retry sans
+        if lat is not None or lon is not None:
+            logger.warning(f"[save_signalement] Retry sans lat/lon: {e}")
+            row.pop("lat", None)
+            row.pop("lon", None)
+            res = db.table("signalements").insert(row).execute()
+            return res.data[0]
+        raise
 
 
 def penalise_spam(phone: str):
@@ -268,19 +272,6 @@ def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bo
 # ── Signalements GPS (api/tracking.py) ────────────────────
 
 def is_recent_gps_signalement(phone: str, window_seconds: int = 30) -> bool:
-    """
-    Anti-spam GPS : True si ce phone a déjà signalé dans la fenêtre.
-
-    Fenêtre volontairement distincte de DEDUP_WINDOW_SECONDS (120s) :
-    ici 30s par défaut car les signalements GPS peuvent arriver en rafale
-    si l'usager bouge (ex: partage de position en continu).
-
-    Vérifie sur TOUS les signalements du phone (pas par ligne/arrêt)
-    car le GPS peut sauter d'un arrêt à l'autre très vite.
-
-    Fail open (retourne False) si Supabase KO — on préfère accepter
-    une entrée doublon plutôt que bloquer l'usager.
-    """
     db    = get_client()
     now   = datetime.now(timezone.utc)
     since = (now - timedelta(seconds=window_seconds)).isoformat()
@@ -294,23 +285,11 @@ def is_recent_gps_signalement(phone: str, window_seconds: int = 30) -> bool:
         return bool(res.data)
     except Exception as e:
         logger.error(f"[gps_antispam] Erreur check: {e}")
-        return False  # fail open
+        return False
 
 
 def save_signalement_gps(ligne: str, arret: str, phone: str,
                           ttl_minutes: int = 10) -> dict | None:
-    """
-    Variante GPS de save_signalement() avec TTL paramétrable (défaut 10min).
-
-    Différences vs save_signalement() :
-    - TTL paramétrable (10min au lieu de 20min)
-    - Pas de dédup sur (ligne, arret) — l'anti-spam est géré en amont
-      par is_recent_gps_signalement() dans tracking.py (fenêtre 30s).
-    - Pas de penalise_spam() — c'est du GPS automatique, pas un doublon
-      malveillant intentionnel.
-    - qualite="gps" pour distinguer des signalements texte dans les stats
-      et get_fiabilite_ligne().
-    """
     db         = get_client()
     expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
     try:
@@ -321,7 +300,7 @@ def save_signalement_gps(ligne: str, arret: str, phone: str,
             "timestamp":  datetime.now(timezone.utc).isoformat(),
             "expires_at": expires_at.isoformat(),
             "valide":     True,
-            "qualite":    "gps",   # tag pour distinguer des signalements texte
+            "qualite":    "gps",
         }).execute()
         logger.info(
             f"[gps] Signalement enregistré — {phone[-4:]} ligne={ligne} "
@@ -380,10 +359,6 @@ def purge_signalements_expires():
 def get_derniers_signalements_par_phone(
     phone: str, ligne: str, limit: int = 1
 ) -> list[dict]:
-    """
-    RED TEAM : Retourne les derniers signalements d'un usager sur une ligne.
-    Utilisé par anti_fraud.check_distance_coherence().
-    """
     db = get_client()
     try:
         res = (db.table("signalements")
@@ -400,10 +375,6 @@ def get_derniers_signalements_par_phone(
 
 
 def get_signalements_recents_par_phone(phone: str, since_iso: str) -> list[dict]:
-    """
-    RED TEAM : Retourne tous les signalements d'un usager depuis un timestamp.
-    Utilisé par anti_fraud.is_spam_pattern().
-    """
     db = get_client()
     try:
         res = (db.table("signalements")
@@ -434,7 +405,6 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
 # ── Abonnements ───────────────────────────────────────────
 
 def get_abonnes(ligne: str) -> list[dict]:
-    """FIX D4 : Paginé — max 500 résultats par sécurité."""
     db  = get_client()
     res = (db.table("abonnements")
              .select("phone, arret, heure_alerte")
@@ -472,7 +442,6 @@ def delete_abonnement(phone: str, ligne: str):
 
 
 def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
-    """Ancienne version — gardée pour compatibilité."""
     db          = get_client()
     heure_cible = (datetime.now(timezone.utc) + timedelta(minutes=avant_minutes)).strftime("%H:%M")
     res         = (db.table("abonnements")
@@ -484,10 +453,6 @@ def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
 
 
 def get_abonnements_proactifs_heure(heure: str) -> list[dict]:
-    """
-    FIX H2 : Prend une heure exacte en paramètre.
-    Appelé par heartbeat avec chaque minute de la fenêtre.
-    """
     db  = get_client()
     res = (db.table("abonnements")
              .select("*")
@@ -497,7 +462,7 @@ def get_abonnements_proactifs_heure(heure: str) -> list[dict]:
     return res.data or []
 
 
-# ── Tickets (escalade) ────────────────────────────────────
+# ── Tickets ───────────────────────────────────────────────
 
 def create_ticket(phone: str, motif: str) -> dict:
     db  = get_client()
@@ -526,7 +491,7 @@ def ligne_existe(numero: str) -> bool:
 
 # ── Sessions ──────────────────────────────────────────────
 
-SESSION_CONTEXT_TTL_SECONDS = 1800  # 30 min
+SESSION_CONTEXT_TTL_SECONDS = 1800
 
 
 def get_session(phone: str) -> dict | None:
@@ -579,7 +544,7 @@ def get_network_memory() -> list[dict]:
     return res.data or []
 
 
-# ── Horaires théoriques ───────────────────────────────────
+# ── Horaires ─────────────────────────────────────────────
 
 def save_schedules_batch(schedules: list[dict]):
     db = get_client()
@@ -617,13 +582,9 @@ def get_first_departure(ligne: str) -> str | None:
     return None
 
 
-# ── API Leaderboard ───────────────────────────────────────
+# ── Leaderboard ───────────────────────────────────────────
 
 def get_leaderboard(limit: int = 10) -> list[dict]:
-    """
-    Top signaleurs du mois.
-    ⚠️ TODO : migrer vers RPC Supabase (GROUP BY côté DB).
-    """
     db      = get_client()
     un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
     res     = (db.table("messages")
@@ -631,7 +592,7 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
                  .eq("intent", "signalement")
                  .eq("role", "user")
                  .gte("created_at", un_mois)
-                 .limit(5000)  # FIX D2 : cap pour éviter le timeout
+                 .limit(5000)
                  .execute())
 
     compteur: dict[str, dict] = {}
@@ -642,7 +603,7 @@ def get_leaderboard(limit: int = 10) -> list[dict]:
             score   = contact.get("fiabilite_score", 0.5)
             if phone not in compteur:
                 compteur[phone] = {
-                    "phone":           phone[-4:],  # FIX S6 : masquer le phone
+                    "phone":           phone[-4:],
                     "fiabilite_score": score,
                     "nb_signalements": 0,
                 }
@@ -681,12 +642,9 @@ def get_stats_communaute() -> dict:
     }
 
 
-# ═══════════════════════════════════════════════════════════
-# PUSH NOTIFICATIONS — V5.2 FIX : get_client() partout
-# ═══════════════════════════════════════════════════════════
+# ── Push Notifications ────────────────────────────────────
 
 def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
-    """Enregistre ou met à jour un abonnement push PWA."""
     try:
         db = get_client()
         db.table("push_subscriptions").upsert({
@@ -701,7 +659,6 @@ def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
 
 
 def delete_push_subscription(phone: str, endpoint: str):
-    """Supprime un abonnement push PWA."""
     try:
         db = get_client()
         db.table("push_subscriptions")\
@@ -715,7 +672,6 @@ def delete_push_subscription(phone: str, endpoint: str):
 
 
 def get_push_subscriptions_by_phone(phone: str) -> list:
-    """Récupère tous les abonnements push d'un utilisateur."""
     try:
         db = get_client()
         result = db.table("push_subscriptions")\
@@ -729,11 +685,6 @@ def get_push_subscriptions_by_phone(phone: str) -> list:
 
 
 def get_push_subscriptions_by_ligne(ligne: str) -> list:
-    """
-    Récupère tous les abonnements push des utilisateurs
-    abonnés à une ligne donnée.
-    Joint abonnements + push_subscriptions via phone.
-    """
     try:
         db = get_client()
         abonnes = db.table("abonnements")\
@@ -757,7 +708,6 @@ def get_push_subscriptions_by_ligne(ligne: str) -> list:
 
 
 def get_signalements_recents(minutes: int = 5) -> list:
-    """Signalements créés dans les X dernières minutes."""
     try:
         db = get_client()
         since = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
@@ -772,10 +722,6 @@ def get_signalements_recents(minutes: int = 5) -> list:
 
 
 def get_fiabilite_ligne(ligne: str) -> dict:
-    """
-    Score de fiabilité d'une ligne basé sur les 7 derniers jours.
-    Retourne : { score: float 0-1, nb_signalements: int, pct_valides: float, label: str }
-    """
     try:
         db    = get_client()
         since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
