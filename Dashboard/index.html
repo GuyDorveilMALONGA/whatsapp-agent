@@ -22,6 +22,104 @@
 <link rel="stylesheet" href="css/map.css">
 <link rel="stylesheet" href="css/overlay-styles.css">
 <link rel="stylesheet" href="css/signal-grid.css">
+
+<style>
+/* ══ ITINÉRAIRE — styles ════════════════════════════════════ */
+#screen-itin { background: var(--bg); overflow-y: auto; position: relative; }
+.itin-header { padding: 18px 16px 12px; flex-shrink: 0; }
+.itin-header-title { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1; }
+.itin-header-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
+.itin-body { padding: 0 14px 120px; display: flex; flex-direction: column; gap: 12px; }
+
+.itin-form-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.itin-field { display: flex; align-items: center; gap: 12px; padding: 14px; cursor: pointer; transition: background var(--t-fast); }
+.itin-field:hover { background: rgba(255,255,255,0.03); }
+.itin-field--active { background: rgba(255,107,53,0.06) !important; }
+.itin-field-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.itin-field-dot--from { background: transparent; border: 2px solid rgba(255,255,255,0.4); }
+.itin-field-dot--to { background: var(--orange); }
+.itin-field-text { flex: 1; font-size: 14px; color: var(--muted); transition: color var(--t-fast); }
+.itin-field-text.itin-filled { color: var(--text); font-weight: 500; }
+.itin-swap-btn { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: background var(--t-fast), color var(--t-fast); }
+.itin-swap-btn:hover { background: var(--orange-dim); color: var(--orange); border-color: var(--orange-border); }
+.itin-connector { padding: 0 14px 0 18px; }
+.itin-connector-line { width: 1px; height: 10px; background: var(--border); margin-left: 4px; }
+.itin-go-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: var(--orange); border: none; color: #fff; font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; transition: opacity var(--t-fast); box-shadow: var(--shadow-orange); }
+.itin-go-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
+.itin-go-btn:not(:disabled):active { opacity: 0.88; }
+
+.itin-suggest-wrap { background: var(--surface2); border: 1px solid var(--orange-border); border-radius: var(--radius-md); overflow: hidden; animation: slideUp 0.15s ease both; }
+.itin-suggest-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 1px solid var(--border); transition: background var(--t-fast); }
+.itin-suggest-item:last-child { border-bottom: none; }
+.itin-suggest-item:hover { background: var(--orange-dim); color: var(--text); }
+.itin-suggest-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.itin-suggest-match { color: var(--orange); font-weight: 600; }
+
+.itin-result-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; gap: 0; animation: slideUp 0.2s ease both; }
+.itin-result-step { display: flex; align-items: flex-start; gap: 12px; padding: 4px 0; }
+.itin-step-icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
+.itin-step-icon--origin { background: rgba(255,255,255,0.07); border: 1px solid var(--border); color: var(--muted); }
+.itin-step-icon--bus { background: var(--orange-dim); border: 1px solid var(--orange-border); color: var(--orange); }
+.itin-step-icon--dest { background: var(--orange); color: #fff; }
+.itin-step-info { flex: 1; }
+.itin-step-main { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
+.itin-step-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
+.itin-result-divider { width: 1px; height: 14px; background: var(--orange-border); margin-left: 14px; }
+.itin-result-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; margin-top: 6px; border-top: 1px solid var(--border); }
+.itin-result-duration-label { font-size: 11px; color: var(--muted); }
+.itin-result-duration-val { font-size: 16px; font-weight: 700; color: var(--orange); }
+.itin-reset-link { background: none; border: none; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; text-align: center; cursor: pointer; margin-top: 8px; font-family: 'Inter', sans-serif; }
+
+.itin-sep { display: flex; align-items: center; gap: 10px; }
+.itin-sep-line { flex: 1; height: 1px; background: var(--border); }
+.itin-sep-txt { font-size: 10px; color: var(--muted); white-space: nowrap; letter-spacing: 0.04em; }
+.itin-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.itin-chip { background: var(--orange-dim); border: 1px solid var(--orange-border); border-radius: var(--radius-full); padding: 7px 13px; font-size: 12px; color: rgba(255,107,53,0.9); font-family: 'Inter', sans-serif; cursor: pointer; white-space: nowrap; transition: background var(--t-fast); }
+.itin-chip:hover { background: rgba(255,107,53,0.25); }
+
+/* FAB */
+.xfab-pulse { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 18px); right: 18px; width: 52px; height: 52px; border-radius: 50%; background: var(--orange); opacity: 0.3; animation: xfabPulse 2s ease-out infinite; pointer-events: none; z-index: 30; display: none; }
+@keyframes xfabPulse { 0% { transform: scale(1); opacity: 0.3; } 100% { transform: scale(1.85); opacity: 0; } }
+.xfab-btn { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 18px); right: 18px; width: 52px; height: 52px; border-radius: 50%; background: var(--orange); border: none; color: #fff; display: none; align-items: center; justify-content: center; cursor: pointer; z-index: 31; box-shadow: var(--shadow-orange); transition: transform var(--t-fast); }
+.xfab-btn:active { transform: scale(0.93); }
+
+/* Afficher FAB seulement sur écran itin */
+#screen-itin.active .xfab-pulse { display: block; }
+#screen-itin.active .xfab-btn   { display: flex; }
+
+/* Widget chat */
+.xchat-widget { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 80px); right: 12px; width: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; z-index: 32; box-shadow: 0 8px 32px rgba(0,0,0,0.5); transform: scale(0.88) translateY(16px); transform-origin: bottom right; opacity: 0; transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), opacity 0.18s ease; pointer-events: none; }
+.xchat-widget.xchat-open { transform: scale(1) translateY(0); opacity: 1; pointer-events: all; }
+.xchat-header { background: var(--surface2); padding: 10px 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
+.xchat-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--orange); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+.xchat-header-info { flex: 1; }
+.xchat-name { font-size: 13px; font-weight: 600; color: var(--text); }
+.xchat-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--green); margin-top: 1px; }
+.xchat-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+.xchat-close-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color var(--t-fast); }
+.xchat-close-btn:hover { color: var(--text); }
+.xchat-messages { height: 210px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+.xchat-msg { display: flex; }
+.xchat-msg--bot  { justify-content: flex-start; }
+.xchat-msg--user { justify-content: flex-end; }
+.xchat-bubble { max-width: 86%; padding: 9px 12px; border-radius: var(--radius-lg); font-size: 12px; line-height: 1.5; animation: slideUp 0.18s ease both; }
+.xchat-msg--bot  .xchat-bubble { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+.xchat-msg--user .xchat-bubble { background: var(--orange); color: #fff; border-bottom-right-radius: 4px; }
+.xchat-typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
+.xchat-typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: typingBounce 1.2s infinite ease-in-out; }
+.xchat-typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.xchat-typing-dot:nth-child(3) { animation-delay: 0.3s; }
+.xchat-chips-bar { display: flex; gap: 6px; overflow-x: auto; padding: 6px 10px; border-top: 1px solid var(--border); scrollbar-width: none; }
+.xchat-chips-bar::-webkit-scrollbar { display: none; }
+.xchat-chip { background: var(--orange-dim); border: 1px solid var(--orange-border); border-radius: var(--radius-full); padding: 5px 11px; font-size: 11px; color: rgba(255,107,53,0.9); font-family: 'Inter', sans-serif; white-space: nowrap; cursor: pointer; flex-shrink: 0; transition: background var(--t-fast); }
+.xchat-chip:hover { background: rgba(255,107,53,0.22); }
+.xchat-composer { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--surface); }
+.xchat-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-full); padding: 8px 13px; font-size: 12px; color: var(--text); font-family: 'Inter', sans-serif; outline: none; transition: border-color var(--t-fast); }
+.xchat-input:focus { border-color: var(--orange-border); }
+.xchat-input::placeholder { color: var(--muted); }
+.xchat-send { width: 30px; height: 30px; border-radius: 50%; background: var(--orange); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: transform var(--t-fast); }
+.xchat-send:active { transform: scale(0.9); }
+</style>
 </head>
 <body>
 <div id="app">
@@ -130,7 +228,7 @@
 
   <main id="screens">
 
-    <!-- ACCUEIL -->
+    <!-- ACCUEIL — inchangé -->
     <section class="screen active" id="screen-home">
       <div id="map-home">
         <div id="bus-reader" hidden><div class="reader-scroll"></div></div>
@@ -147,7 +245,6 @@
             <button class="col-tab active" data-col="buses">Bus actifs</button>
             <button class="col-tab" data-col="top">Top signaleurs</button>
           </div>
-          <!-- CHG-7 V2.4 : filter bar scrollable — géré par _renderFilterBar() dans home.js -->
           <div id="home-filter-bar" class="home-filter-bar" hidden></div>
         </div>
         <div class="home-cols">
@@ -157,7 +254,7 @@
       </div>
     </section>
 
-    <!-- SIGNALEMENT -->
+    <!-- SIGNALEMENT — inchangé -->
     <section class="screen" id="screen-signal">
       <div class="signal-topbar">
         <button class="btn-back" id="btn-back-signal" aria-label="Retour">
@@ -165,30 +262,22 @@
         </button>
         <span class="signal-topbar-title">Signaler un bus</span>
       </div>
-
       <div class="signal-map-wrap">
         <div id="map-signal"></div>
         <div id="gps-spinner" class="gps-spinner-overlay" hidden>
-          <span class="gps-spinner-dot"></span>
-          <span class="gps-spinner-dot"></span>
-          <span class="gps-spinner-dot"></span>
+          <span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span>
         </div>
         <div class="signal-map-label" id="signal-map-label">
-          <span class="pos-dot pos-dot--wait"></span>
-          Position en attente
+          <span class="pos-dot pos-dot--wait"></span>Position en attente
         </div>
       </div>
-
       <div class="signal-body">
         <div class="form-section">
           <div class="form-section-title">Quelle ligne ?</div>
           <div id="ligne-grid"></div>
         </div>
         <div class="form-section">
-          <div class="form-section-title">
-            À quel arrêt ?
-            <span class="form-section-hint" id="arret-section-hint"></span>
-          </div>
+          <div class="form-section-title">À quel arrêt ?<span class="form-section-hint" id="arret-section-hint"></span></div>
           <div class="arret-wrap">
             <input type="text" class="arret-input" id="arret-input" placeholder="Pré-rempli par GPS ou tape l'arrêt" autocomplete="off" maxlength="80">
             <button class="btn-gps" id="btn-gps" type="button">📍 GPS</button>
@@ -211,36 +300,134 @@
       </div>
     </section>
 
-    <!-- ITINÉRAIRE -->
+    <!-- ITINÉRAIRE — remplacé -->
     <section class="screen" id="screen-itin">
-      <div class="chat-header-bar">
-        <div>
-          <div class="chat-header-name">Xëtu</div>
-          <div class="chat-header-status">
-            <span class="chat-status-dot" id="chat-status-dot"></span>
-            <span class="chat-status-label" id="chat-status-label">Connexion…</span>
+
+      <div class="itin-header">
+        <div class="itin-header-title">Itinéraire</div>
+        <div class="itin-header-sub">Trouve ton bus à Dakar</div>
+      </div>
+
+      <div class="itin-body">
+
+        <div class="itin-form-card" id="itin-form-card">
+          <div class="itin-field" id="itin-field-from">
+            <div class="itin-field-dot itin-field-dot--from"></div>
+            <div class="itin-field-text" id="itin-from-text">D'où tu pars ?</div>
+            <button class="itin-swap-btn" id="itin-swap-btn" aria-label="Inverser">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/>
+              </svg>
+            </button>
+          </div>
+          <div class="itin-connector"><div class="itin-connector-line"></div></div>
+          <div class="itin-field" id="itin-field-to">
+            <div class="itin-field-dot itin-field-dot--to"></div>
+            <div class="itin-field-text" id="itin-to-text">Où tu vas ?</div>
+          </div>
+          <button class="itin-go-btn" id="itin-go-btn" disabled>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            Calculer l'itinéraire
+          </button>
+        </div>
+
+        <div class="itin-suggest-wrap" id="itin-suggest-wrap" hidden>
+          <div class="itin-suggest-list" id="itin-suggest-list"></div>
+        </div>
+
+        <div class="itin-result-card" id="itin-result-card" hidden>
+          <div class="itin-result-step">
+            <div class="itin-step-icon itin-step-icon--origin">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg>
+            </div>
+            <div class="itin-step-info">
+              <div class="itin-step-main" id="itin-res-from">—</div>
+              <div class="itin-step-sub">Point de départ</div>
+            </div>
+          </div>
+          <div class="itin-result-divider"></div>
+          <div class="itin-result-step">
+            <div class="itin-step-icon itin-step-icon--bus">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>
+            </div>
+            <div class="itin-step-info">
+              <div class="itin-step-main" id="itin-res-bus">—</div>
+              <div class="itin-step-sub" id="itin-res-bus-sub">—</div>
+            </div>
+          </div>
+          <div class="itin-result-divider"></div>
+          <div class="itin-result-step">
+            <div class="itin-step-icon itin-step-icon--dest">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+            </div>
+            <div class="itin-step-info">
+              <div class="itin-step-main" id="itin-res-to">—</div>
+              <div class="itin-step-sub" id="itin-res-walk">—</div>
+            </div>
+          </div>
+          <div class="itin-result-footer">
+            <span class="itin-result-duration-label">Durée estimée</span>
+            <span class="itin-result-duration-val" id="itin-res-duration">—</span>
+          </div>
+          <button class="itin-reset-link" id="itin-reset-btn">Modifier le trajet</button>
+        </div>
+
+        <div class="itin-sep" id="itin-sep">
+          <div class="itin-sep-line"></div>
+          <span class="itin-sep-txt">trajets fréquents</span>
+          <div class="itin-sep-line"></div>
+        </div>
+        <div class="itin-chips" id="itin-chips">
+          <button class="itin-chip" data-from="Plateau" data-to="Yoff">Plateau → Yoff</button>
+          <button class="itin-chip" data-from="Liberté 5" data-to="Sandaga">Liberté 5 → Sandaga</button>
+          <button class="itin-chip" data-from="Parcelles" data-to="Université">Parcelles → Université</button>
+          <button class="itin-chip" data-from="HLM" data-to="Gare routière">HLM → Gare</button>
+        </div>
+
+      </div>
+
+      <!-- FAB — visible seulement quand screen-itin.active via CSS -->
+      <div class="xfab-pulse" id="xfab-pulse"></div>
+      <button class="xfab-btn" id="xfab-btn" aria-label="Parler à Xëtu">
+        <svg id="xfab-icon-chat" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
+        <svg id="xfab-icon-close" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none;position:absolute;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+      </button>
+
+      <!-- Widget chat -->
+      <div class="xchat-widget" id="xchat-widget">
+        <div class="xchat-header">
+          <div class="xchat-avatar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
+          </div>
+          <div class="xchat-header-info">
+            <div class="xchat-name">Xëtu</div>
+            <div class="xchat-status"><span class="xchat-dot"></span><span>Mi ngi ci biir</span></div>
+          </div>
+          <button class="xchat-close-btn" id="xchat-close-btn" aria-label="Fermer">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </div>
+        <div class="xchat-messages" id="xchat-messages">
+          <div class="xchat-msg xchat-msg--bot">
+            <div class="xchat-bubble">Salam ! Je peux t'aider pour ton trajet 🚌<br>Pose-moi une question sur les bus.</div>
           </div>
         </div>
-      </div>
-      <div class="chat-messages" id="chat-messages" role="log" aria-live="polite">
-        <div class="chat-msg chat-msg--bot">
-          <div class="chat-bubble">Salam ! Je suis Xëtu 🚌<br>Pose-moi une question sur les bus de Dakar.</div>
+        <div class="xchat-chips-bar" id="xchat-chips-bar">
+          <button class="xchat-chip" data-msg="Où est le bus 15 ?">Bus 15 ?</button>
+          <button class="xchat-chip" data-msg="Bus 7 à Yoff">Bus 7 à Yoff</button>
+          <button class="xchat-chip" data-msg="Comment aller à Sandaga ?">→ Sandaga</button>
         </div>
-        <div class="chat-msg chat-msg--bot">
-          <div class="chat-bubble">Laaj ma lu jëm ci bus yi walla nga wax ma fan lañu nekk.</div>
+        <div class="xchat-composer">
+          <input class="xchat-input" id="xchat-input" type="text" placeholder="Bus 15 à Liberté 5…" maxlength="300" autocomplete="off">
+          <button class="xchat-send" id="xchat-send">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+          </button>
         </div>
       </div>
-      <div class="chat-suggestions" id="chat-suggestions"></div>
-      <div class="chat-composer">
-        <input class="chat-input" id="chat-input" type="text" placeholder="Comment aller à Sandaga ?…" maxlength="500" autocomplete="off">
-        <button class="chat-send-btn" id="chat-send-btn" disabled>
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-        </button>
-      </div>
-      <div class="chat-lang-badge">FR · WO · EN · Pulaar</div>
+
     </section>
 
-    <!-- MES LIGNES -->
+    <!-- MES LIGNES — inchangé -->
     <section class="screen" id="screen-mylines">
       <div class="mylines-body">
         <div class="mylines-section-title">Mes abonnements</div>
@@ -309,6 +496,209 @@
   }
   document.addEventListener('DOMContentLoaded', _initMenuQR);
 </script>
+
+<!-- Logique itinéraire + FAB chat -->
+<script>
+(function () {
+  'use strict';
+
+  const STOPS = [
+    'Liberté 5','Liberté 6','Plateau','Sandaga','Yoff','Parcelles',
+    'HLM','Gare routière','Université','Grand Yoff','Guédiawaye',
+    'Pikine','Thiaroye','Médina','Colobane','Fann','Point E',
+    'Mermoz','Sacré-Cœur','Ouakam','Petersen','Leclerc','Rufisque',
+    'Keur Massar','Malika','Patte d\'Oie','Dieuppeul',
+    'Parcelles Assainies','Gare de Dakar','Place de l\'Indépendance'
+  ];
+
+  const ROUTES = {
+    'Liberté 5→Sandaga':    { bus:'Bus 15', stop:'Pompiers',      ride:8,  walk:3 },
+    'Plateau→Yoff':         { bus:'Bus 7',  stop:'Yoff Terminus', ride:22, walk:2 },
+    'Parcelles→Université': { bus:'Bus 24', stop:'Université',    ride:18, walk:1 },
+    'HLM→Gare routière':    { bus:'Bus 12', stop:'Gare routière', ride:14, walk:4 },
+  };
+
+  const DEMO = {
+    'Où est le bus 15 ?':        'Aucun signalement récent pour le Bus 15. 🙏',
+    'Bus 7 à Yoff':              '✅ Bus 7 signalé à Yoff il y a 8 min.',
+    'Comment aller à Sandaga ?': '🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée : ~11 min',
+  };
+
+  let _from = '', _to = '', _field = null, _chatOpen = false;
+  const $ = id => document.getElementById(id);
+
+  // ── Autocomplete ──────────────────────────────────────
+  function suggest(q) {
+    if (!q) return [];
+    return STOPS.filter(s => s.toLowerCase().includes(q.toLowerCase())).slice(0, 5);
+  }
+
+  function hl(s, q) {
+    const i = s.toLowerCase().indexOf(q.toLowerCase());
+    if (i < 0) return s;
+    return s.slice(0,i) + '<span class="itin-suggest-match">' + s.slice(i,i+q.length) + '</span>' + s.slice(i+q.length);
+  }
+
+  function renderSug(q) {
+    const items = suggest(q);
+    const wrap = $('itin-suggest-wrap');
+    if (!items.length) { wrap.hidden = true; return; }
+    $('itin-suggest-list').innerHTML = items.map(s =>
+      `<div class="itin-suggest-item" data-val="${s}"><div class="itin-suggest-dot"></div><span>${hl(s,q)}</span></div>`
+    ).join('');
+    $('itin-suggest-list').querySelectorAll('.itin-suggest-item').forEach(el =>
+      el.addEventListener('click', () => pick(el.dataset.val))
+    );
+    wrap.hidden = false;
+  }
+
+  function pick(val) {
+    if (_field === 'from') {
+      _from = val;
+      $('itin-from-text').textContent = val;
+      $('itin-from-text').classList.add('itin-filled');
+      $('itin-field-from').classList.remove('itin-field--active');
+      $('itin-suggest-wrap').hidden = true;
+      updateBtn();
+      setTimeout(() => focus('to'), 200);
+    } else {
+      _to = val;
+      $('itin-to-text').textContent = val;
+      $('itin-to-text').classList.add('itin-filled');
+      $('itin-field-to').classList.remove('itin-field--active');
+      $('itin-suggest-wrap').hidden = true;
+      updateBtn();
+    }
+  }
+
+  function focus(f) {
+    _field = f;
+    $('itin-field-from').classList.toggle('itin-field--active', f === 'from');
+    $('itin-field-to').classList.toggle('itin-field--active', f === 'to');
+    renderSug(f === 'from' ? _from : _to);
+  }
+
+  $('itin-field-from').addEventListener('click', () => focus('from'));
+  $('itin-field-to').addEventListener('click', () => { if (!_from) { focus('from'); return; } focus('to'); });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#itin-form-card') && !e.target.closest('#itin-suggest-wrap')) {
+      $('itin-suggest-wrap').hidden = true;
+      _field = null;
+      $('itin-field-from').classList.remove('itin-field--active');
+      $('itin-field-to').classList.remove('itin-field--active');
+    }
+  }, true);
+
+  // ── Swap ──────────────────────────────────────────────
+  $('itin-swap-btn').addEventListener('click', e => {
+    e.stopPropagation();
+    [_from, _to] = [_to, _from];
+    $('itin-from-text').textContent = _from || "D'où tu pars ?";
+    $('itin-to-text').textContent   = _to   || 'Où tu vas ?';
+    $('itin-from-text').classList.toggle('itin-filled', !!_from);
+    $('itin-to-text').classList.toggle('itin-filled', !!_to);
+    updateBtn();
+  });
+
+  // ── Chips ─────────────────────────────────────────────
+  document.querySelectorAll('.itin-chip').forEach(c => {
+    c.addEventListener('click', () => {
+      _from = c.dataset.from; _to = c.dataset.to;
+      $('itin-from-text').textContent = _from; $('itin-from-text').classList.add('itin-filled');
+      $('itin-to-text').textContent   = _to;   $('itin-to-text').classList.add('itin-filled');
+      updateBtn(); setTimeout(calc, 250);
+    });
+  });
+
+  // ── Calcul ────────────────────────────────────────────
+  function updateBtn() { $('itin-go-btn').disabled = !(_from && _to); }
+  $('itin-go-btn').addEventListener('click', calc);
+
+  function calc() {
+    if (!_from || !_to) return;
+    const r = ROUTES[`${_from}→${_to}`] || { bus:'Bus 15', stop:'Centre ville', ride:15, walk:5 };
+    $('itin-res-from').textContent     = _from;
+    $('itin-res-to').textContent       = _to;
+    $('itin-res-bus').textContent      = `${r.bus} depuis ${_from}`;
+    $('itin-res-bus-sub').textContent  = `jusqu'à ${r.stop} · ${r.ride} min`;
+    $('itin-res-walk').textContent     = `Marche ${r.walk} min depuis ${r.stop}`;
+    $('itin-res-duration').textContent = `~${r.ride + r.walk} min`;
+    $('itin-form-card').style.display  = 'none';
+    $('itin-sep').style.display        = 'none';
+    $('itin-chips').style.display      = 'none';
+    $('itin-result-card').hidden       = false;
+  }
+
+  $('itin-reset-btn').addEventListener('click', () => {
+    _from = ''; _to = '';
+    $('itin-from-text').textContent = "D'où tu pars ?"; $('itin-from-text').classList.remove('itin-filled');
+    $('itin-to-text').textContent   = 'Où tu vas ?';   $('itin-to-text').classList.remove('itin-filled');
+    $('itin-result-card').hidden       = true;
+    $('itin-form-card').style.display  = '';
+    $('itin-sep').style.display        = '';
+    $('itin-chips').style.display      = '';
+    updateBtn();
+  });
+
+  // ── FAB + Chat ────────────────────────────────────────
+  function openChat() {
+    _chatOpen = true;
+    requestAnimationFrame(() => $('xchat-widget').classList.add('xchat-open'));
+    $('xfab-pulse').style.display       = 'none';
+    $('xfab-icon-chat').style.display   = 'none';
+    $('xfab-icon-close').style.display  = '';
+    setTimeout(() => $('xchat-input').focus(), 280);
+  }
+
+  function closeChat() {
+    _chatOpen = false;
+    $('xchat-widget').classList.remove('xchat-open');
+    $('xfab-pulse').style.display       = '';
+    $('xfab-icon-chat').style.display   = '';
+    $('xfab-icon-close').style.display  = 'none';
+  }
+
+  $('xfab-btn').addEventListener('click',      () => _chatOpen ? closeChat() : openChat());
+  $('xchat-close-btn').addEventListener('click', closeChat);
+
+  function addMsg(text, role) {
+    const w = document.createElement('div');
+    w.className = `xchat-msg xchat-msg--${role}`;
+    const b = document.createElement('div');
+    b.className = 'xchat-bubble';
+    b.innerHTML = text.replace(/\n/g, '<br>');
+    w.appendChild(b);
+    $('xchat-messages').appendChild(w);
+    $('xchat-messages').scrollTop = $('xchat-messages').scrollHeight;
+  }
+
+  function showTyping() {
+    const el = document.createElement('div');
+    el.className = 'xchat-msg xchat-msg--bot'; el.id = 'xchat-typing-el';
+    el.innerHTML = '<div class="xchat-bubble xchat-typing"><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span></div>';
+    $('xchat-messages').appendChild(el);
+    $('xchat-messages').scrollTop = $('xchat-messages').scrollHeight;
+  }
+
+  function hideTyping() { const el = $('xchat-typing-el'); if (el) el.remove(); }
+
+  function sendChat(text) {
+    if (!text.trim()) return;
+    addMsg(text, 'user');
+    $('xchat-input').value = '';
+    $('xchat-chips-bar').style.display = 'none';
+    showTyping();
+    setTimeout(() => { hideTyping(); addMsg(DEMO[text] || 'Message reçu ! 🚌 Je cherche pour toi.', 'bot'); }, 1100);
+  }
+
+  $('xchat-send').addEventListener('click', () => sendChat($('xchat-input').value));
+  $('xchat-input').addEventListener('keydown', e => { if (e.key === 'Enter') sendChat($('xchat-input').value); });
+  document.querySelectorAll('.xchat-chip').forEach(c => c.addEventListener('click', () => sendChat(c.dataset.msg)));
+
+})();
+</script>
+
 <script type="module" src="js/app.js"></script>
 </body>
 </html>
