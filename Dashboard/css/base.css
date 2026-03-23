@@ -1,5 +1,9 @@
 /* ════════════════════════════════════════════════════════
-   css/base.css — V3.1
+   css/base.css — V3.2
+   V3.2 : FIX safe-area header iPhone (notch / Dynamic Island)
+          height = header-h + safe-area-inset-top
+          padding-top = safe-area-inset-top
+          → le contenu s'aligne SOUS le notch, pas dedans
    V3.1 : #app-header align-items center pour live indicator
    ════════════════════════════════════════════════════════ */
 
@@ -30,11 +34,20 @@ html, body {
 #app-header {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 10px;
-  height: var(--header-h);
-  padding: 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* FIX V3.2 : hauteur = contenu (52px) + safe area notch
+     Le padding-top pousse le contenu sous le notch
+     La height inclut cette zone pour ne pas écraser le contenu */
+  min-height: var(--header-h);
+  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  padding-left: 16px;
+  padding-right: 16px;
   padding-top: env(safe-area-inset-top, 0px);
-  flex-shrink: 0; z-index: var(--z-header);
+  padding-bottom: 0;
+  flex-shrink: 0;
+  z-index: var(--z-header);
 }
 
 .ws-status-dot-only { display: none; }

@@ -1,5 +1,8 @@
 /* ════════════════════════════════════════════════════════
-   css/components.css — V2.6
+   css/components.css — V2.7
+   AJOUTS V2.7 :
+   - FIX safe-area : #toast-container top intègre env(safe-area-inset-top)
+     pour suivre le header corrigé en V3.2 de base.css
    AJOUTS V2.5 :
    - BUG-4 fix : .xetu-bus-marker neutralise les styles Leaflet par défaut
    AJOUTS V2.6 :
@@ -45,9 +48,6 @@
 
 /* ══ V2.6 : Filter bar scrollable (accueil) ══════════════ */
 
-/* Placée dans .home-cols-header, après .home-col-tabs.
-   Gérée par _renderFilterBar() dans home.js — hidden par défaut,
-   visible dès que 2+ lignes actives dans le store. */
 .home-filter-bar {
   display: flex;
   gap: 6px;
@@ -64,7 +64,6 @@
 .home-filter-bar[hidden] { display: none; }
 .home-filter-bar::-webkit-scrollbar { display: none; }
 
-/* ── Chips (partagé avec éventuel usage futur) ── */
 .filter-chip {
   flex-shrink: 0;
   padding: 5px 12px;
@@ -94,17 +93,14 @@
 
 /* ══ V2.6 : Empty state overlay sur la carte ═════════════ */
 
-/* Positionné en absolute sur #map-home (qui est relative via Leaflet).
-   Créé dynamiquement par _showEmptyOverlay() dans home.js.
-   Disparaît automatiquement dès qu'un bus entre dans le store. */
 .map-empty-overlay {
   position: absolute;
   inset: 0;
-  z-index: 500; /* au-dessus des tiles Leaflet (z-index 200-400) */
+  z-index: 500;
   display: flex;
   align-items: center;
   justify-content: center;
-  pointer-events: none; /* laisse passer les events carte sauf sur la card */
+  pointer-events: none;
 }
 .map-empty-overlay[hidden] { display: none; }
 
@@ -119,7 +115,7 @@
   flex-direction: column;
   align-items: center;
   gap: 8px;
-  pointer-events: auto; /* la card elle-même est cliquable */
+  pointer-events: auto;
   min-width: 200px;
   text-align: center;
   animation: slideUp 0.25s ease both;
@@ -469,8 +465,21 @@
   border-top: 1px solid var(--border);
 }
 
-/* ══ TOAST ════════════════════════════════════════════════ */
-#toast-container { position: fixed; top: calc(var(--header-h) + 8px); left: 50%; transform: translateX(-50%); z-index: var(--z-toast); display: flex; flex-direction: column; align-items: center; gap: 6px; pointer-events: none; }
+/* ══ TOAST — FIX V2.7 safe-area ═════════════════════════ */
+/* top = hauteur header (contenu 52px) + safe-area-inset-top + marge 8px
+   Suit exactement le header corrigé dans base.css V3.2               */
+#toast-container {
+  position: fixed;
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: var(--z-toast);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  pointer-events: none;
+}
 .toast { background: var(--surface3); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 10px 18px; font-size: 13px; color: var(--text); box-shadow: var(--shadow-md); white-space: nowrap; animation: toastIn 0.3s var(--t-spring) both; pointer-events: auto; }
 .toast--success { border-color: rgba(0,214,127,0.3);  color: var(--green);  }
 .toast--error   { border-color: rgba(255,71,87,0.3);   color: var(--red);    }
