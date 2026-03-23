@@ -1,177 +1,155 @@
 """
-api/buses.py — V4.1
-GET /api/buses — Position estimée des bus actifs.
+api/push.py — V2.0
+Endpoints Web Push VAPID pour Xëtu PWA.
 
-MIGRATION V4.1 depuis V4.0 :
-  - _get_stops() remplacé par get_stops() de core.network (uppercase-safe)
-  - Suppression import NETWORK direct
+V2.0 :
+  - Payload push contient : title, body, ligne, url
+  - send_push_notification() exportée pour skills/signalement.py
+  - Logs détaillés pour debug démo
+  - VAPID_PRIVATE_KEY + VAPID_PUBLIC_KEY depuis os.environ
 """
-
+import json
 import logging
-from datetime import datetime, timezone
-from fastapi import APIRouter
+import os
+from typing import Optional
+
+from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 
 from db import queries
-from core.network import get_stops
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-logger.info(f"[buses] Prêt — get_stops() depuis core.network")
+# ── VAPID config ──────────────────────────────────────────
+# Générer les clés : python -c "from pywebpush import Vapid; v=Vapid(); v.generate_keys(); print(v.public_key, v.private_key)"
+# Puis mettre dans Railway env vars : VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_CLAIMS_EMAIL
 
-# ── Constantes ─────────────────────────────────────────────
-
-INTERVALLE_DEFAUT_MIN = 15
-CONFIANCE_VERT_MIN    = 10
-CONFIANCE_JAUNE_MAX   = 30
+VAPID_PRIVATE_KEY  = os.environ.get("VAPID_PRIVATE_KEY", "")
+VAPID_PUBLIC_KEY   = os.environ.get("VAPID_PUBLIC_KEY", "")
+VAPID_CLAIMS_EMAIL = os.environ.get("VAPID_CLAIMS_EMAIL", "mailto:hello@xetu.sn")
 
 
-# ── Utilitaires ────────────────────────────────────────────
+# ── Modèles ───────────────────────────────────────────────
 
-def _minutes_depuis(iso_str: str) -> float:
+class PushSubscription(BaseModel):
+    phone:    str
+    endpoint: str
+    keys:     dict  # {p256dh, auth}
+
+
+# ── Endpoints ─────────────────────────────────────────────
+
+@router.get("/api/push/vapid-public-key")
+async def get_vapid_public_key():
+    if not VAPID_PUBLIC_KEY:
+        logger.error("[Push] VAPID_PUBLIC_KEY manquante dans les env vars")
+        raise HTTPException(status_code=500, detail="VAPID non configuré")
+    return {"publicKey": VAPID_PUBLIC_KEY}
+
+
+@router.post("/api/push/subscribe", status_code=201)
+async def subscribe(body: PushSubscription):
+    if not body.phone or not body.endpoint:
+        raise HTTPException(status_code=400, detail="phone et endpoint requis")
     try:
-        dt    = datetime.fromisoformat(iso_str.replace("Z", "+00:00"))
-        delta = datetime.now(timezone.utc) - dt
-        return delta.total_seconds() / 60
-    except Exception:
-        return 999
-
-
-def _confiance(minutes: float) -> dict:
-    if minutes < CONFIANCE_VERT_MIN:
-        return {"niveau": "vert",  "emoji": "🟢", "label": "Récent"}
-    elif minutes < CONFIANCE_JAUNE_MAX:
-        return {"niveau": "jaune", "emoji": "🟡", "label": "Estimé"}
-    else:
-        return {"niveau": "rouge", "emoji": "🔴", "label": "Ancien"}
-
-
-def _position_estimee(
-    stops: list[dict],
-    arret_signale: str,
-    minutes_ecoulees: float,
-    intervalle_min: float,
-) -> dict:
-    arret_lower = arret_signale.lower().strip()
-
-    idx_depart = None
-    for i, s in enumerate(stops):
-        if s.get("name", "").lower().strip() == arret_lower:
-            idx_depart = i
-            break
-
-    if idx_depart is None:
-        for s in stops:
-            if s.get("lat"):
-                return {
-                    "nom":         s["name"],
-                    "lat":         s["lat"],
-                    "lon":         s["lon"],
-                    "idx":         0,
-                    "au_terminus": False,
-                }
-        return {"nom": arret_signale, "lat": None, "lon": None,
-                "idx": 0, "au_terminus": False}
-
-    secondes_ecoulees = minutes_ecoulees * 60
-    idx_estime        = idx_depart
-
-    if stops[idx_depart].get("travel_time_to_next_sec") is not None:
-        temps_cumul = 0.0
-        for i in range(idx_depart, len(stops) - 1):
-            t = stops[i].get("travel_time_to_next_sec") or intervalle_min * 60
-            temps_cumul += t
-            if temps_cumul >= secondes_ecoulees:
-                break
-            idx_estime = i + 1
-    else:
-        arrets_parcourus = int(minutes_ecoulees / max(intervalle_min, 1))
-        idx_estime = min(idx_depart + arrets_parcourus, len(stops) - 1)
-
-    idx_estime  = min(idx_estime, len(stops) - 1)
-    au_terminus = (idx_estime >= len(stops) - 1)
-
-    for i in range(idx_estime, -1, -1):
-        s = stops[i]
-        if s.get("lat"):
-            return {
-                "nom":         s["name"],
-                "lat":         s["lat"],
-                "lon":         s["lon"],
-                "idx":         i,
-                "au_terminus": au_terminus,
-            }
-
-    return {"nom": arret_signale, "lat": None, "lon": None,
-            "idx": idx_depart, "au_terminus": False}
-
-
-# ── Endpoint ───────────────────────────────────────────────
-
-@router.get("/api/buses")
-async def get_buses():
-    try:
-        all_sigs = queries.get_all_signalements_actifs()
+        p256dh = body.keys.get("p256dh", "")
+        auth   = body.keys.get("auth", "")
+        queries.save_push_subscription(body.phone, body.endpoint, p256dh, auth)
+        logger.info(f"[Push] ✅ Abonnement enregistré — phone=…{body.phone[-6:]} endpoint=…{body.endpoint[-20:]}")
+        return {"status": "ok"}
     except Exception as e:
-        logger.error(f"[/api/buses] Erreur Supabase: {e}")
-        return {"buses": [], "error": "db_error"}
+        logger.error(f"[Push] Erreur save_push_subscription: {e}")
+        raise HTTPException(status_code=500, detail="Erreur enregistrement")
 
-    network_memory = {}
+
+@router.delete("/api/push/unsubscribe")
+async def unsubscribe(
+    phone:    str = Query(...),
+    endpoint: str = Query(...),
+):
     try:
-        nm = queries.get_network_memory()
-        for entry in nm:
-            network_memory[entry["ligne"]] = entry.get("intervalle_moyen", INTERVALLE_DEFAUT_MIN)
-    except Exception:
-        pass
+        queries.delete_push_subscription(phone, endpoint)
+        logger.info(f"[Push] ✅ Désabonnement — phone=…{phone[-6:]}")
+        return {"status": "ok"}
+    except Exception as e:
+        logger.error(f"[Push] Erreur delete_push_subscription: {e}")
+        raise HTTPException(status_code=500, detail="Erreur désabonnement")
 
-    seen_lignes: dict[str, dict] = {}
-    for sig in all_sigs:
-        ligne = sig.get("ligne")
-        if not ligne:
-            continue
-        if ligne not in seen_lignes:
-            seen_lignes[ligne] = sig
-        else:
-            t_existing = seen_lignes[ligne].get("timestamp") or seen_lignes[ligne].get("created_at", "")
-            t_current  = sig.get("timestamp") or sig.get("created_at", "")
-            if _minutes_depuis(t_current) < _minutes_depuis(t_existing):
-                seen_lignes[ligne] = sig
 
-    buses = []
-    for ligne, sig in seen_lignes.items():
-        stops = get_stops(ligne)
-        if not stops:
-            logger.warning(f"[/api/buses] Ligne {ligne} absente du réseau v13")
-            continue
+# ── Envoi push (appelé par skills/signalement.py) ─────────
 
-        arret_signale   = sig.get("position", "")
-        created_at      = sig.get("timestamp") or sig.get("created_at", "")
-        minutes_ecoules = _minutes_depuis(created_at)
-        intervalle      = network_memory.get(ligne, INTERVALLE_DEFAUT_MIN)
+async def send_push_notification(
+    phone:  str,
+    ligne:  str,
+    arret:  str,
+    titre:  Optional[str] = None,
+    corps:  Optional[str] = None,
+) -> bool:
+    """
+    Envoie une notification push à tous les abonnements actifs du phone.
+    Payload : { title, body, ligne, url }
+    Retourne True si au moins un envoi réussi.
+    """
+    if not VAPID_PRIVATE_KEY or not VAPID_PUBLIC_KEY:
+        logger.warning("[Push] VAPID non configuré — envoi ignoré")
+        return False
 
-        pos  = _position_estimee(stops, arret_signale, minutes_ecoules, intervalle)
-        conf = _confiance(minutes_ecoules)
+    try:
+        from pywebpush import webpush, WebPushException
+    except ImportError:
+        logger.error("[Push] pywebpush non installé — pip install pywebpush")
+        return False
 
-        repart_dans = None
-        if pos["au_terminus"]:
-            repart_dans = max(0, int(intervalle - (minutes_ecoules % intervalle)))
+    title = titre or f"🚌 Bus {ligne} signalé"
+    body  = corps or f"Bus {ligne} à {arret} — signalement communautaire"
 
-        buses.append({
-            "ligne":                      ligne,
-            "arret_signale":              arret_signale,
-            "arret_estime":               pos["nom"],
-            "lat":                        pos["lat"],
-            "lon":                        pos["lon"],
-            "au_terminus":                pos["au_terminus"],
-            "repart_dans_min":            repart_dans,
-            "minutes_depuis_signalement": round(minutes_ecoules, 1),
-            "confiance":                  conf,
-            "signale_par":                sig.get("phone", "")[-4:],
-        })
+    payload = json.dumps({
+        "title": title,
+        "body":  body,
+        "ligne": ligne,
+        "url":   "/",
+    })
 
-    logger.info(f"[/api/buses] {len(buses)} bus actifs retournés")
-    return {
-        "buses":     buses,
-        "total":     len(buses),
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-    }
+    try:
+        subscriptions = queries.get_push_subscriptions_by_phone(phone)
+    except Exception as e:
+        logger.error(f"[Push] Erreur get_push_subscriptions: {e}")
+        return False
+
+    if not subscriptions:
+        logger.info(f"[Push] Aucun abonnement push pour {phone[-6:]}")
+        return False
+
+    success_count = 0
+    for sub in subscriptions:
+        try:
+            webpush(
+                subscription_info={
+                    "endpoint": sub["endpoint"],
+                    "keys": {
+                        "p256dh": sub["p256dh"],
+                        "auth":   sub["auth"],
+                    },
+                },
+                data=payload,
+                vapid_private_key=VAPID_PRIVATE_KEY,
+                vapid_claims={"sub": VAPID_CLAIMS_EMAIL},
+            )
+            success_count += 1
+            logger.info(f"[Push] ✅ Envoyé à …{sub['endpoint'][-20:]}")
+        except WebPushException as e:
+            status = e.response.status_code if e.response else "?"
+            logger.warning(f"[Push] ❌ Échec envoi (HTTP {status}): {e}")
+            # Subscription expirée — nettoyer
+            if e.response and e.response.status_code in (404, 410):
+                try:
+                    queries.delete_push_subscription(phone, sub["endpoint"])
+                    logger.info(f"[Push] Subscription expirée supprimée")
+                except Exception:
+                    pass
+        except Exception as e:
+            logger.error(f"[Push] Erreur inattendue: {e}")
+
+    logger.info(f"[Push] {success_count}/{len(subscriptions)} notifications envoyées pour Bus {ligne}")
+    return success_count > 0
