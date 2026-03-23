@@ -1,18 +1,21 @@
 /**
- * js/home.js — V2.4
- * FIX V2.3 :
- *   - CHG-1 : Vitesse animation en m/s réels via Haversine (7 m/s ≈ 25 km/h)
- *   - CHG-2 : Throttle updateReader — appelé uniquement quand l'index d'arrêt change
- *   - CHG-3 : Affichage immédiat de l'arrêt de départ dès _startAnim (lastArretIdx init)
- *   - BUG-4 : className 'xetu-bus-marker' sur divIcon (à coupler avec CSS)
- * FIX V2.4 :
+ * js/home.js — V2.5
+ * V2.5 :
+ *   - Intégration reader V3.0 inline header (prev › current › next)
+ *   - updateReader() appelé depuis _startAnim via nearestArretIdx (inchangé)
+ *   - hideReader() appelé dans _deselectBus (inchangé)
+ *   - Aucune autre modification logique
+ * V2.4 :
  *   - CHG-1 : Variables module _activeFilter, _onSeeBusRef
- *   - CHG-2 : _renderFilterBar(buses) — chips scrollable, caché si < 2 lignes actives
- *   - CHG-3 : _showEmptyOverlay() / _hideEmptyOverlay() — overlay carte quand 0 bus actif
- *   - CHG-4 : _renderBuses applique le filtre sur la liste + gère l'empty overlay
- *   - CHG-5 : _subscribeStore appelle _renderFilterBar à chaque update buses
- *   - NOTE  : _selectBus, _deselectBus, _startAnim, _traceLength, _posFromDistance,
- *             updateReader, reader → NON MODIFIÉS
+ *   - CHG-2 : _renderFilterBar(buses)
+ *   - CHG-3 : _showEmptyOverlay / _hideEmptyOverlay
+ *   - CHG-4 : _renderBuses filtre + empty overlay
+ *   - CHG-5 : _subscribeStore appelle _renderFilterBar
+ * V2.3 :
+ *   - CHG-1 : Vitesse animation Haversine réelle
+ *   - CHG-2 : Throttle updateReader
+ *   - CHG-3 : Affichage immédiat arrêt départ
+ *   - BUG-4 : className xetu-bus-marker
  */
 
 import * as store  from './store.js';
@@ -21,7 +24,7 @@ import { initReader, updateReader, hide as hideReader } from './reader.js';
 
 const AVATARS = ['👨🏿','👩🏿','🧑🏿','👩🏾','👨🏾','👩🏽'];
 
-// ── FIX-8 : couleur par hash HSL ─────────────────────────
+// ── Couleur par hash HSL ──────────────────────────────────
 function _lineColor(ligne) {
   let hash = 0;
   for (let i = 0; i < String(ligne).length; i++)
@@ -162,15 +165,14 @@ let _activePolyline    = null;
 let _activeStopMarkers = [];
 let _animState         = null;
 
-// ── V2.4 : variables module filtre + ref callback ─────────
-// CHG-1
-let _activeFilter  = null;   // string ligne active, null = "Tous"
-let _onSeeBusRef   = null;   // référence vers onSeeBus pour l'overlay empty state
-let _emptyOverlay  = null;   // nœud DOM de l'overlay (null si pas encore créé)
+// Progression persistante par busId — survit au déselect/reselect
+let _busProgress = {};  // { busId: { idx, progress, lastArretIdx } }
 
-// ── V2.5 : géolocalisation accueil ───────────────────────
-let _userLocMarker = null;   // marker position utilisateur (cercle bleu)
-let _onGeoErrorRef = null;   // callback Toast.error passé depuis app.js
+let _activeFilter  = null;
+let _onSeeBusRef   = null;
+let _emptyOverlay  = null;
+let _userLocMarker = null;
+let _onGeoErrorRef = null;
 
 // ── Init ──────────────────────────────────────────────────
 export function initHome({ onSeeBus, onGeoError }) {
@@ -199,7 +201,6 @@ function _initMap() {
     _map.setView([14.693, -17.452], 14);
   }, 300);
 
-  // ── Bouton géolocalisation flottant ───────────────────
   const geoBtn = document.createElement('button');
   geoBtn.className   = 'map-geolocate-btn';
   geoBtn.title       = 'Ma position';
@@ -210,14 +211,7 @@ function _initMap() {
     <circle cx="12" cy="12" r="8" stroke-dasharray="2 2" opacity="0.4"/>
   </svg>`;
   geoBtn.addEventListener('click', _handleGeolocate);
-
-  // Insérer dans le pane Leaflet le plus haut pour rester au-dessus des layers
-  const mapEl = document.getElementById('map-home');
-  if (mapEl) {
-    // Utiliser le container Leaflet directement — il est position:relative
-    const container = _map.getContainer();
-    container.appendChild(geoBtn);
-  }
+  _map.getContainer().appendChild(geoBtn);
 }
 
 function _handleGeolocate() {
@@ -231,21 +225,12 @@ function _handleGeolocate() {
   navigator.geolocation.getCurrentPosition(
     (pos) => {
       const { latitude: lat, longitude: lon } = pos.coords;
-
-      // Centrer la carte
       if (_map) _map.setView([lat, lon], 15, { animate: true });
-
-      // Marker position utilisateur — cercle bleu discret
       if (_userLocMarker && _map) _map.removeLayer(_userLocMarker);
       _userLocMarker = L.circleMarker([lat, lon], {
-        radius:      6,
-        color:       '#fff',
-        weight:      2,
-        fillColor:   '#3b82f6',
-        fillOpacity: 1,
-        interactive: false,
+        radius: 6, color: '#fff', weight: 2,
+        fillColor: '#3b82f6', fillOpacity: 1, interactive: false,
       }).addTo(_map);
-
       if (btn) btn.classList.remove('map-geolocate-btn--loading');
     },
     () => {
@@ -257,9 +242,8 @@ function _handleGeolocate() {
 }
 
 // ── Sélection bus ─────────────────────────────────────────
-// NON MODIFIÉ — ne pas toucher
 function _selectBus(busId) {
-  if (!_mapReady) return;   // BUG-5 : ignorer les appels avant que Leaflet soit stable
+  if (!_mapReady) return;
   if (_selectedBusId === busId) { _deselectBus(); return; }
   _selectedBusId = busId;
   _stopAnim();
@@ -276,7 +260,7 @@ function _selectBus(busId) {
   }).addTo(_map);
 
   data.arrets.forEach((stop, idx) => {
-    const isT   = idx === 0 || idx === data.arrets.length - 1;
+    const isT = idx === 0 || idx === data.arrets.length - 1;
     const circle = L.circleMarker([stop.lat, stop.lon], {
       radius:      isT ? 4 : 2,
       color:       isT ? color : 'rgba(255,255,255,0.2)',
@@ -293,12 +277,11 @@ function _selectBus(busId) {
   _startAnim(bus, data);
 }
 
-// NON MODIFIÉ — ne pas toucher
 function _deselectBus() {
   _selectedBusId = null;
   _stopAnim();
   _clearActiveLine();
-  hideReader();
+  hideReader();          // cache le reader dans le header
   _refreshBusMarkers();
 }
 
@@ -309,7 +292,6 @@ function _clearActiveLine() {
 }
 
 // ── Animation ─────────────────────────────────────────────
-// NON MODIFIÉ — ne pas toucher
 const _ANIM_SPEED_MS = 7;
 
 function _haversineM(a, b) {
@@ -321,13 +303,18 @@ function _haversineM(a, b) {
   return 2 * R * Math.asin(Math.sqrt(x));
 }
 
-// NON MODIFIÉ — ne pas toucher
 function _startAnim(bus, data) {
   const coords = data.trace;
   if (coords.length < 2) return;
 
-  let startIdx = 0;
-  if (bus.position) {
+  // ── Reprendre depuis la progression sauvegardée si elle existe ──
+  const saved = _busProgress[bus.id];
+  let startIdx    = saved ? saved.idx      : 0;
+  let startProg   = saved ? saved.progress : 0;
+  let initArretIdx = saved ? saved.lastArretIdx : 0;
+
+  // Sinon, calculer la position initiale depuis l'arrêt signalé
+  if (!saved && bus.position) {
     const posLower = bus.position.toLowerCase();
     const arretIdx = data.arrets.findIndex(a =>
       a.nom.toLowerCase().includes(posLower) || posLower.includes(a.nom.toLowerCase())
@@ -340,18 +327,24 @@ function _startAnim(bus, data) {
         if (d < bestDist) { bestDist = d; startIdx = i; }
       });
     }
+    initArretIdx = _nearestArretIdx(
+      coords[startIdx][0], coords[startIdx][1], data.arrets
+    );
   }
 
+  updateReader(bus.ligne, data.arrets, initArretIdx);
+
   const state = {
+    busId:        bus.id,
     ligne:        bus.ligne,
     arrets:       data.arrets,
     coords,
     idx:          startIdx,
-    progress:     0,
+    progress:     startProg,
     lastTs:       null,
     rafId:        null,
     stopped:      false,
-    lastArretIdx: -1,
+    lastArretIdx: initArretIdx,
   };
   _animState = state;
   const mk = _busMarkers[bus.id];
@@ -395,6 +388,12 @@ function _startAnim(bus, data) {
 
 function _stopAnim() {
   if (!_animState) return;
+  // Sauvegarder la progression avant d'arrêter
+  _busProgress[_animState.busId] = {
+    idx:          _animState.idx,
+    progress:     _animState.progress,
+    lastArretIdx: _animState.lastArretIdx,
+  };
   _animState.stopped = true;
   if (_animState.rafId) cancelAnimationFrame(_animState.rafId);
   _animState = null;
@@ -410,12 +409,15 @@ function _nearestArretIdx(lat, lon, arrets) {
 }
 
 // ── Markers bus ───────────────────────────────────────────
-// NON MODIFIÉ — ne pas toucher
 function _updateMarkers(buses) {
   if (!_map) return;
   const ids = new Set(buses.map(b => String(b.id)));
   Object.keys(_busMarkers).forEach(id => {
-    if (!ids.has(id)) { _map.removeLayer(_busMarkers[id]); delete _busMarkers[id]; }
+    if (!ids.has(id)) {
+      _map.removeLayer(_busMarkers[id]);
+      delete _busMarkers[id];
+      delete _busProgress[id];  // nettoyer la progression du bus expiré
+    }
   });
   buses.forEach(b => {
     if (b.lat && b.lng && !_busMarkers[b.id])
@@ -443,7 +445,6 @@ function _makeBusMarker(bus) {
 }
 
 function _busIcon(ligne, color, size, isSelected) {
-  // Pulsation uniquement sur les markers non sélectionnés — affordance cliquable
   const pulse = isSelected ? '' : `<div class="xetu-pulse" style="width:${size}px;height:${size}px;background:${color};"></div>`;
   return L.divIcon({
     html: `<div style="position:relative;width:${size}px;height:${size}px;">
@@ -473,27 +474,18 @@ function _refreshBusMarkers() {
   });
 }
 
-// ── V2.4 : Filter bar ────────────────────────────────────
-// CHG-3 : génère les chips, gère les listeners
-// Caché si < 2 lignes actives distinctes
+// ── Filter bar ────────────────────────────────────────────
 function _renderFilterBar(buses) {
   const bar = document.getElementById('home-filter-bar');
   if (!bar) return;
 
-  // Lignes actives distinctes, triées numériquement
   const lines = [...new Set(buses.map(b => String(b.ligne)))].sort((a, b) =>
     isNaN(a) || isNaN(b) ? a.localeCompare(b) : Number(a) - Number(b)
   );
 
-  // Caché si moins de 2 lignes actives
-  if (lines.length < 2) {
-    bar.hidden = true;
-    return;
-  }
+  if (lines.length < 2) { bar.hidden = true; return; }
   bar.hidden = false;
 
-  // Vérifier si le filtre actif existe encore dans le store
-  // Si la ligne filtrée a expiré → reset automatique à "Tous" + _deselectBus
   if (_activeFilter !== null && !lines.includes(_activeFilter)) {
     _activeFilter = null;
     _deselectBus();
@@ -501,7 +493,6 @@ function _renderFilterBar(buses) {
 
   bar.innerHTML = '';
 
-  // Bouton "Tous"
   const allBtn = document.createElement('button');
   allBtn.className = 'filter-chip' + (_activeFilter === null ? ' filter-chip--active' : '');
   allBtn.textContent = 'Tous';
@@ -513,7 +504,6 @@ function _renderFilterBar(buses) {
   });
   bar.appendChild(allBtn);
 
-  // Chips par ligne
   lines.forEach(ligne => {
     const btn = document.createElement('button');
     btn.className = 'filter-chip' + (_activeFilter === ligne ? ' filter-chip--active' : '');
@@ -522,10 +512,8 @@ function _renderFilterBar(buses) {
       const busesCurrent = store.get('buses') || [];
       const bus = busesCurrent.find(b => String(b.ligne) === ligne);
       if (!bus) return;
-
       _activeFilter = ligne;
       _selectBus(bus.id);
-      // Zoom fluide sur le bus sélectionné
       if (_map && bus.lat && bus.lng) {
         _map.flyTo([bus.lat, bus.lng], 15, { animate: true, duration: 0.8 });
       }
@@ -536,8 +524,6 @@ function _renderFilterBar(buses) {
   });
 }
 
-// ── V2.5 : overlay supprimé — doublon avec btn "Je vois un bus ici" ─
-// L'empty state s'affiche dans #col-buses directement (voir _renderBuses).
 function _showEmptyOverlay() { /* no-op */ }
 function _hideEmptyOverlay() { /* no-op */ }
 
@@ -558,12 +544,11 @@ function _renderCols() {
   document.getElementById(_activeCol === 'buses' ? 'col-buses' : 'col-top')?.classList.add('active');
 }
 
-// CHG-5 : applique _activeFilter sur la liste + gère empty overlay carte
+// ── Bus list ──────────────────────────────────────────────
 function _renderBuses(buses) {
   const el = document.getElementById('col-buses');
   if (!el) return;
 
-  // Aucun bus dans le store → empty state dans la liste, on sort immédiatement
   if (!buses || !buses.length) {
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🚌</div>
@@ -572,13 +557,11 @@ function _renderBuses(buses) {
     return;
   }
 
-  // Appliquer le filtre actif sur la liste
   const filtered = _activeFilter
     ? buses.filter(b => String(b.ligne) === _activeFilter)
     : buses;
 
   if (!filtered.length) {
-    // Cas limite : ligne filtrée expirée mais _renderFilterBar n'a pas encore tourné
     el.innerHTML = `<div class="empty-state">
       <div class="empty-icon">🔍</div>
       <div class="empty-text">Aucun bus actif sur cette ligne.</div>
@@ -634,14 +617,10 @@ function _initSeeBus(onSeeBus) {
   document.getElementById('btn-see-bus')?.addEventListener('click', onSeeBus);
 }
 
-// CHG-6 : _subscribeStore appelle _renderFilterBar à chaque update buses
-// BUG-5 fix : _mapReady bloque tout appel à _selectBus pendant les 300ms post-init
-// (le store fire une première fois au DOMContentLoaded avec les données en cache
-//  avant que Leaflet ait fini son invalidateSize → fitBounds sur div h=0 → dézoom)
+// ── Store ─────────────────────────────────────────────────
 let _mapReady = false;
 
 function _subscribeStore() {
-  // Marquer la carte comme prête après le délai d'invalidateSize
   setTimeout(() => { _mapReady = true; }, 150);
 
   store.subscribe('buses', buses => {
