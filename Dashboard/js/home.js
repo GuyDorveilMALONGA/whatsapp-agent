@@ -1,5 +1,8 @@
 /**
- * js/home.js — V2.5
+ * js/home.js — V2.6
+ * V2.6 :
+ *   - FIX : Remplacement Stadia Maps (quota dépassé) par CartoDB Dark (gratuit, sans clé)
+ *     https://tiles.stadiamaps.com → https://{s}.basemaps.cartocdn.com/dark_all/
  * V2.5 :
  *   - Intégration reader V3.0 inline header (prev › current › next)
  *   - updateReader() appelé depuis _startAnim via nearestArretIdx (inchangé)
@@ -192,10 +195,15 @@ function _initMap() {
     attributionControl: false,
     minZoom:            12,
   }).setView([14.693, -17.452], 14);
-  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
-    maxZoom: 20,
-    attribution: '&copy; Stadia Maps',
-  }).addTo(_map);
+
+  // FIX V2.6 : CartoDB Dark — gratuit, sans clé API, sans quota
+  // CartoDB Voyager — fond neutre, quartiers bien lisibles
+L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
+  maxZoom:     19,
+  subdomains:  'abcd',
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/">CARTO</a>',
+}).addTo(_map);
+
   setTimeout(() => {
     _map.invalidateSize({ animate: false });
     _map.setView([14.693, -17.452], 14);
@@ -309,8 +317,8 @@ function _startAnim(bus, data) {
 
   // ── Reprendre depuis la progression sauvegardée si elle existe ──
   const saved = _busProgress[bus.id];
-  let startIdx    = saved ? saved.idx      : 0;
-  let startProg   = saved ? saved.progress : 0;
+  let startIdx     = saved ? saved.idx      : 0;
+  let startProg    = saved ? saved.progress : 0;
   let initArretIdx = saved ? saved.lastArretIdx : 0;
 
   // Sinon, calculer la position initiale depuis l'arrêt signalé
