@@ -31,8 +31,9 @@ html, body {
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   display: flex; align-items: center; gap: 10px;
-  height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  height: var(--header-h);
   padding: 0 16px;
+  padding-top: env(safe-area-inset-top, 0px);
   flex-shrink: 0; z-index: var(--z-header);
 }
 
