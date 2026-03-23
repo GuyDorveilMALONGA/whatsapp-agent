@@ -68,6 +68,7 @@ html, body {
   background: var(--surface); border-left: 1px solid var(--border);
   display: flex; flex-direction: column; padding: 20px 0;
   animation: slideInRight 0.25s ease;
+  overflow-y: auto;
 }
 @keyframes slideInRight { from{transform:translateX(100%)} to{transform:translateX(0)} }
 

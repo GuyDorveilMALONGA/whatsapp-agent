@@ -14,14 +14,12 @@ const MAX_INPUT = 500;
 
 // ── Suggestions ───────────────────────────────────────────
 
-// Suggestions centrées sur lignes démo (1 & 4) + wolof naturel
 const DEFAULT_SUGGESTIONS = [
-  'Bus 4 est où ?',
-  'Bus 1 def ko kat ?',       // "Le bus 1, il est passé ?"
+  'Bus 4 est où ? · Fan la bus 4 bi nekk ?',
+  'Bus 1 est où ? · Fan la bus 1 bi nekk ?',
   'Comment aller à Sandaga ?',
+  'Naka laay def ba àgg Sandaga ?',
   'Arrêts du bus 4',
-  'Dafa dem ?',               // "Il est parti ?"
-  'Bus bi ngi ci Medina ?',   // "Le bus est à Médina ?"
   'Préviens-moi pour le bus 4',
 ];
 
@@ -190,10 +188,10 @@ export function setStatus(status) {
   const label = document.getElementById('chat-status-label');
   if (!dot || !label) return;
   const map = {
-    open:       { cls: 'status--open',       text: 'En ligne'    },
-    connecting: { cls: 'status--connecting', text: 'Connexion…'  },
-    closed:     { cls: 'status--closed',     text: 'Hors ligne'  },
-    failed:     { cls: 'status--closed',     text: 'Non connecté'},
+    open:       { cls: 'status--open',       text: 'Mi ngi ci biir' },
+    connecting: { cls: 'status--connecting', text: 'Connexion…'     },
+    closed:     { cls: 'status--closed',     text: 'Hors ligne'     },
+    failed:     { cls: 'status--closed',     text: 'Non connecté'   },
   };
   const conf = map[status] ?? map.closed;
   dot.className     = `chat-status-dot ${conf.cls}`;

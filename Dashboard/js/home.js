@@ -190,9 +190,9 @@ function _initMap() {
     attributionControl: false,
     minZoom:            12,
   }).setView([14.693, -17.452], 14);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    subdomains: 'abc',
+  L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
+    maxZoom: 20,
+    attribution: '&copy; Stadia Maps',
   }).addTo(_map);
   setTimeout(() => {
     _map.invalidateSize({ animate: false });
