@@ -24,12 +24,60 @@
 <link rel="stylesheet" href="css/signal-grid.css">
 <link rel="stylesheet" href="css/variables-light.css">
 <style>
-/* ══ ITINÉRAIRE V9.2 ══════════════════════════════════════ */
-/* FIX: pas de display:flex → base.css gère via .screen.active */
+/* ══ ITINÉRAIRE V9.4 ══════════════════════════════════════ */
 #screen-itin { background: var(--bg); flex-direction: column; }
 .itin-body-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; min-height:0; }
-/* Padding top réduit — la search bar est le premier élément */
 .itin-body { padding:14px 14px 120px; display:flex; flex-direction:column; gap:10px; }
+
+/* ══ DOUBLE CHAMP ══ */
+.itin-fields-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; }
+.itin-field-row { display:flex; align-items:center; gap:10px; padding:13px 14px; cursor:text; transition:background var(--t-fast); }
+.itin-field-row:first-child { border-bottom:1px solid var(--border); }
+.itin-field-row.itin-field-active { background:rgba(255,107,53,0.06); }
+.itin-field-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+.itin-field-dot--from { background:transparent; border:2px solid rgba(255,255,255,0.35); }
+.itin-field-dot--to { background:var(--orange); }
+.itin-field-value { flex:1; display:flex; align-items:center; gap:8px; min-width:0; }
+.itin-field-placeholder { font-size:14px; color:var(--muted); user-select:none; }
+.itin-field-selected { font-size:14px; font-weight:500; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1; }
+.itin-field-clear { width:20px; height:20px; border-radius:50%; background:rgba(255,255,255,0.08); border:none; color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
+.itin-field-clear:hover { background:rgba(255,255,255,0.15); color:var(--text); }
+.itin-field-input { flex:1; background:transparent; border:none; outline:none; font-size:14px; font-family:'Inter',sans-serif; color:var(--text); caret-color:var(--orange); }
+.itin-field-input::placeholder { color:var(--muted); opacity:0.7; }
+
+/* Badge GPS pré-rempli */
+.itin-gps-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--green); opacity:0.8; flex-shrink:0; }
+
+/* ══ RÉSULTATS ══ */
+.itin-search-tabs { display:flex; border-bottom:1px solid var(--border); }
+.itin-search-tab { font-size:12px; font-weight:500; padding:7px 14px 9px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:'Inter',sans-serif; transition:color var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
+.itin-search-tab.active { color:var(--orange); border-bottom-color:var(--orange); }
+.itin-search-legend { display:flex; gap:14px; flex-wrap:wrap; padding:2px 0; }
+.itin-legend-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); }
+.itin-legend-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+.itin-search-results { display:flex; flex-direction:column; gap:8px; }
+
+/* ══ CARTE ARRÊT ══ */
+.itin-arret-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); overflow:hidden; transition:border-color var(--t-fast); animation:slideUp 0.18s ease both; }
+.itin-arret-card--signale { border-color:rgba(0,214,127,0.4); background:rgba(0,214,127,0.03); }
+.itin-arret-head { display:flex; align-items:center; gap:10px; padding:12px 14px 8px; }
+.itin-arret-dot { width:10px; height:10px; border-radius:50%; background:var(--orange); flex-shrink:0; }
+.itin-arret-dot--signale { background:var(--green); box-shadow:0 0 0 4px rgba(0,214,127,0.18); }
+.itin-arret-name { font-size:14px; font-weight:600; color:var(--text); flex:1; }
+.itin-arret-dist { font-size:11px; color:var(--muted); flex-shrink:0; }
+.itin-arret-lines { display:flex; flex-wrap:wrap; gap:6px; padding:0 14px 10px; }
+.itin-line-badge-sig { display:flex; align-items:center; gap:5px; background:rgba(0,214,127,0.12); border:1px solid rgba(0,214,127,0.35); border-radius:999px; padding:5px 11px; font-size:11px; font-weight:600; color:var(--green); cursor:pointer; white-space:nowrap; transition:background var(--t-fast); }
+.itin-line-badge-sig:hover { background:rgba(0,214,127,0.22); }
+.itin-line-badge-sig-dot { width:6px; height:6px; border-radius:50%; background:var(--green); flex-shrink:0; }
+.itin-line-badge-norm { display:flex; align-items:center; background:rgba(255,107,53,0.12); border:1px solid rgba(255,107,53,0.25); border-radius:999px; padding:5px 11px; font-size:11px; font-weight:600; color:rgba(255,107,53,0.9); cursor:pointer; white-space:nowrap; transition:background var(--t-fast); }
+.itin-line-badge-norm:hover { background:rgba(255,107,53,0.22); }
+.itin-arret-sep { height:1px; background:rgba(255,255,255,0.05); margin:0 14px; }
+.itin-arret-footer { display:flex; align-items:center; justify-content:flex-end; padding:8px 14px; gap:8px; }
+.itin-btn-from { display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-md); padding:7px 13px; font-size:12px; font-weight:600; color:var(--text); font-family:'Inter',sans-serif; cursor:pointer; transition:background var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
+.itin-btn-from:hover { background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.2); }
+.itin-btn-to { display:inline-flex; align-items:center; gap:6px; background:var(--orange); border:none; border-radius:var(--radius-md); padding:7px 13px; font-size:12px; font-weight:600; color:#fff; font-family:'Inter',sans-serif; cursor:pointer; box-shadow:0 2px 8px rgba(255,107,53,0.35); transition:opacity var(--t-fast),transform var(--t-fast); white-space:nowrap; }
+.itin-btn-to:hover { opacity:0.9; }
+.itin-btn-to:active { transform:scale(0.96); }
 
 /* ══ RÉSULTAT ITINÉRAIRE ══ */
 .itin-result-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px; display:flex; flex-direction:column; gap:0; animation:slideUp 0.2s ease both; }
@@ -48,144 +96,6 @@
 .itin-result-duration-val { font-size:16px; font-weight:700; color:var(--orange); }
 .itin-reset-link { background:none; border:none; font-size:11px; color:var(--muted); text-decoration:underline; text-underline-offset:2px; text-align:center; cursor:pointer; margin-top:8px; font-family:'Inter',sans-serif; }
 
-/* ══ BARRE DE RECHERCHE ══ */
-.itin-search-bar { display:flex; align-items:center; gap:10px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; transition:border-color var(--t-fast),box-shadow var(--t-fast); }
-.itin-search-bar:focus-within { border-color:var(--orange-border); box-shadow:0 0 0 3px rgba(255,107,53,0.08); }
-.itin-search-input { flex:1; background:transparent; border:none; outline:none; font-size:14px; font-family:'Inter',sans-serif; color:var(--text); caret-color:var(--orange); }
-.itin-search-input::placeholder { color:var(--muted); }
-.itin-search-clear { background:none; border:none; color:var(--muted); cursor:pointer; padding:2px; display:none; align-items:center; transition:color var(--t-fast); flex-shrink:0; }
-.itin-search-clear:hover { color:var(--text); }
-.itin-search-clear.visible { display:flex; }
-
-/* ══ TABS ══ */
-.itin-search-tabs { display:flex; border-bottom:1px solid var(--border); }
-.itin-search-tab { font-size:12px; font-weight:500; padding:7px 14px 9px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:'Inter',sans-serif; transition:color var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
-.itin-search-tab.active { color:var(--orange); border-bottom-color:var(--orange); }
-
-/* ══ LÉGENDE ══ */
-.itin-search-legend { display:flex; gap:14px; flex-wrap:wrap; padding:2px 0; }
-.itin-legend-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); }
-.itin-legend-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
-
-.itin-search-count { font-size:11px; color:var(--muted); }
-.itin-search-results { display:flex; flex-direction:column; gap:8px; }
-
-/* ══ CARTE ARRÊT — redesign pour matcher la capture ══ */
-.itin-arret-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  transition: border-color var(--t-fast);
-  animation: slideUp 0.2s ease both;
-}
-.itin-arret-card:hover { border-color: rgba(255,107,53,0.3); }
-.itin-arret-card--signale {
-  border-color: rgba(0,214,127,0.4);
-  background: rgba(0,214,127,0.03);
-}
-
-/* En-tête arrêt : nom + distance */
-.itin-arret-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 13px 14px 8px;
-}
-.itin-arret-dot {
-  width: 10px; height: 10px;
-  border-radius: 50%;
-  background: var(--orange);
-  flex-shrink: 0;
-}
-.itin-arret-dot--signale {
-  background: var(--green);
-  box-shadow: 0 0 0 4px rgba(0,214,127,0.18);
-}
-.itin-arret-name {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text);
-  flex: 1;
-}
-.itin-arret-dist {
-  font-size: 11px;
-  color: var(--muted);
-  flex-shrink: 0;
-}
-
-/* Badges de lignes */
-.itin-arret-lines {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 0 14px 12px;
-}
-
-/* Badge ligne avec signalement : fond vert, texte "Bus X · il y a N min" */
-.itin-line-badge-sig {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  background: rgba(0,214,127,0.12);
-  border: 1px solid rgba(0,214,127,0.35);
-  border-radius: 999px;
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--green);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--t-fast);
-}
-.itin-line-badge-sig:hover { background: rgba(0,214,127,0.22); }
-.itin-line-badge-sig-dot {
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--green);
-  flex-shrink: 0;
-}
-
-/* Badge ligne normal : fond orange */
-.itin-line-badge-norm {
-  display: flex;
-  align-items: center;
-  background: rgba(255,107,53,0.12);
-  border: 1px solid rgba(255,107,53,0.25);
-  border-radius: 999px;
-  padding: 5px 11px;
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(255,107,53,0.9);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background var(--t-fast);
-}
-.itin-line-badge-norm:hover { background: rgba(255,107,53,0.22); }
-
-/* Footer arrêt : "Arrêt multi-lignes" + "Voir sur la carte →" */
-.itin-arret-sep { height:1px; background:rgba(255,255,255,0.05); margin:0 14px; }
-.itin-arret-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-}
-.itin-arret-footer-txt { font-size:11px; color:var(--muted); }
-.itin-arret-action {
-  font-size: 11px;
-  color: var(--orange);
-  background: none;
-  border: none;
-  font-family: 'Inter', sans-serif;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 0;
-  display: flex;
-  align-items: center;
-  gap: 3px;
-}
-
 /* ══ CARTE LIGNE ══ */
 .itin-ligne-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:border-color var(--t-fast); animation:slideUp 0.2s ease both; }
 .itin-ligne-card:hover { border-color:var(--orange-border); }
@@ -193,62 +103,175 @@
 .itin-ligne-info { flex:1; min-width:0; }
 .itin-ligne-nom { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .itin-ligne-sub { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.itin-ligne-count { font-size:11px; color:var(--muted); flex-shrink:0; }
 
-/* ══ VIDE / LOADING ══ */
 .itin-search-empty { display:flex; flex-direction:column; align-items:center; gap:6px; padding:32px 16px; color:var(--muted); text-align:center; }
 .itin-search-empty-icon { font-size:28px; }
 .itin-search-empty-txt { font-size:12px; }
 
-/* Bandeau départ sélectionné */
-.itin-from-chip { display:inline-flex; align-items:center; gap:6px; background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:6px 12px; font-size:12px; color:rgba(255,107,53,0.9); }
-.itin-from-chip-x { font-size:16px; line-height:1; color:var(--orange); cursor:pointer; margin-left:2px; }
-
 /* ══ FAB ══ */
-.xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:52px; height:52px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; transition:opacity 0.2s; }
+.xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; }
 @keyframes xfabPulse { 0%{transform:scale(1);opacity:0.3} 100%{transform:scale(1.85);opacity:0} }
-.xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:52px; height:52px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:var(--shadow-orange); transition:transform var(--t-fast),opacity 0.2s; }
+.xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:0 4px 16px rgba(255,107,53,0.5); transition:transform var(--t-fast),opacity 0.2s; }
 .xfab-btn:active { transform:scale(0.93); }
 .xfab-btn.xfab-hidden { opacity:0; pointer-events:none; transform:scale(0.8); }
 .xfab-pulse.xfab-hidden { display:none !important; }
 #screen-itin.active .xfab-pulse { display:block; }
 #screen-itin.active .xfab-btn { display:flex; }
 
-/* ══ CHAT WIDGET ══ */
-.xchat-widget { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 80px); right:12px; width:320px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-xl); overflow:hidden; z-index:32; box-shadow:0 8px 32px rgba(0,0,0,0.5); transform:scale(0.88) translateY(16px); transform-origin:bottom right; opacity:0; transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1),opacity 0.18s ease; pointer-events:none; }
-.xchat-widget.xchat-open { transform:scale(1) translateY(0); opacity:1; pointer-events:all; }
-.xchat-header { background:var(--surface2); padding:10px 12px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
-.xchat-avatar { width:32px; height:32px; border-radius:50%; background:var(--orange); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.xchat-header-info { flex:1; }
-.xchat-name { font-size:13px; font-weight:600; color:var(--text); }
-.xchat-status { display:flex; align-items:center; gap:5px; font-size:10px; margin-top:1px; }
-.xchat-status--online { color:var(--green); }
-.xchat-status--offline { color:var(--muted); }
-.xchat-dot-online { width:5px; height:5px; border-radius:50%; background:var(--green); animation:pulse 1.5s infinite; }
-.xchat-dot-offline { width:5px; height:5px; border-radius:50%; background:var(--muted); }
-.xchat-close-btn { background:none; border:none; color:var(--muted); cursor:pointer; padding:4px; display:flex; align-items:center; transition:color var(--t-fast); }
-.xchat-close-btn:hover { color:var(--text); }
-.xchat-messages { height:220px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
-.xchat-msg { display:flex; }
-.xchat-msg--bot { justify-content:flex-start; }
-.xchat-msg--user { justify-content:flex-end; }
-.xchat-bubble { max-width:86%; padding:9px 12px; border-radius:var(--radius-lg); font-size:12px; line-height:1.5; animation:slideUp 0.18s ease both; }
-.xchat-msg--bot .xchat-bubble { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:4px; }
-.xchat-msg--user .xchat-bubble { background:var(--orange); color:#fff; border-bottom-right-radius:4px; }
-.xchat-typing { display:flex; gap:4px; align-items:center; padding:10px 14px; }
-.xchat-typing-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:typingBounce 1.2s infinite ease-in-out; }
-.xchat-typing-dot:nth-child(2) { animation-delay:0.15s; }
-.xchat-typing-dot:nth-child(3) { animation-delay:0.3s; }
-.xchat-chips-bar { display:flex; gap:6px; overflow-x:auto; padding:6px 10px; border-top:1px solid var(--border); scrollbar-width:none; }
-.xchat-chips-bar::-webkit-scrollbar { display:none; }
-.xchat-chip { background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:5px 11px; font-size:11px; color:rgba(255,107,53,0.9); font-family:'Inter',sans-serif; white-space:nowrap; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
-.xchat-chip:hover { background:rgba(255,107,53,0.22); }
-.xchat-composer { display:flex; align-items:center; gap:8px; padding:8px 10px; border-top:1px solid var(--border); background:var(--surface); }
-.xchat-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-full); padding:8px 13px; font-size:12px; color:var(--text); font-family:'Inter',sans-serif; outline:none; transition:border-color var(--t-fast); }
-.xchat-input:focus { border-color:var(--orange-border); }
-.xchat-input::placeholder { color:var(--muted); }
-.xchat-send { width:30px; height:30px; border-radius:50%; background:var(--orange); border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:transform var(--t-fast); }
-.xchat-send:active { transform:scale(0.9); }
+/* ══ SCREEN CHAT PLEIN ÉCRAN ══ */
+#screen-chat {
+  background: var(--bg);
+  flex-direction: column;
+  /* Affiché via .screen.active */
+}
+
+.chat-topbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chat-topbar-back {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid var(--border);
+  color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--t-fast);
+}
+.chat-topbar-back:hover { background: rgba(255,255,255,0.1); }
+.chat-topbar-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--orange);
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.chat-topbar-info { flex: 1; }
+.chat-topbar-name { font-size: 15px; font-weight: 700; color: var(--text); }
+.chat-topbar-status { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-top: 1px; }
+.chat-topbar-status--online { color: var(--green); }
+.chat-topbar-status--offline { color: var(--muted); }
+.chat-status-dot-on { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+.chat-status-dot-off { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+
+.chat-messages-wrap {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 16px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+}
+
+/* Bulle de message */
+.chat-msg { display: flex; flex-direction: column; }
+.chat-msg--bot { align-items: flex-start; }
+.chat-msg--user { align-items: flex-end; }
+.chat-bubble {
+  max-width: 82%;
+  padding: 11px 14px;
+  border-radius: 18px;
+  font-size: 14px;
+  line-height: 1.55;
+  animation: slideUp 0.18s ease both;
+}
+.chat-msg--bot .chat-bubble {
+  background: var(--surface2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-bottom-left-radius: 4px;
+}
+.chat-msg--user .chat-bubble {
+  background: var(--orange);
+  color: #fff;
+  border-bottom-right-radius: 4px;
+}
+.chat-msg-time { font-size: 10px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
+
+/* Typing indicator */
+.chat-typing { display: flex; gap: 5px; align-items: center; padding: 12px 16px; }
+.chat-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: typingBounce 1.2s infinite ease-in-out; }
+.chat-typing-dot:nth-child(2) { animation-delay: 0.18s; }
+.chat-typing-dot:nth-child(3) { animation-delay: 0.36s; }
+@keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
+
+/* Chips suggestions */
+.chat-chips-wrap {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding: 8px 14px;
+  border-top: 1px solid var(--border);
+  scrollbar-width: none;
+  flex-shrink: 0;
+}
+.chat-chips-wrap::-webkit-scrollbar { display: none; }
+.chat-chip {
+  background: var(--orange-dim);
+  border: 1px solid var(--orange-border);
+  border-radius: var(--radius-full);
+  padding: 7px 14px;
+  font-size: 12px;
+  color: rgba(255,107,53,0.9);
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background var(--t-fast);
+}
+.chat-chip:hover { background: rgba(255,107,53,0.22); }
+
+/* Composer */
+.chat-composer {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor));
+  background: var(--surface);
+  border-top: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.chat-composer-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  padding: 10px 16px;
+  font-size: 14px;
+  color: var(--text);
+  font-family: 'Inter', sans-serif;
+  outline: none;
+  resize: none;
+  line-height: 1.4;
+  max-height: 100px;
+  overflow-y: auto;
+  transition: border-color var(--t-fast);
+}
+.chat-composer-input:focus { border-color: var(--orange-border); }
+.chat-composer-input::placeholder { color: var(--muted); }
+.chat-composer-send {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: var(--orange);
+  border: none;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(255,107,53,0.4);
+  transition: transform var(--t-fast), opacity var(--t-fast);
+}
+.chat-composer-send:active { transform: scale(0.92); }
+.chat-composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -303,10 +326,7 @@
         <div class="menu-qr-card">
           <div class="menu-qr-label"><span class="menu-qr-xe">XE</span><span class="menu-qr-tu">TU</span></div>
           <canvas id="menu-qr-canvas" width="120" height="120"></canvas>
-          <div class="menu-qr-footer">
-            <div class="menu-qr-dot"></div>
-            <span class="menu-qr-url">xetudashbord.pages.dev</span>
-          </div>
+          <div class="menu-qr-footer"><div class="menu-qr-dot"></div><span class="menu-qr-url">xetudashbord.pages.dev</span></div>
         </div>
       </div>
     </div>
@@ -317,10 +337,8 @@
       <div class="popup-title">Notez Xëtu</div>
       <div class="popup-sub">Votre avis nous aide à améliorer l'app</div>
       <div class="stars-row" id="stars-row">
-        <button class="star-btn" data-val="1">★</button>
-        <button class="star-btn" data-val="2">★</button>
-        <button class="star-btn" data-val="3">★</button>
-        <button class="star-btn" data-val="4">★</button>
+        <button class="star-btn" data-val="1">★</button><button class="star-btn" data-val="2">★</button>
+        <button class="star-btn" data-val="3">★</button><button class="star-btn" data-val="4">★</button>
         <button class="star-btn" data-val="5">★</button>
       </div>
       <div class="popup-actions">
@@ -335,26 +353,10 @@
       <div class="popup-title">Nous contacter</div>
       <div class="popup-sub">Choisissez un moyen de contact</div>
       <div class="contact-grid">
-        <a class="contact-item" href="tel:+221XXXXXXXXX">
-          <div class="contact-icon contact-icon--call">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-          </div><span>Appel</span>
-        </a>
-        <a class="contact-item" href="mailto:hello@xetu.sn">
-          <div class="contact-icon contact-icon--mail">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-          </div><span>Mail</span>
-        </a>
-        <a class="contact-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener">
-          <div class="contact-icon contact-icon--wa">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-          </div><span>WhatsApp</span>
-        </a>
-        <a class="contact-item" href="https://instagram.com/xetu_dakar" target="_blank" rel="noopener">
-          <div class="contact-icon contact-icon--ig">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg>
-          </div><span>Instagram</span>
-        </a>
+        <a class="contact-item" href="tel:+221XXXXXXXXX"><div class="contact-icon contact-icon--call"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><span>Appel</span></a>
+        <a class="contact-item" href="mailto:hello@xetu.sn"><div class="contact-icon contact-icon--mail"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><span>Mail</span></a>
+        <a class="contact-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener"><div class="contact-icon contact-icon--wa"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></div><span>WhatsApp</span></a>
+        <a class="contact-item" href="https://instagram.com/xetu_dakar" target="_blank" rel="noopener"><div class="contact-icon contact-icon--ig"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></div><span>Instagram</span></a>
       </div>
       <button class="popup-btn popup-btn--cancel" id="contact-close" style="width:100%;margin-top:8px">Fermer</button>
     </div>
@@ -363,9 +365,7 @@
   <main id="screens">
 
     <section class="screen active" id="screen-home">
-      <div id="map-home">
-        <div id="bus-reader" hidden><div class="reader-scroll"></div></div>
-      </div>
+      <div id="map-home"><div id="bus-reader" hidden><div class="reader-scroll"></div></div></div>
       <div class="see-bus-wrap">
         <button class="btn-see-bus" id="btn-see-bus">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -396,18 +396,11 @@
       </div>
       <div class="signal-map-wrap">
         <div id="map-signal"></div>
-        <div id="gps-spinner" class="gps-spinner-overlay" hidden>
-          <span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span>
-        </div>
-        <div class="signal-map-label" id="signal-map-label">
-          <span class="pos-dot pos-dot--wait"></span>Position en attente
-        </div>
+        <div id="gps-spinner" class="gps-spinner-overlay" hidden><span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span><span class="gps-spinner-dot"></span></div>
+        <div class="signal-map-label" id="signal-map-label"><span class="pos-dot pos-dot--wait"></span>Position en attente</div>
       </div>
       <div class="signal-body">
-        <div class="form-section">
-          <div class="form-section-title">Quelle ligne ?</div>
-          <div id="ligne-grid"></div>
-        </div>
+        <div class="form-section"><div class="form-section-title">Quelle ligne ?</div><div id="ligne-grid"></div></div>
         <div class="form-section">
           <div class="form-section-title">À quel arrêt ?<span class="form-section-hint" id="arret-section-hint"></span></div>
           <div class="arret-wrap">
@@ -432,41 +425,26 @@
       </div>
     </section>
 
-    <!-- ══ SCREEN ITINÉRAIRE V9.2 — straight sur la search ══ -->
+    <!-- ══ SCREEN ITINÉRAIRE V9.4 ══ -->
     <section class="screen" id="screen-itin">
       <div class="itin-body-wrap">
         <div class="itin-body">
 
-          <!-- Résultat itinéraire (caché par défaut) -->
+          <!-- Résultat -->
           <div class="itin-result-card" id="itin-result-card" hidden>
             <div class="itin-result-step">
-              <div class="itin-step-icon itin-step-icon--origin">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg>
-              </div>
-              <div class="itin-step-info">
-                <div class="itin-step-main" id="itin-res-from">—</div>
-                <div class="itin-step-sub">Point de départ</div>
-              </div>
+              <div class="itin-step-icon itin-step-icon--origin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg></div>
+              <div class="itin-step-info"><div class="itin-step-main" id="itin-res-from">—</div><div class="itin-step-sub">Point de départ</div></div>
             </div>
             <div class="itin-result-divider"></div>
             <div class="itin-result-step">
-              <div class="itin-step-icon itin-step-icon--bus">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg>
-              </div>
-              <div class="itin-step-info">
-                <div class="itin-step-main" id="itin-res-bus">—</div>
-                <div class="itin-step-sub" id="itin-res-bus-sub">—</div>
-              </div>
+              <div class="itin-step-icon itin-step-icon--bus"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M4 16c0 .88.39 1.67 1 2.22V20c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h8v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1.78c.61-.55 1-1.34 1-2.22V6c0-3.5-3.58-4-8-4s-8 .5-8 4v10zm3.5 1c-.83 0-1.5-.67-1.5-1.5S6.67 14 7.5 14s1.5.67 1.5 1.5S8.33 17 7.5 17zm9 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zm1.5-6H6V6h12v5z"/></svg></div>
+              <div class="itin-step-info"><div class="itin-step-main" id="itin-res-bus">—</div><div class="itin-step-sub" id="itin-res-bus-sub">—</div></div>
             </div>
             <div class="itin-result-divider"></div>
             <div class="itin-result-step">
-              <div class="itin-step-icon itin-step-icon--dest">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-              </div>
-              <div class="itin-step-info">
-                <div class="itin-step-main" id="itin-res-to">—</div>
-                <div class="itin-step-sub" id="itin-res-walk">—</div>
-              </div>
+              <div class="itin-step-icon itin-step-icon--dest"><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg></div>
+              <div class="itin-step-info"><div class="itin-step-main" id="itin-res-to">—</div><div class="itin-step-sub" id="itin-res-walk">—</div></div>
             </div>
             <div class="itin-result-footer">
               <span class="itin-result-duration-label">Durée estimée</span>
@@ -475,61 +453,77 @@
             <button class="itin-reset-link" id="itin-reset-btn">Modifier le trajet</button>
           </div>
 
-          <!-- SEARCH BAR — premier élément visible -->
-          <div class="itin-search-bar" id="itin-search-bar">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input class="itin-search-input" id="itin-search-input" type="text" placeholder="Chercher un arrêt ou quartier…" autocomplete="off" maxlength="60">
-            <button class="itin-search-clear" id="itin-search-clear" aria-label="Effacer">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+          <!-- Double champ -->
+          <div class="itin-fields-card" id="itin-fields-card">
+            <div class="itin-field-row" id="itin-row-from">
+              <div class="itin-field-dot itin-field-dot--from"></div>
+              <div class="itin-field-value" id="itin-val-from">
+                <span class="itin-field-placeholder">Vous êtes où ?</span>
+              </div>
+            </div>
+            <div class="itin-field-row" id="itin-row-to">
+              <div class="itin-field-dot itin-field-dot--to"></div>
+              <div class="itin-field-value" id="itin-val-to">
+                <span class="itin-field-placeholder">Vous allez où ?</span>
+              </div>
+            </div>
           </div>
 
-          <!-- Résultats injectés par JS -->
           <div id="itin-search-results-wrap"></div>
 
         </div>
       </div>
 
-      <!-- FAB -->
+      <!-- FAB chat -->
       <div class="xfab-pulse" id="xfab-pulse"></div>
       <button class="xfab-btn" id="xfab-btn" aria-label="Parler à Xëtu">
-        <svg id="xfab-icon-chat" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
-        <svg id="xfab-icon-close" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none;position:absolute;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
       </button>
+    </section>
 
-      <!-- Chat widget -->
-      <div class="xchat-widget" id="xchat-widget">
-        <div class="xchat-header">
-          <div class="xchat-avatar">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>
-          </div>
-          <div class="xchat-header-info">
-            <div class="xchat-name">Xëtu</div>
-            <div class="xchat-status xchat-status--offline" id="xchat-status-bar">
-              <span class="xchat-dot-offline" id="xchat-status-dot"></span>
-              <span id="xchat-status-txt">Connexion…</span>
-            </div>
-          </div>
-          <button class="xchat-close-btn" id="xchat-close-btn" aria-label="Fermer">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
-          </button>
+    <!-- ══ SCREEN CHAT PLEIN ÉCRAN ══ -->
+    <section class="screen" id="screen-chat">
+
+      <!-- Topbar -->
+      <div class="chat-topbar">
+        <button class="chat-topbar-back" id="chat-back-btn" aria-label="Retour">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+        </button>
+        <div class="chat-topbar-avatar">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="white"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
         </div>
-        <div class="xchat-messages" id="xchat-messages">
-          <div class="xchat-msg xchat-msg--bot">
-            <div class="xchat-bubble">Salam ! Je peux t'aider pour ton trajet 🚌<br>Pose-moi une question sur les bus.</div>
+        <div class="chat-topbar-info">
+          <div class="chat-topbar-name">Xëtu</div>
+          <div class="chat-topbar-status chat-topbar-status--offline" id="chat-status-bar">
+            <span class="chat-status-dot-off" id="chat-status-dot"></span>
+            <span id="chat-status-txt">Connexion…</span>
           </div>
         </div>
-        <div class="xchat-chips-bar" id="xchat-chips-bar">
-          <button class="xchat-chip" data-msg="Où est le bus 15 ?">Bus 15 ?</button>
-          <button class="xchat-chip" data-msg="Bus 7 à Yoff">Bus 7 à Yoff</button>
-          <button class="xchat-chip" data-msg="Comment aller à Sandaga ?">→ Sandaga</button>
+      </div>
+
+      <!-- Messages -->
+      <div class="chat-messages-wrap" id="chat-messages">
+        <div class="chat-msg chat-msg--bot">
+          <div class="chat-bubble">Salam ! 👋<br>Je suis Xëtu, ton assistant bus à Dakar.<br>Pose-moi une question sur les lignes, les arrêts ou ton itinéraire.</div>
+          <div class="chat-msg-time">maintenant</div>
         </div>
-        <div class="xchat-composer">
-          <input class="xchat-input" id="xchat-input" type="text" placeholder="Bus 15 à Liberté 5…" maxlength="300" autocomplete="off">
-          <button class="xchat-send" id="xchat-send">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
-          </button>
-        </div>
+      </div>
+
+      <!-- Chips -->
+      <div class="chat-chips-wrap" id="chat-chips">
+        <button class="chat-chip" data-msg="Où est le bus 15 ?">🚌 Bus 15 ?</button>
+        <button class="chat-chip" data-msg="Bus 7 à Yoff">Bus 7 à Yoff</button>
+        <button class="chat-chip" data-msg="Comment aller à Sandaga ?">→ Sandaga</button>
+        <button class="chat-chip" data-msg="Quelles lignes passent à Liberté 5 ?">Liberté 5</button>
+        <button class="chat-chip" data-msg="Bus de nuit à Dakar ?">🌙 Bus de nuit</button>
+      </div>
+
+      <!-- Composer -->
+      <div class="chat-composer">
+        <textarea class="chat-composer-input" id="chat-input" placeholder="Pose ta question…" rows="1" maxlength="500"></textarea>
+        <button class="chat-composer-send" id="chat-send" disabled>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+        </button>
       </div>
 
     </section>
@@ -549,9 +543,7 @@
       <div class="subscribe-modal" id="subscribe-modal" hidden>
         <div class="subscribe-modal-inner">
           <div class="subscribe-modal-title">S'abonner à une ligne</div>
-          <div class="subscribe-search-wrap">
-            <input type="text" class="subscribe-search" id="subscribe-search" placeholder="Chercher une ligne…">
-          </div>
+          <div class="subscribe-search-wrap"><input type="text" class="subscribe-search" id="subscribe-search" placeholder="Chercher une ligne…"></div>
           <div class="subscribe-lines" id="subscribe-lines"></div>
           <button class="popup-btn popup-btn--cancel" id="subscribe-cancel" style="width:100%;margin-top:12px">Annuler</button>
         </div>
@@ -580,521 +572,352 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
-  function _initMenuQR() {
-    var canvas = document.getElementById('menu-qr-canvas');
-    if (!canvas) return;
-    var el = document.createElement('div');
-    el.style.display = 'none';
-    document.body.appendChild(el);
-    new QRCode(el, {
-      text: 'https://xetudashbord.pages.dev/',
-      width: 120, height: 120,
-      colorDark: '#ff6b2b', colorLight: '#1a1f2e',
-      correctLevel: QRCode.CorrectLevel.H
-    });
-    setTimeout(function() {
-      var img = el.querySelector('img');
-      var ctx = canvas.getContext('2d');
-      var image = new Image();
-      image.onload = function() { ctx.drawImage(image, 0, 0, 120, 120); };
-      if (img) image.src = img.src;
-      el.remove();
-    }, 300);
-  }
-  document.addEventListener('DOMContentLoaded', _initMenuQR);
+  function _initMenuQR(){var canvas=document.getElementById('menu-qr-canvas');if(!canvas)return;var el=document.createElement('div');el.style.display='none';document.body.appendChild(el);new QRCode(el,{text:'https://xetudashbord.pages.dev/',width:120,height:120,colorDark:'#ff6b2b',colorLight:'#1a1f2e',correctLevel:QRCode.CorrectLevel.H});setTimeout(function(){var img=el.querySelector('img');var ctx=canvas.getContext('2d');var image=new Image();image.onload=function(){ctx.drawImage(image,0,0,120,120);};if(img)image.src=img.src;el.remove();},300);}
+  document.addEventListener('DOMContentLoaded',_initMenuQR);
 </script>
 
 <script>
-(function () {
-  'use strict';
+(function(){
+'use strict';
 
-  /* ══ Config ══ */
-  var API_BASE = '';  // même origine — Railway sert backend + frontend
-  var API_TIMEOUT_MS = 4000;
+var API_BASE = '';
+var API_TIMEOUT_MS = 4000;
+var DEMO_REPLIES = {
+  'Où est le bus 15 ?': 'Aucun signalement récent pour le Bus 15. Tu peux en signaler un si tu le vois 🙏',
+  'Bus 7 à Yoff': '✅ Bus 7 signalé à Yoff il y a 8 min.',
+  'Comment aller à Sandaga ?': '🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée totale : ~11 min',
+  'Quelles lignes passent à Liberté 5 ?': '📍 À Liberté 5, tu as les lignes : 15, 24, 46, DDD.\nLe Bus 15 est le plus fréquent.',
+  'Bus de nuit à Dakar ?': '🌙 Dem Dikk ne propose pas de service de nuit officiel. Les minibus privés circulent jusqu\'à minuit environ sur les grands axes.'
+};
+var ROUTES = {
+  'Liberté 5→Sandaga':{bus:'Bus 15',stop:'Pompiers',ride:8,walk:3},
+  'Plateau→Yoff':{bus:'Bus 7',stop:'Yoff Terminus',ride:22,walk:2},
+  'Parcelles→Université':{bus:'Bus 24',stop:'Université',ride:18,walk:1},
+  'HLM→Gare routière':{bus:'Bus 12',stop:'Gare routière',ride:14,walk:4}
+};
 
-  var ROUTES = {
-    'Liberté 5→Sandaga':    { bus:'Bus 15', stop:'Pompiers',      ride:8,  walk:3 },
-    'Plateau→Yoff':         { bus:'Bus 7',  stop:'Yoff Terminus', ride:22, walk:2 },
-    'Parcelles→Université': { bus:'Bus 24', stop:'Université',    ride:18, walk:1 },
-    'HLM→Gare routière':    { bus:'Bus 12', stop:'Gare routière', ride:14, walk:4 }
+/* ══ State ══ */
+var _from='',_to='',_activeField=null;
+var _stopIndex=null,_lignesInfo={};
+var _searchTab='arrets';
+var _userLat=null,_userLon=null;
+var _searchDebounce=null;
+var _prevScreen='itin'; // pour retour depuis chat
+
+function $(id){return document.getElementById(id);}
+
+/* ══ Navigation ══ */
+var NAV_SCREENS=['home','itin','mylines'];
+var _navBtns=document.querySelectorAll('.nav-btn');
+var _screens=document.querySelectorAll('.screen');
+
+function goTo(screenId){
+  _screens.forEach(function(s){s.classList.remove('active');});
+  if(NAV_SCREENS.indexOf(screenId)>=0){
+    _navBtns.forEach(function(b){b.classList.remove('active');});
+    var nb=document.querySelector('[data-screen="'+screenId+'"]');
+    if(nb) nb.classList.add('active');
+  }
+  var sc=document.getElementById('screen-'+screenId);
+  if(sc) sc.classList.add('active');
+  /* Géoloc auto à l'ouverture de l'itinéraire */
+  if(screenId==='itin') _tryGeolocFrom();
+  /* Focus composer à l'ouverture du chat */
+  if(screenId==='chat') setTimeout(function(){$('chat-input').focus();},300);
+}
+window.goTo=goTo;
+_navBtns.forEach(function(btn){btn.addEventListener('click',function(){goTo(btn.dataset.screen);});});
+document.getElementById('btn-back-signal')&&document.getElementById('btn-back-signal').addEventListener('click',function(){goTo('home');});
+
+/* ══ FAB → ouvre chat plein écran ══ */
+$('xfab-btn').addEventListener('click',function(){
+  _prevScreen='itin';
+  goTo('chat');
+});
+$('chat-back-btn').addEventListener('click',function(){
+  goTo(_prevScreen||'itin');
+});
+
+/* ══ GPS + géoloc auto ══ */
+if(navigator.geolocation){
+  navigator.geolocation.getCurrentPosition(function(p){
+    _userLat=p.coords.latitude; _userLon=p.coords.longitude;
+  },function(){},{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
+}
+
+function _tryGeolocFrom(){
+  /* Si départ déjà rempli, ne pas écraser */
+  if(_from) return;
+  if(!navigator.geolocation) return;
+  var timer=setTimeout(function(){/* timeout 3s silencieux */},3000);
+  navigator.geolocation.getCurrentPosition(function(p){
+    clearTimeout(timer);
+    _userLat=p.coords.latitude; _userLon=p.coords.longitude;
+    _loadStopsLocal().then(function(data){
+      var nearest=_findNearestStop(p.coords.latitude,p.coords.longitude,data.stops);
+      if(nearest&&!_from){
+        _from=nearest;
+        _renderFields();
+      }
+    });
+  },function(){clearTimeout(timer);},{enableHighAccuracy:false,timeout:3000,maximumAge:30000});
+}
+
+function _findNearestStop(lat,lon,stops){
+  var best=null,bestDist=Infinity;
+  Object.keys(stops).forEach(function(nom){
+    var s=stops[nom];
+    if(!s.lat||!s.lon) return;
+    var d=_haversine(lat,lon,s.lat,s.lon);
+    if(d<bestDist){bestDist=d;best=nom;}
+  });
+  return bestDist<900?best:null; /* max 900m */
+}
+
+/* ══ Helpers ══ */
+function _haversine(a,b,c,d){var R=6371000,p=Math.PI/180;var x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
+function _norm(s){return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'.]/g,' ').trim();}
+function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function _fmtDist(m){if(m===null||m===undefined)return '';return m<1000?'~'+m+' m':'~'+(m/1000).toFixed(1)+' km';}
+function _fmtMin(n){if(n===null||n===undefined)return '';return n===0?'à l\'instant':'il y a '+n+' min';}
+function _timeNow(){var d=new Date();return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}
+
+/* ══ Render champs ══ */
+function _renderFields(){
+  var rowFrom=$('itin-row-from'),valFrom=$('itin-val-from');
+  rowFrom.classList.toggle('itin-field-active',_activeField==='from');
+  if(_activeField==='from'){
+    valFrom.innerHTML='<input class="itin-field-input" id="itin-input-from" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
+    var inp=$('itin-input-from'); inp.value=_from;
+    setTimeout(function(){inp.focus();inp.select();},50);
+    inp.addEventListener('input',function(){clearTimeout(_searchDebounce);var q=this.value.trim();if(!q){$('itin-search-results-wrap').innerHTML='';return;}_searchDebounce=setTimeout(function(){_renderResults(q);},280);});
+  } else if(_from){
+    valFrom.innerHTML='<span class="itin-field-selected">'+_esc(_from)+'</span>'
+      +'<span class="itin-gps-badge" title="Géolocalisé"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 10 10c0 6.5-10 16-10 16S2 18.5 2 12A10 10 0 0 1 12 2z"/></svg></span>'
+      +'<button class="itin-field-clear" id="itin-clear-from"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+    var cl=$('itin-clear-from');
+    if(cl) cl.addEventListener('click',function(e){e.stopPropagation();_from='';_activeField='from';_renderFields();$('itin-search-results-wrap').innerHTML='';});
+  } else {
+    valFrom.innerHTML='<span class="itin-field-placeholder">Vous êtes où ?</span>';
+  }
+
+  var rowTo=$('itin-row-to'),valTo=$('itin-val-to');
+  rowTo.classList.toggle('itin-field-active',_activeField==='to');
+  if(_activeField==='to'){
+    valTo.innerHTML='<input class="itin-field-input" id="itin-input-to" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
+    var inp2=$('itin-input-to'); inp2.value=_to;
+    setTimeout(function(){inp2.focus();inp2.select();},50);
+    inp2.addEventListener('input',function(){clearTimeout(_searchDebounce);var q=this.value.trim();if(!q){$('itin-search-results-wrap').innerHTML='';return;}_searchDebounce=setTimeout(function(){_renderResults(q);},280);});
+  } else if(_to){
+    valTo.innerHTML='<span class="itin-field-selected">'+_esc(_to)+'</span>'
+      +'<button class="itin-field-clear" id="itin-clear-to"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+    var cl2=$('itin-clear-to');
+    if(cl2) cl2.addEventListener('click',function(e){e.stopPropagation();_to='';_activeField='to';_renderFields();$('itin-search-results-wrap').innerHTML='';});
+  } else {
+    valTo.innerHTML='<span class="itin-field-placeholder">Vous allez où ?</span>';
+  }
+}
+
+$('itin-row-from').addEventListener('click',function(e){if(e.target.closest('.itin-field-clear'))return;_activeField='from';_searchTab='arrets';_renderFields();var q=_from;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';});
+$('itin-row-to').addEventListener('click',function(e){if(e.target.closest('.itin-field-clear'))return;_activeField='to';_searchTab='arrets';_renderFields();var q=_to;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';});
+document.addEventListener('click',function(e){
+  if(!e.target.closest('#itin-fields-card')&&!e.target.closest('#itin-search-results-wrap')){
+    if(_activeField){_activeField=null;_renderFields();$('itin-search-results-wrap').innerHTML='';}
+  }
+});
+
+/* ══ Sélection arrêt ══ */
+function _pickStop(nom){
+  if(_activeField==='from'){
+    _from=nom; _activeField=null; _renderFields(); $('itin-search-results-wrap').innerHTML='';
+    if(!_to){setTimeout(function(){_activeField='to';_renderFields();},200);}
+    else{_calcFromTo(_from,_to);}
+  } else if(_activeField==='to'){
+    _to=nom; _activeField=null; _renderFields(); $('itin-search-results-wrap').innerHTML='';
+    if(_from){_calcFromTo(_from,_to);}
+    else{setTimeout(function(){_activeField='from';_renderFields();},200);}
+  }
+}
+
+/* ══ API ══ */
+async function _apiSearchStops(q){
+  var url=API_BASE+'/api/stops/search?q='+encodeURIComponent(q);
+  if(_userLat!==null) url+='&lat='+_userLat+'&lon='+_userLon;
+  var ctrl=new AbortController();
+  var timer=setTimeout(function(){ctrl.abort();},API_TIMEOUT_MS);
+  try{var r=await fetch(url,{signal:ctrl.signal});clearTimeout(timer);if(!r.ok)throw new Error();var d=await r.json();return{stops:d.stops||[]};}
+  catch(e){clearTimeout(timer);return null;}
+}
+
+async function _loadStopsLocal(){
+  if(_stopIndex) return _stopIndex;
+  var paths=['/data/routes_geometry_v13_fixed2.json','./data/routes_geometry_v13_fixed2.json','/routes_geometry_v13_fixed2.json'];
+  for(var i=0;i<paths.length;i++){
+    try{
+      var r=await fetch(paths[i]);if(!r.ok)continue;
+      var j=await r.json();var lignes=j.lignes||j;var stops={};
+      Object.keys(lignes).forEach(function(num){
+        var d=lignes[num];
+        _lignesInfo[num]={nom:d.nom||('Ligne '+num),terminus_a:d.terminus_a||'',terminus_b:d.terminus_b||''};
+        (d.arrets||[]).forEach(function(a){var nom=(a.nom||'').trim();if(!nom)return;if(!stops[nom])stops[nom]={lignes:[],lat:a.lat,lon:a.lon};if(stops[nom].lignes.indexOf(num)<0)stops[nom].lignes.push(num);});
+      });
+      _stopIndex={stops:stops};return _stopIndex;
+    }catch(e){continue;}
+  }
+  _stopIndex={stops:{}};return _stopIndex;
+}
+
+function _searchStopsLocal(q,stops){
+  var qn=_norm(q),res=[];
+  Object.keys(stops).forEach(function(nom){if(_norm(nom).indexOf(qn)>=0){var info=stops[nom];var dist=(_userLat&&info.lat)?Math.round(_haversine(_userLat,_userLon,info.lat,info.lon)):null;res.push({nom:nom,lignes:info.lignes,lat:info.lat,lon:info.lon,dist:dist});}});
+  res.sort(function(a,b){if(a.dist!==null&&b.dist!==null)return a.dist-b.dist;if(a.dist!==null)return -1;if(b.dist!==null)return 1;return a.nom.localeCompare(b.nom);});
+  return res.slice(0,12);
+}
+function _searchLignesLocal(q){
+  var qn=_norm(q),res=[];
+  Object.keys(_lignesInfo).forEach(function(num){var info=_lignesInfo[num];if(_norm(num).indexOf(qn)>=0||_norm(info.nom).indexOf(qn)>=0||_norm(info.terminus_a).indexOf(qn)>=0||_norm(info.terminus_b).indexOf(qn)>=0)res.push({num:num,info:info});});
+  res.sort(function(a,b){var na=parseFloat(a.num),nb=parseFloat(b.num);if(!isNaN(na)&&!isNaN(nb))return na-nb;return a.num.localeCompare(b.num);});
+  return res.slice(0,10);
+}
+function _getRecentLines(){try{return(window._xetuStore&&window._xetuStore.get('buses')||[]).map(function(b){return String(b.ligne||b.line||'');});}catch(e){return[];}}
+function _localToApiFormat(stopsRes,recentLines){return stopsRes.map(function(r){return{nom:r.nom,lat:r.lat,lon:r.lon,distance_m:r.dist,lignes:r.lignes.map(function(l){var isR=recentLines.indexOf(l)>=0;return{numero:l,has_recent:isR,last_seen_min:null};})};});}
+
+/* ══ Calcul itinéraire ══ */
+function _calcFromTo(from,to){
+  var r=ROUTES[from+'→'+to]||{bus:'Bus 15',stop:'Centre ville',ride:15,walk:5};
+  $('itin-res-from').textContent=from;$('itin-res-to').textContent=to;
+  $('itin-res-bus').textContent=r.bus+' depuis '+from;
+  $('itin-res-bus-sub').textContent="jusqu'à "+r.stop+' · '+r.ride+' min';
+  $('itin-res-walk').textContent='Marche '+r.walk+' min depuis '+r.stop;
+  $('itin-res-duration').textContent='~'+(r.ride+r.walk)+' min';
+  $('itin-result-card').hidden=false;
+  $('itin-search-results-wrap').innerHTML='';
+  $('itin-body-wrap').scrollTop=0;
+}
+
+$('itin-reset-btn').addEventListener('click',function(){
+  $('itin-result-card').hidden=true;
+  _from='';_to='';_activeField=null;
+  _renderFields();$('itin-search-results-wrap').innerHTML='';
+});
+
+/* ══ Render cartes arrêts ══ */
+function _renderStopCards(stopsData,q){
+  if(!stopsData.length) return '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucun arrêt pour « '+_esc(q)+' »</div></div>';
+  var isFrom=_activeField==='from';
+  var html='<div class="itin-search-legend"><div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 2px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div><div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div></div>';
+  html+='<div class="itin-search-results">';
+  stopsData.forEach(function(stop){
+    var hasSig=stop.lignes.some(function(l){return l.has_recent;});
+    html+='<div class="itin-arret-card'+(hasSig?' itin-arret-card--signale':'')+'">';
+    html+='<div class="itin-arret-head"><div class="itin-arret-dot'+(hasSig?' itin-arret-dot--signale':'')+'"></div><div class="itin-arret-name">'+_esc(stop.nom)+'</div>';
+    if(stop.distance_m!==null&&stop.distance_m!==undefined)html+='<div class="itin-arret-dist">'+_fmtDist(stop.distance_m)+'</div>';
+    html+='</div><div class="itin-arret-lines">';
+    stop.lignes.forEach(function(l){
+      if(l.has_recent){html+='<div class="itin-line-badge-sig" data-stop="'+_esc(stop.nom)+'"><span class="itin-line-badge-sig-dot"></span>Bus '+_esc(l.numero);if(l.last_seen_min!==null)html+=' · '+_fmtMin(l.last_seen_min);html+='</div>';}
+      else{html+='<div class="itin-line-badge-norm" data-stop="'+_esc(stop.nom)+'">'+_esc(l.numero)+'</div>';}
+    });
+    html+='</div><div class="itin-arret-sep"></div><div class="itin-arret-footer">';
+    if(isFrom){html+='<button class="itin-btn-from itin-pick-stop" data-stop="'+_esc(stop.nom)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>Partir d\'ici</button>';}
+    else{html+='<button class="itin-btn-to itin-pick-stop" data-stop="'+_esc(stop.nom)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>Vers ici</button>';}
+    html+='</div></div>';
+  });
+  html+='</div>';
+  return html;
+}
+
+function _renderResults(q){
+  var wrap=$('itin-search-results-wrap');
+  if(!q||q.length<2){wrap.innerHTML='';return;}
+  wrap.innerHTML='<div class="itin-search-empty"><div class="itin-search-empty-icon">⏳</div><div class="itin-search-empty-txt">Recherche…</div></div>';
+  var renderWithData=function(stopsData,lignesData){
+    var html='<div class="itin-search-tabs"><button class="itin-search-tab'+(_searchTab==='arrets'?' active':'')+'" data-tab="arrets">Arrêts ('+stopsData.length+')</button><button class="itin-search-tab'+(_searchTab==='lignes'?' active':'')+'" data-tab="lignes">Lignes ('+lignesData.length+')</button></div>';
+    if(_searchTab==='arrets'){html+=_renderStopCards(stopsData,q);}
+    else{
+      if(!lignesData.length){html+='<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucune ligne pour « '+_esc(q)+' »</div></div>';}
+      else{html+='<div class="itin-search-results">';lignesData.forEach(function(item){html+='<div class="itin-ligne-card" data-ligne="'+_esc(item.num)+'"><div class="itin-ligne-badge-num">'+_esc(item.num)+'</div><div class="itin-ligne-info"><div class="itin-ligne-nom">'+_esc(item.info.nom)+'</div><div class="itin-ligne-sub">'+_esc(item.info.terminus_a)+' ↔ '+_esc(item.info.terminus_b)+'</div></div></div>';});html+='</div>';}
+    }
+    wrap.innerHTML=html;_attachTabEvents();_attachResultEvents();
   };
-
-  var DEMO = {
-    'Où est le bus 15 ?':        'Aucun signalement récent pour le Bus 15. 🙏',
-    'Bus 7 à Yoff':              '✅ Bus 7 signalé à Yoff il y a 8 min.',
-    'Comment aller à Sandaga ?': '🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée : ~11 min'
-  };
-
-  /* ══ State ══ */
-  var _from = '', _chatOpen = false;
-  var _stopIndex = null;      // fallback local JSON
-  var _searchTab = 'arrets';
-  var _userLat = null, _userLon = null;
-  var _searchDebounce = null;
-  var _lignesInfo = {};       // num → {nom, terminus_a, terminus_b} (fallback)
-
-  function $(id) { return document.getElementById(id); }
-
-  /* ══ GPS silencieux ══ */
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(function(p) {
-      _userLat = p.coords.latitude;
-      _userLon = p.coords.longitude;
-    }, function(){}, { enableHighAccuracy:false, timeout:5000, maximumAge:60000 });
-  }
-
-  function _haversine(a,b,c,d) {
-    var R=6371000, p=Math.PI/180;
-    var x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;
-    return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
-  }
-  function _norm(s) {
-    return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'.]/g,' ').trim();
-  }
-  function _esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-  function _fmtDist(m) {
-    if (m === null || m === undefined) return '';
-    return m < 1000 ? '~'+m+' m' : '~'+(m/1000).toFixed(1)+' km';
-  }
-  function _fmtMin(n) {
-    if (n === null || n === undefined) return '';
-    if (n === 0) return 'à l\'instant';
-    return 'il y a '+n+' min';
-  }
-
-  /* ══ Appel API backend avec fallback ══ */
-  async function _apiSearchStops(q) {
-    var url = API_BASE+'/api/stops/search?q='+encodeURIComponent(q);
-    if (_userLat !== null) url += '&lat='+_userLat+'&lon='+_userLon;
-    var ctrl = new AbortController();
-    var timer = setTimeout(function(){ ctrl.abort(); }, API_TIMEOUT_MS);
-    try {
-      var r = await fetch(url, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (!r.ok) throw new Error('HTTP '+r.status);
-      var data = await r.json();
-      return { source: 'api', stops: data.stops || [], total: data.total || 0 };
-    } catch(e) {
-      clearTimeout(timer);
-      return null; // → fallback JSON local
-    }
-  }
-
-  /* ══ Fallback : chargement JSON arrêts local ══ */
-  async function _loadStopsLocal() {
-    if (_stopIndex) return _stopIndex;
-    var paths = [
-      '/data/routes_geometry_v13_fixed2.json',
-      './data/routes_geometry_v13_fixed2.json',
-      '/routes_geometry_v13_fixed2.json'
-    ];
-    for (var i=0;i<paths.length;i++) {
-      try {
-        var r = await fetch(paths[i]);
-        if (!r.ok) continue;
-        var j = await r.json();
-        var lignes = j.lignes || j;
-        var stops = {};
-        Object.keys(lignes).forEach(function(num) {
-          var d = lignes[num];
-          _lignesInfo[num] = { nom:d.nom||('Ligne '+num), terminus_a:d.terminus_a||'', terminus_b:d.terminus_b||'' };
-          (d.arrets||[]).forEach(function(a) {
-            var nom=(a.nom||'').trim(); if (!nom) return;
-            if (!stops[nom]) stops[nom]={lignes:[],lat:a.lat,lon:a.lon};
-            if (stops[nom].lignes.indexOf(num)<0) stops[nom].lignes.push(num);
-          });
-        });
-        _stopIndex = { stops:stops };
-        return _stopIndex;
-      } catch(e) { continue; }
-    }
-    _stopIndex = { stops:{} };
-    return _stopIndex;
-  }
-
-  /* Convertit le format JSON local → format API pour rendu unifié */
-  function _localToApiFormat(stopsRes, recentLines) {
-    return stopsRes.map(function(r) {
-      return {
-        nom: r.nom,
-        lat: r.lat,
-        lon: r.lon,
-        distance_m: r.dist,
-        lignes: r.lignes.map(function(l) {
-          var isRecent = recentLines.indexOf(l) >= 0;
-          return { numero: l, has_recent: isRecent, last_seen_min: isRecent ? null : null };
-        })
-      };
+  _apiSearchStops(q).then(function(apiResult){
+    _loadStopsLocal().then(function(data){
+      var lignesData=_searchLignesLocal(q);
+      if(apiResult){renderWithData(apiResult.stops,lignesData);}
+      else{var rl=_getRecentLines();renderWithData(_localToApiFormat(_searchStopsLocal(q,data.stops),rl),lignesData);}
     });
-  }
-
-  function _searchStopsLocal(q, stops) {
-    var qn=_norm(q), res=[];
-    Object.keys(stops).forEach(function(nom) {
-      if (_norm(nom).indexOf(qn)>=0) {
-        var info=stops[nom];
-        var dist=(_userLat&&info.lat)?Math.round(_haversine(_userLat,_userLon,info.lat,info.lon)):null;
-        res.push({nom:nom,lignes:info.lignes,lat:info.lat,lon:info.lon,dist:dist});
-      }
-    });
-    res.sort(function(a,b){
-      if (a.dist!==null&&b.dist!==null) return a.dist-b.dist;
-      if (a.dist!==null) return -1; if (b.dist!==null) return 1;
-      return a.nom.localeCompare(b.nom);
-    });
-    return res.slice(0,12);
-  }
-
-  function _searchLignesLocal(q) {
-    var qn=_norm(q), res=[];
-    Object.keys(_lignesInfo).forEach(function(num) {
-      var info=_lignesInfo[num];
-      if (_norm(num).indexOf(qn)>=0||_norm(info.nom).indexOf(qn)>=0||
-          _norm(info.terminus_a).indexOf(qn)>=0||_norm(info.terminus_b).indexOf(qn)>=0) {
-        res.push({num:num,info:info});
-      }
-    });
-    res.sort(function(a,b){
-      var na=parseFloat(a.num),nb=parseFloat(b.num);
-      if (!isNaN(na)&&!isNaN(nb)) return na-nb;
-      return a.num.localeCompare(b.num);
-    });
-    return res.slice(0,10);
-  }
-
-  function _getRecentLines() {
-    try { return (window._xetuStore&&window._xetuStore.get('buses')||[]).map(function(b){return String(b.ligne||b.line||'');}); }
-    catch(e) { return []; }
-  }
-
-  function _setSearchActive(active) {
-    var fab=$('xfab-btn'), pulse=$('xfab-pulse');
-    if (active) { fab&&fab.classList.add('xfab-hidden'); pulse&&pulse.classList.add('xfab-hidden'); }
-    else { fab&&fab.classList.remove('xfab-hidden'); pulse&&pulse.classList.remove('xfab-hidden'); }
-  }
-
-  /* ══ Calcul itinéraire ══ */
-  function _calcFromTo(from, to) {
-    var r = ROUTES[from+'→'+to] || { bus:'Bus 15', stop:'Centre ville', ride:15, walk:5 };
-    $('itin-res-from').textContent = from;
-    $('itin-res-to').textContent = to;
-    $('itin-res-bus').textContent = r.bus+' depuis '+from;
-    $('itin-res-bus-sub').textContent = "jusqu'à "+r.stop+' · '+r.ride+' min';
-    $('itin-res-walk').textContent = 'Marche '+r.walk+' min depuis '+r.stop;
-    $('itin-res-duration').textContent = '~'+(r.ride+r.walk)+' min';
-    $('itin-result-card').hidden = false;
-    $('itin-search-results-wrap').innerHTML = '';
-    $('itin-search-input').value = '';
-    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
-    $('itin-search-clear').classList.remove('visible');
-    _setSearchActive(false);
-    _from = '';
-    $('itin-body-wrap').scrollTop = 0;
-  }
-
-  /* ══ Render HTML des cartes arrêts (format API unifié) ══ */
-  function _renderStopCards(stopsData, q) {
-    if (!stopsData.length) return '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucun arrêt pour « '+_esc(q)+' »</div></div>';
-
-    var html = '';
-
-    /* Bandeau départ sélectionné */
-    if (_from) {
-      html += '<div style="padding:2px 0 4px">';
-      html += '<div class="itin-from-chip"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg>';
-      html += _esc(_from)+'<span class="itin-from-chip-x" id="itin-clear-from">×</span></div>';
-      html += '<div style="font-size:11px;color:var(--muted);margin-top:4px">Choisis ta destination</div></div>';
-    }
-
-    /* Légende */
-    html += '<div class="itin-search-legend">';
-    html += '<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 2px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div>';
-    html += '<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div>';
-    html += '</div>';
-
-    html += '<div class="itin-search-count">'+stopsData.length+' arrêt'+(stopsData.length>1?'s':'')+' pour « '+_esc(q)+' »</div>';
-    html += '<div class="itin-search-results">';
-
-    stopsData.forEach(function(stop) {
-      var hasSig = stop.lignes.some(function(l){ return l.has_recent; });
-      html += '<div class="itin-arret-card'+(hasSig?' itin-arret-card--signale':'')+'">';
-
-      /* En-tête */
-      html += '<div class="itin-arret-head">';
-      html += '<div class="itin-arret-dot'+(hasSig?' itin-arret-dot--signale':'')+'"></div>';
-      html += '<div class="itin-arret-name">'+_esc(stop.nom)+'</div>';
-      if (stop.distance_m !== null && stop.distance_m !== undefined) {
-        html += '<div class="itin-arret-dist">'+_fmtDist(stop.distance_m)+'</div>';
-      }
-      html += '</div>';
-
-      /* Badges lignes */
-      html += '<div class="itin-arret-lines">';
-      stop.lignes.forEach(function(l) {
-        if (l.has_recent) {
-          /* Badge vert avec "Bus X · il y a N min" */
-          html += '<div class="itin-line-badge-sig" data-stop="'+_esc(stop.nom)+'" data-ligne="'+_esc(l.numero)+'">';
-          html += '<span class="itin-line-badge-sig-dot"></span>';
-          html += 'Bus '+_esc(l.numero);
-          if (l.last_seen_min !== null) html += ' · '+_fmtMin(l.last_seen_min);
-          html += '</div>';
-        } else {
-          /* Badge orange compact */
-          html += '<div class="itin-line-badge-norm" data-stop="'+_esc(stop.nom)+'" data-ligne="'+_esc(l.numero)+'">';
-          html += _esc(l.numero);
-          html += '</div>';
-        }
-      });
-      html += '</div>';
-
-      /* Footer */
-      html += '<div class="itin-arret-sep"></div>';
-      html += '<div class="itin-arret-footer">';
-      html += '<div class="itin-arret-footer-txt">'+(stop.lignes.length>=2?'Arrêt multi-lignes':'Arrêt intermédiaire')+'</div>';
-      if (_from) {
-        html += '<button class="itin-arret-action itin-arret-dest" data-to="'+_esc(stop.nom)+'">→ Aller ici</button>';
-      } else {
-        html += '<button class="itin-arret-action itin-arret-from" data-from="'+_esc(stop.nom)+'">';
-        html += 'Voir sur la carte <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>';
-      }
-      html += '</div></div>';
-    });
-
-    html += '</div>';
-    return html;
-  }
-
-  /* ══ Render résultats (appel API + fallback) ══ */
-  function _renderResults(q) {
-    var wrap = $('itin-search-results-wrap');
-    if (!q || q.length < 2) { wrap.innerHTML = ''; return; }
-
-    wrap.innerHTML = '<div class="itin-search-empty"><div class="itin-search-empty-icon">⏳</div><div class="itin-search-empty-txt">Recherche…</div></div>';
-
-    /* Tab HTML sera reconstruit après résultats */
-    var renderWithData = function(stopsData, lignesData) {
-      var html = '';
-
-      /* Tabs */
-      html += '<div class="itin-search-tabs">';
-      html += '<button class="itin-search-tab'+(_searchTab==='arrets'?' active':'')+'" data-tab="arrets">Arrêts ('+stopsData.length+')</button>';
-      html += '<button class="itin-search-tab'+(_searchTab==='lignes'?' active':'')+'" data-tab="lignes">Lignes ('+lignesData.length+')</button>';
-      html += '</div>';
-
-      if (_searchTab === 'arrets') {
-        html += _renderStopCards(stopsData, q);
-      } else {
-        /* Tab lignes (fallback local uniquement, pas besoin d'API) */
-        if (!lignesData.length) {
-          html += '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucune ligne pour « '+_esc(q)+' »</div></div>';
-        } else {
-          html += '<div class="itin-search-count">'+lignesData.length+' ligne'+(lignesData.length>1?'s':'')+' trouvée'+(lignesData.length>1?'s':'')+'</div>';
-          html += '<div class="itin-search-results">';
-          lignesData.forEach(function(item) {
-            html += '<div class="itin-ligne-card" data-ligne="'+_esc(item.num)+'">';
-            html += '<div class="itin-ligne-badge-num">'+_esc(item.num)+'</div>';
-            html += '<div class="itin-ligne-info"><div class="itin-ligne-nom">'+_esc(item.info.nom)+'</div>';
-            html += '<div class="itin-ligne-sub">'+_esc(item.info.terminus_a)+' ↔ '+_esc(item.info.terminus_b)+'</div></div>';
-            html += '</div>';
-          });
-          html += '</div>';
-        }
-      }
-
-      wrap.innerHTML = html;
-      _attachTabEvents();
-      _attachResultEvents();
-    };
-
-    /* Essaye l'API, fallback sur JSON local si timeout/erreur */
-    _apiSearchStops(q).then(function(apiResult) {
-      if (apiResult) {
-        /* API OK — lignes depuis fallback local pour le tab Lignes */
-        _loadStopsLocal().then(function() {
-          var lignesData = _searchLignesLocal(q);
-          renderWithData(apiResult.stops, lignesData);
-        });
-      } else {
-        /* Fallback local */
-        _loadStopsLocal().then(function(data) {
-          var recentLines = _getRecentLines();
-          var stopsLocal = _searchStopsLocal(q, data.stops);
-          var stopsData = _localToApiFormat(stopsLocal, recentLines);
-          var lignesData = _searchLignesLocal(q);
-          renderWithData(stopsData, lignesData);
-        });
-      }
-    });
-  }
-
-  function _attachTabEvents() {
-    document.querySelectorAll('.itin-search-tab').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _searchTab = btn.dataset.tab;
-        _renderResults($('itin-search-input').value.trim());
-      });
-    });
-  }
-
-  function _attachResultEvents() {
-    /* Effacer départ */
-    var clearFrom = document.getElementById('itin-clear-from');
-    if (clearFrom) clearFrom.addEventListener('click', function(e) {
-      e.stopPropagation();
-      _from = '';
-      $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
-      _renderResults($('itin-search-input').value.trim());
-    });
-
-    /* "Voir sur la carte / Partir d'ici" → mémorise départ */
-    document.querySelectorAll('.itin-arret-from').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _from = btn.dataset.from;
-        $('itin-search-input').value = '';
-        $('itin-search-input').placeholder = 'Destination depuis '+_from+' ?';
-        $('itin-search-clear').classList.remove('visible');
-        $('itin-search-results-wrap').innerHTML = '';
-        $('itin-search-input').focus();
-      });
-    });
-
-    /* "→ Aller ici" → calcule le trajet */
-    document.querySelectorAll('.itin-arret-dest').forEach(function(btn) {
-      btn.addEventListener('click', function(e) {
-        e.stopPropagation();
-        _calcFromTo(_from, btn.dataset.to);
-      });
-    });
-
-    /* Clic sur badge ligne (vert ou orange) → sélectionne comme départ */
-    document.querySelectorAll('.itin-line-badge-sig, .itin-line-badge-norm').forEach(function(b) {
-      b.addEventListener('click', function(e) {
-        e.stopPropagation();
-        if (!_from && b.dataset.stop) {
-          _from = b.dataset.stop;
-          $('itin-search-input').value = '';
-          $('itin-search-input').placeholder = 'Destination depuis '+_from+' ?';
-          $('itin-search-clear').classList.remove('visible');
-          $('itin-search-results-wrap').innerHTML = '';
-          $('itin-search-input').focus();
-        }
-      });
-    });
-
-    /* Ligne card → filtre arrêts de cette ligne */
-    document.querySelectorAll('.itin-ligne-card').forEach(function(card) {
-      card.addEventListener('click', function() {
-        _searchTab = 'arrets';
-        $('itin-search-input').value = card.dataset.ligne;
-        $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
-        $('itin-search-clear').classList.add('visible');
-        _setSearchActive(true);
-        _renderResults(card.dataset.ligne);
-      });
-    });
-  }
-
-  /* ══ Events recherche ══ */
-  $('itin-search-input').addEventListener('input', function() {
-    var q = this.value.trim();
-    $('itin-search-clear').classList.toggle('visible', q.length > 0);
-    _setSearchActive(q.length > 0 || !!_from);
-    clearTimeout(_searchDebounce);
-    if (!q) { $('itin-search-results-wrap').innerHTML = ''; return; }
-    _searchDebounce = setTimeout(function(){ _renderResults(q); }, 280);
   });
-  $('itin-search-input').addEventListener('focus', function() {
-    var q = this.value.trim();
-    if (q.length >= 2) _renderResults(q);
-  });
-  $('itin-search-clear').addEventListener('click', function() {
-    $('itin-search-input').value = '';
-    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
-    this.classList.remove('visible');
-    $('itin-search-results-wrap').innerHTML = '';
-    _from = '';
-    _setSearchActive(false);
-    $('itin-search-input').focus();
-  });
+}
 
-  /* ══ Reset résultat ══ */
-  $('itin-reset-btn').addEventListener('click', function() {
-    $('itin-result-card').hidden = true;
-    _from = '';
-    $('itin-search-input').value = '';
-    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
-    $('itin-search-results-wrap').innerHTML = '';
-    $('itin-search-clear').classList.remove('visible');
-    _setSearchActive(false);
-  });
+function _attachTabEvents(){
+  document.querySelectorAll('.itin-search-tab').forEach(function(btn){btn.addEventListener('click',function(e){e.stopPropagation();_searchTab=btn.dataset.tab;var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');_renderResults(inp?inp.value.trim():_activeField==='from'?_from:_to);});});
+}
+function _attachResultEvents(){
+  document.querySelectorAll('.itin-pick-stop').forEach(function(btn){btn.addEventListener('click',function(e){e.stopPropagation();_pickStop(btn.dataset.stop);});});
+  document.querySelectorAll('.itin-line-badge-sig,.itin-line-badge-norm').forEach(function(b){b.addEventListener('click',function(e){e.stopPropagation();if(b.dataset.stop)_pickStop(b.dataset.stop);});});
+  document.querySelectorAll('.itin-ligne-card').forEach(function(card){card.addEventListener('click',function(){_searchTab='arrets';var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');if(inp)inp.value=card.dataset.ligne;_renderResults(card.dataset.ligne);});});
+}
 
-  /* ══ Statut WS ══ */
-  function _updateChatStatus(st) {
-    var bar=$('xchat-status-bar'),txt=$('xchat-status-txt'),dot=$('xchat-status-dot');
-    if (!bar) return;
-    if (st==='open') {
-      bar.className='xchat-status xchat-status--online';
-      dot.className='xchat-dot-online'; txt.textContent='Mi ngi ci biir';
-    } else if (st==='connecting') {
-      bar.className='xchat-status xchat-status--offline';
-      dot.className='xchat-dot-offline'; txt.textContent='Connexion…';
-    } else {
-      bar.className='xchat-status xchat-status--offline';
-      dot.className='xchat-dot-offline'; txt.textContent='Hors ligne';
-    }
-  }
-  setInterval(function(){
-    try{ var st=window._xetuStore&&window._xetuStore.get&&window._xetuStore.get('wsStatus'); if(st)_updateChatStatus(st); }catch(e){}
-  },3000);
+/* ══ CHAT PLEIN ÉCRAN ══ */
+var _chatInput = $('chat-input');
+var _chatSend  = $('chat-send');
+var _chatMsgs  = $('chat-messages');
+var _chatChips = $('chat-chips');
 
-  /* ══ FAB + Chat ══ */
-  function openChat(){
-    _chatOpen=true;
-    $('xchat-widget').classList.add('xchat-open');
-    $('xfab-pulse').style.display='none';
-    $('xfab-icon-chat').style.display='none';
-    $('xfab-icon-close').style.display='';
-    setTimeout(function(){$('xchat-input').focus();},280);
-  }
-  function closeChat(){
-    _chatOpen=false;
-    $('xchat-widget').classList.remove('xchat-open');
-    $('xfab-icon-chat').style.display='';
-    $('xfab-icon-close').style.display='none';
-    if (!$('itin-search-input').value.trim()) $('xfab-pulse').style.display='';
-  }
-  $('xfab-btn').addEventListener('click',function(){_chatOpen?closeChat():openChat();});
-  $('xchat-close-btn').addEventListener('click',closeChat);
+/* Auto-resize textarea */
+_chatInput.addEventListener('input',function(){
+  this.style.height='auto';
+  this.style.height=Math.min(this.scrollHeight,100)+'px';
+  _chatSend.disabled=!this.value.trim();
+});
+_chatInput.addEventListener('keydown',function(e){
+  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();_sendChat(this.value);}
+});
+_chatSend.addEventListener('click',function(){_sendChat(_chatInput.value);});
 
-  function addMsg(text,role){
-    var w=document.createElement('div');w.className='xchat-msg xchat-msg--'+role;
-    var b=document.createElement('div');b.className='xchat-bubble';
-    b.innerHTML=text.replace(/\n/g,'<br>');
-    w.appendChild(b);$('xchat-messages').appendChild(w);
-    $('xchat-messages').scrollTop=$('xchat-messages').scrollHeight;
-  }
-  function showTyping(){
-    var el=document.createElement('div');el.className='xchat-msg xchat-msg--bot';el.id='xchat-typing-el';
-    el.innerHTML='<div class="xchat-bubble xchat-typing"><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span></div>';
-    $('xchat-messages').appendChild(el);$('xchat-messages').scrollTop=$('xchat-messages').scrollHeight;
-  }
-  function hideTyping(){var el=$('xchat-typing-el');if(el)el.remove();}
-  function sendChat(text){
-    if (!text.trim()) return;
-    addMsg(text,'user');$('xchat-input').value='';
-    $('xchat-chips-bar').style.display='none';
-    showTyping();
-    setTimeout(function(){hideTyping();addMsg(DEMO[text]||'Message reçu ! 🚌 Je cherche pour toi.','bot');},1100);
-  }
-  $('xchat-send').addEventListener('click',function(){sendChat($('xchat-input').value);});
-  $('xchat-input').addEventListener('keydown',function(e){if(e.key==='Enter')sendChat($('xchat-input').value);});
-  document.querySelectorAll('.xchat-chip').forEach(function(c){
-    c.addEventListener('click',function(){sendChat(c.dataset.msg);});
-  });
+document.querySelectorAll('.chat-chip').forEach(function(c){
+  c.addEventListener('click',function(){_sendChat(c.dataset.msg);});
+});
+
+function _addChatMsg(text,role){
+  var w=document.createElement('div');w.className='chat-msg chat-msg--'+role;
+  var b=document.createElement('div');b.className='chat-bubble';
+  b.innerHTML=text.replace(/\n/g,'<br>');
+  var t=document.createElement('div');t.className='chat-msg-time';t.textContent=_timeNow();
+  w.appendChild(b);w.appendChild(t);
+  _chatMsgs.appendChild(w);
+  _chatMsgs.scrollTop=_chatMsgs.scrollHeight;
+}
+function _showTyping(){
+  var el=document.createElement('div');el.className='chat-msg chat-msg--bot';el.id='chat-typing-el';
+  el.innerHTML='<div class="chat-bubble chat-typing"><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span></div>';
+  _chatMsgs.appendChild(el);_chatMsgs.scrollTop=_chatMsgs.scrollHeight;
+}
+function _hideTyping(){var el=$('chat-typing-el');if(el)el.remove();}
+function _sendChat(text){
+  if(!text.trim()) return;
+  _addChatMsg(text,'user');
+  _chatInput.value='';_chatInput.style.height='auto';
+  _chatSend.disabled=true;
+  _chatChips.style.display='none';
+  _showTyping();
+  setTimeout(function(){
+    _hideTyping();
+    var reply=DEMO_REPLIES[text]||'Message reçu ! 🚌 Je cherche pour toi…';
+    _addChatMsg(reply,'bot');
+  },1200);
+}
+
+/* Statut WS → topbar chat */
+function _updateChatStatus(st){
+  var bar=$('chat-status-bar'),txt=$('chat-status-txt'),dot=$('chat-status-dot');
+  if(!bar)return;
+  if(st==='open'){bar.className='chat-topbar-status chat-topbar-status--online';dot.className='chat-status-dot-on';txt.textContent='En ligne';}
+  else{bar.className='chat-topbar-status chat-topbar-status--offline';dot.className='chat-status-dot-off';txt.textContent='Hors ligne';}
+}
+setInterval(function(){try{var st=window._xetuStore&&window._xetuStore.get&&window._xetuStore.get('wsStatus');if(st)_updateChatStatus(st);}catch(e){}},3000);
+
+/* Init */
+_renderFields();
 
 })();
 </script>
