@@ -24,7 +24,17 @@
 <link rel="stylesheet" href="css/signal-grid.css">
 <link rel="stylesheet" href="css/variables-light.css">
 <style>
-/* ══ ITINÉRAIRE V9.5 ══════════════════════════════════════ */
+/* ══ FIX iOS KEYBOARD — bloque le resize de la viewport ══
+   iOS resize window.innerHeight quand le clavier s'ouvre.
+   On fixe #app à la hauteur initiale et on ignore les
+   resize causés par le clavier (seule la rotation change
+   la largeur, donc on ne répond qu'aux changements de width).
+════════════════════════════════════════════════════════════ */
+html { height: 100%; overflow: hidden; }
+body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; left: 0; }
+#app { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
+
+/* ══ ITINÉRAIRE V9.6 ══════════════════════════════════════ */
 #screen-itin { background: var(--bg); flex-direction: column; }
 .itin-body-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; min-height:0; }
 .itin-body { padding:14px 14px 120px; display:flex; flex-direction:column; gap:10px; }
@@ -51,7 +61,6 @@
 .itin-search-tab { font-size:12px; font-weight:500; padding:7px 14px 9px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:'Inter',sans-serif; transition:color var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
 .itin-search-tab.active { color:var(--orange); border-bottom-color:var(--orange); }
 
-/* FIX légende — gap explicite entre les deux items */
 .itin-search-legend { display:flex; gap:20px; flex-wrap:wrap; padding:6px 0 2px; }
 .itin-legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
 .itin-legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
@@ -106,17 +115,16 @@
 .itin-search-empty-icon { font-size:28px; }
 .itin-search-empty-txt { font-size:12px; }
 
-/* ══ FAB — caché quand un champ est actif ══ */
+/* ══ FAB ══ */
 .xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; transition:opacity 0.2s; }
 @keyframes xfabPulse { 0%{transform:scale(1);opacity:0.3} 100%{transform:scale(1.85);opacity:0} }
 .xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:0 4px 16px rgba(255,107,53,0.5); transition:transform var(--t-fast),opacity 0.25s,transform 0.25s; }
 .xfab-btn:active { transform:scale(0.93); }
-/* FIX — FAB caché quand champ actif */
 .xfab-btn.xfab-hidden, .xfab-pulse.xfab-hidden { opacity:0 !important; pointer-events:none !important; transform:scale(0.7) !important; display:none !important; }
 #screen-itin.active .xfab-pulse { display:block; }
 #screen-itin.active .xfab-btn { display:flex; }
 
-/* ══ SCREEN CHAT PLEIN ÉCRAN ══ */
+/* ══ SCREEN CHAT ══ */
 #screen-chat { background:var(--bg); flex-direction:column; }
 
 .chat-topbar { display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
@@ -125,7 +133,6 @@
 .chat-topbar-avatar { width:38px; height:38px; border-radius:50%; background:var(--orange); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(255,107,53,0.4); }
 .chat-topbar-info { flex:1; }
 .chat-topbar-name { font-size:16px; font-weight:700; color:var(--text); }
-/* FIX statut — "En ligne" fixe */
 .chat-topbar-status { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--green); margin-top:2px; }
 .chat-status-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; flex-shrink:0; }
 
@@ -145,7 +152,6 @@
 .chat-typing-dot:nth-child(3) { animation-delay:0.36s; }
 @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
-/* 3 chips max */
 .chat-chips-wrap { display:flex; gap:8px; overflow-x:auto; padding:10px 14px; border-top:1px solid var(--border); scrollbar-width:none; flex-shrink:0; }
 .chat-chips-wrap::-webkit-scrollbar { display:none; }
 .chat-chip { background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:8px 14px; font-size:12px; font-weight:500; color:rgba(255,107,53,0.9); font-family:'Inter',sans-serif; white-space:nowrap; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
@@ -307,7 +313,7 @@
       </div>
     </section>
 
-    <!-- ══ SCREEN ITINÉRAIRE V9.5 ══ -->
+    <!-- ══ SCREEN ITINÉRAIRE V9.6 ══ -->
     <section class="screen" id="screen-itin">
       <div class="itin-body-wrap" id="itin-body-wrap">
         <div class="itin-body">
@@ -360,7 +366,7 @@
       </button>
     </section>
 
-    <!-- ══ SCREEN CHAT PLEIN ÉCRAN ══ -->
+    <!-- ══ SCREEN CHAT ══ -->
     <section class="screen" id="screen-chat">
       <div class="chat-topbar">
         <button class="chat-topbar-back" id="chat-back-btn" aria-label="Retour">
@@ -371,7 +377,6 @@
         </div>
         <div class="chat-topbar-info">
           <div class="chat-topbar-name">Xëtu</div>
-          <!-- FIX: statut "En ligne" fixe -->
           <div class="chat-topbar-status">
             <span class="chat-status-dot"></span>
             En ligne
@@ -386,7 +391,6 @@
         </div>
       </div>
 
-      <!-- FIX: 3 chips uniquement -->
       <div class="chat-chips-wrap" id="chat-chips">
         <button class="chat-chip" data-msg="Comment aller à Sandaga ?">Comment aller à Sandaga ?</button>
         <button class="chat-chip" data-msg="Bus 4 à Liberté 5">Bus 4 à Liberté 5</button>
@@ -454,6 +458,38 @@
 (function(){
 'use strict';
 
+/* ══════════════════════════════════════════════════════════
+   FIX iOS KEYBOARD — viewport height verrouillé au chargement.
+
+   Problème : iOS Safari/Chrome resize window.innerHeight quand
+   le clavier s'ouvre → tout le layout (nav, screens) saute.
+
+   Solution : on mémorise window.innerHeight au chargement,
+   on l'applique en style inline sur #app, et on ne le
+   recalcule QUE si la largeur change (rotation d'écran).
+   Les changements de hauteur seuls (clavier) sont ignorés.
+══════════════════════════════════════════════════════════ */
+(function fixIosKeyboard(){
+  var app=document.getElementById('app');
+  if(!app) return;
+
+  var _h=window.innerHeight;
+  var _w=window.innerWidth;
+  app.style.height=_h+'px';
+
+  window.addEventListener('resize',function(){
+    var newW=window.innerWidth;
+    var newH=window.innerHeight;
+    if(newW!==_w){
+      // Rotation d'écran → on accepte le nouveau layout
+      _w=newW;
+      _h=newH;
+      app.style.height=_h+'px';
+    }
+    // Si seule la hauteur change (clavier iOS) → on ignore
+  },{passive:true});
+})();
+
 var API_BASE='';
 var API_TIMEOUT_MS=4000;
 
@@ -499,7 +535,7 @@ window.goTo=goTo;
 _navBtns.forEach(function(btn){btn.addEventListener('click',function(){goTo(btn.dataset.screen);});});
 document.getElementById('btn-back-signal')&&document.getElementById('btn-back-signal').addEventListener('click',function(){goTo('home');});
 
-/* FAB → chat plein écran */
+/* FAB → chat */
 $('xfab-btn').addEventListener('click',function(){goTo('chat');});
 $('chat-back-btn').addEventListener('click',function(){goTo('itin');});
 
@@ -524,14 +560,6 @@ function _setFabVisible(visible){
   else{fab.classList.add('xfab-hidden');pulse&&pulse.classList.add('xfab-hidden');}
 }
 
-/* ══ FIX clavier mobile — scroll champ visible ══ */
-function _scrollFieldIntoView(){
-  setTimeout(function(){
-    var card=$('itin-fields-card');
-    if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
-  },350);
-}
-
 /* ══ Render champs ══ */
 function _renderFields(){
   /* Champ FROM */
@@ -542,11 +570,10 @@ function _renderFields(){
     valFrom.innerHTML='<input class="itin-field-input" id="itin-input-from" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp=$('itin-input-from');
     inp.value=_from;
-    /* FIX clavier mobile — focus synchrone dans la call stack du click,
-       pas dans un setTimeout (iOS Safari bloque le clavier sinon) */
+    /* FIX clavier mobile — focus synchrone dans la call stack du click
+       iOS Safari bloque le clavier si focus() est dans un setTimeout */
     inp.focus();
     try{inp.select();}catch(e){}
-    _scrollFieldIntoView();
     inp.addEventListener('input',function(){
       clearTimeout(_searchDebounce);
       var q=this.value.trim();
@@ -554,7 +581,6 @@ function _renderFields(){
       _searchDebounce=setTimeout(function(){_renderResults(q);},280);
     });
     inp.addEventListener('blur',function(){
-      /* Si blur sans sélection → on garde la valeur tapée */
       var v=this.value.trim();
       if(v) _from=v;
     });
@@ -575,11 +601,9 @@ function _renderFields(){
     valTo.innerHTML='<input class="itin-field-input" id="itin-input-to" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp2=$('itin-input-to');
     inp2.value=_to;
-    /* FIX clavier mobile — focus synchrone dans la call stack du click,
-       pas dans un setTimeout (iOS Safari bloque le clavier sinon) */
+    /* FIX clavier mobile — focus synchrone dans la call stack du click */
     inp2.focus();
     try{inp2.select();}catch(e){}
-    _scrollFieldIntoView();
     inp2.addEventListener('input',function(){
       clearTimeout(_searchDebounce);
       var q=this.value.trim();
@@ -599,7 +623,6 @@ function _renderFields(){
     valTo.innerHTML='<span class="itin-field-placeholder">Vous allez où ?</span>';
   }
 
-  /* FAB visible si aucun champ actif */
   if(!_activeField) _setFabVisible(true);
 }
 
@@ -771,7 +794,7 @@ function _attachResultEvents(){
   document.querySelectorAll('.itin-ligne-card').forEach(function(card){card.addEventListener('click',function(){_searchTab='arrets';var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');if(inp)inp.value=card.dataset.ligne;_renderResults(card.dataset.ligne);});});
 }
 
-/* ══ CHAT PLEIN ÉCRAN ══ */
+/* ══ CHAT ══ */
 var _chatInput=$('chat-input');
 var _chatSend=$('chat-send');
 var _chatMsgs=$('chat-messages');
