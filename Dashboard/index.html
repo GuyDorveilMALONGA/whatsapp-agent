@@ -24,7 +24,7 @@
 <link rel="stylesheet" href="css/signal-grid.css">
 <link rel="stylesheet" href="css/variables-light.css">
 <style>
-/* ══ ITINÉRAIRE V9.4 ══════════════════════════════════════ */
+/* ══ ITINÉRAIRE V9.5 ══════════════════════════════════════ */
 #screen-itin { background: var(--bg); flex-direction: column; }
 .itin-body-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; min-height:0; }
 .itin-body { padding:14px 14px 120px; display:flex; flex-direction:column; gap:10px; }
@@ -44,17 +44,18 @@
 .itin-field-clear:hover { background:rgba(255,255,255,0.15); color:var(--text); }
 .itin-field-input { flex:1; background:transparent; border:none; outline:none; font-size:14px; font-family:'Inter',sans-serif; color:var(--text); caret-color:var(--orange); }
 .itin-field-input::placeholder { color:var(--muted); opacity:0.7; }
-
-/* Badge GPS pré-rempli */
 .itin-gps-badge { display:inline-flex; align-items:center; gap:4px; font-size:11px; color:var(--green); opacity:0.8; flex-shrink:0; }
 
 /* ══ RÉSULTATS ══ */
 .itin-search-tabs { display:flex; border-bottom:1px solid var(--border); }
 .itin-search-tab { font-size:12px; font-weight:500; padding:7px 14px 9px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:'Inter',sans-serif; transition:color var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
 .itin-search-tab.active { color:var(--orange); border-bottom-color:var(--orange); }
-.itin-search-legend { display:flex; gap:14px; flex-wrap:wrap; padding:2px 0; }
-.itin-legend-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); }
-.itin-legend-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+/* FIX légende — gap explicite entre les deux items */
+.itin-search-legend { display:flex; gap:20px; flex-wrap:wrap; padding:6px 0 2px; }
+.itin-legend-item { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--muted); }
+.itin-legend-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
 .itin-search-results { display:flex; flex-direction:column; gap:8px; }
 
 /* ══ CARTE ARRÊT ══ */
@@ -74,9 +75,8 @@
 .itin-arret-sep { height:1px; background:rgba(255,255,255,0.05); margin:0 14px; }
 .itin-arret-footer { display:flex; align-items:center; justify-content:flex-end; padding:8px 14px; gap:8px; }
 .itin-btn-from { display:inline-flex; align-items:center; gap:6px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-md); padding:7px 13px; font-size:12px; font-weight:600; color:var(--text); font-family:'Inter',sans-serif; cursor:pointer; transition:background var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
-.itin-btn-from:hover { background:rgba(255,255,255,0.07); border-color:rgba(255,255,255,0.2); }
+.itin-btn-from:hover { background:rgba(255,255,255,0.07); }
 .itin-btn-to { display:inline-flex; align-items:center; gap:6px; background:var(--orange); border:none; border-radius:var(--radius-md); padding:7px 13px; font-size:12px; font-weight:600; color:#fff; font-family:'Inter',sans-serif; cursor:pointer; box-shadow:0 2px 8px rgba(255,107,53,0.35); transition:opacity var(--t-fast),transform var(--t-fast); white-space:nowrap; }
-.itin-btn-to:hover { opacity:0.9; }
 .itin-btn-to:active { transform:scale(0.96); }
 
 /* ══ RÉSULTAT ITINÉRAIRE ══ */
@@ -96,195 +96,77 @@
 .itin-result-duration-val { font-size:16px; font-weight:700; color:var(--orange); }
 .itin-reset-link { background:none; border:none; font-size:11px; color:var(--muted); text-decoration:underline; text-underline-offset:2px; text-align:center; cursor:pointer; margin-top:8px; font-family:'Inter',sans-serif; }
 
-/* ══ CARTE LIGNE ══ */
 .itin-ligne-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:border-color var(--t-fast); animation:slideUp 0.2s ease both; }
 .itin-ligne-card:hover { border-color:var(--orange-border); }
 .itin-ligne-badge-num { background:var(--orange); color:#fff; font-size:13px; font-weight:700; padding:6px 11px; border-radius:var(--radius-md); flex-shrink:0; min-width:42px; text-align:center; }
 .itin-ligne-info { flex:1; min-width:0; }
 .itin-ligne-nom { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .itin-ligne-sub { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-
 .itin-search-empty { display:flex; flex-direction:column; align-items:center; gap:6px; padding:32px 16px; color:var(--muted); text-align:center; }
 .itin-search-empty-icon { font-size:28px; }
 .itin-search-empty-txt { font-size:12px; }
 
-/* ══ FAB ══ */
-.xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; }
+/* ══ FAB — caché quand un champ est actif ══ */
+.xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; transition:opacity 0.2s; }
 @keyframes xfabPulse { 0%{transform:scale(1);opacity:0.3} 100%{transform:scale(1.85);opacity:0} }
-.xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:0 4px 16px rgba(255,107,53,0.5); transition:transform var(--t-fast),opacity 0.2s; }
+.xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:56px; height:56px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:0 4px 16px rgba(255,107,53,0.5); transition:transform var(--t-fast),opacity 0.25s,transform 0.25s; }
 .xfab-btn:active { transform:scale(0.93); }
-.xfab-btn.xfab-hidden { opacity:0; pointer-events:none; transform:scale(0.8); }
-.xfab-pulse.xfab-hidden { display:none !important; }
+/* FIX — FAB caché quand champ actif */
+.xfab-btn.xfab-hidden, .xfab-pulse.xfab-hidden { opacity:0 !important; pointer-events:none !important; transform:scale(0.7) !important; display:none !important; }
 #screen-itin.active .xfab-pulse { display:block; }
 #screen-itin.active .xfab-btn { display:flex; }
 
 /* ══ SCREEN CHAT PLEIN ÉCRAN ══ */
-#screen-chat {
-  background: var(--bg);
-  flex-direction: column;
-  /* Affiché via .screen.active */
-}
+#screen-chat { background:var(--bg); flex-direction:column; }
 
-.chat-topbar {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
-  background: var(--surface);
-  border-bottom: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.chat-topbar-back {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  background: rgba(255,255,255,0.05);
-  border: 1px solid var(--border);
-  color: var(--text);
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--t-fast);
-}
-.chat-topbar-back:hover { background: rgba(255,255,255,0.1); }
-.chat-topbar-avatar {
-  width: 36px; height: 36px;
-  border-radius: 50%;
-  background: var(--orange);
-  display: flex; align-items: center; justify-content: center;
-  flex-shrink: 0;
-}
-.chat-topbar-info { flex: 1; }
-.chat-topbar-name { font-size: 15px; font-weight: 700; color: var(--text); }
-.chat-topbar-status { display: flex; align-items: center; gap: 5px; font-size: 11px; margin-top: 1px; }
-.chat-topbar-status--online { color: var(--green); }
-.chat-topbar-status--offline { color: var(--muted); }
-.chat-status-dot-on { width: 6px; height: 6px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
-.chat-status-dot-off { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); }
+.chat-topbar { display:flex; align-items:center; gap:12px; padding:12px 16px; background:var(--surface); border-bottom:1px solid var(--border); flex-shrink:0; }
+.chat-topbar-back { width:36px; height:36px; border-radius:50%; background:rgba(255,255,255,0.05); border:1px solid var(--border); color:var(--text); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
+.chat-topbar-back:hover { background:rgba(255,255,255,0.1); }
+.chat-topbar-avatar { width:38px; height:38px; border-radius:50%; background:var(--orange); display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 2px 8px rgba(255,107,53,0.4); }
+.chat-topbar-info { flex:1; }
+.chat-topbar-name { font-size:16px; font-weight:700; color:var(--text); }
+/* FIX statut — "En ligne" fixe */
+.chat-topbar-status { display:flex; align-items:center; gap:6px; font-size:11px; color:var(--green); margin-top:2px; }
+.chat-status-dot { width:6px; height:6px; border-radius:50%; background:var(--green); animation:pulse 2s infinite; flex-shrink:0; }
 
-.chat-messages-wrap {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  padding: 16px 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-height: 0;
-}
+.chat-messages-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; padding:16px 14px; display:flex; flex-direction:column; gap:12px; min-height:0; }
 
-/* Bulle de message */
-.chat-msg { display: flex; flex-direction: column; }
-.chat-msg--bot { align-items: flex-start; }
-.chat-msg--user { align-items: flex-end; }
-.chat-bubble {
-  max-width: 82%;
-  padding: 11px 14px;
-  border-radius: 18px;
-  font-size: 14px;
-  line-height: 1.55;
-  animation: slideUp 0.18s ease both;
-}
-.chat-msg--bot .chat-bubble {
-  background: var(--surface2);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-bottom-left-radius: 4px;
-}
-.chat-msg--user .chat-bubble {
-  background: var(--orange);
-  color: #fff;
-  border-bottom-right-radius: 4px;
-}
-.chat-msg-time { font-size: 10px; color: var(--muted); margin-top: 4px; padding: 0 4px; }
+.chat-msg { display:flex; flex-direction:column; }
+.chat-msg--bot { align-items:flex-start; }
+.chat-msg--user { align-items:flex-end; }
+.chat-bubble { max-width:82%; padding:11px 14px; border-radius:18px; font-size:14px; line-height:1.55; animation:slideUp 0.18s ease both; }
+.chat-msg--bot .chat-bubble { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:4px; }
+.chat-msg--user .chat-bubble { background:var(--orange); color:#fff; border-bottom-right-radius:4px; }
+.chat-msg-time { font-size:10px; color:var(--muted); margin-top:4px; padding:0 4px; }
 
-/* Typing indicator */
-.chat-typing { display: flex; gap: 5px; align-items: center; padding: 12px 16px; }
-.chat-typing-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); animation: typingBounce 1.2s infinite ease-in-out; }
-.chat-typing-dot:nth-child(2) { animation-delay: 0.18s; }
-.chat-typing-dot:nth-child(3) { animation-delay: 0.36s; }
+.chat-typing { display:flex; gap:5px; align-items:center; padding:12px 16px; }
+.chat-typing-dot { width:7px; height:7px; border-radius:50%; background:var(--muted); animation:typingBounce 1.2s infinite ease-in-out; }
+.chat-typing-dot:nth-child(2) { animation-delay:0.18s; }
+.chat-typing-dot:nth-child(3) { animation-delay:0.36s; }
 @keyframes typingBounce { 0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)} }
 
-/* Chips suggestions */
-.chat-chips-wrap {
-  display: flex;
-  gap: 8px;
-  overflow-x: auto;
-  padding: 8px 14px;
-  border-top: 1px solid var(--border);
-  scrollbar-width: none;
-  flex-shrink: 0;
-}
-.chat-chips-wrap::-webkit-scrollbar { display: none; }
-.chat-chip {
-  background: var(--orange-dim);
-  border: 1px solid var(--orange-border);
-  border-radius: var(--radius-full);
-  padding: 7px 14px;
-  font-size: 12px;
-  color: rgba(255,107,53,0.9);
-  font-family: 'Inter', sans-serif;
-  white-space: nowrap;
-  cursor: pointer;
-  flex-shrink: 0;
-  transition: background var(--t-fast);
-}
-.chat-chip:hover { background: rgba(255,107,53,0.22); }
+/* 3 chips max */
+.chat-chips-wrap { display:flex; gap:8px; overflow-x:auto; padding:10px 14px; border-top:1px solid var(--border); scrollbar-width:none; flex-shrink:0; }
+.chat-chips-wrap::-webkit-scrollbar { display:none; }
+.chat-chip { background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:8px 14px; font-size:12px; font-weight:500; color:rgba(255,107,53,0.9); font-family:'Inter',sans-serif; white-space:nowrap; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
+.chat-chip:hover { background:rgba(255,107,53,0.22); }
 
-/* Composer */
-.chat-composer {
-  display: flex;
-  align-items: flex-end;
-  gap: 10px;
-  padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor));
-  background: var(--surface);
-  border-top: 1px solid var(--border);
-  flex-shrink: 0;
-}
-.chat-composer-input {
-  flex: 1;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: 22px;
-  padding: 10px 16px;
-  font-size: 14px;
-  color: var(--text);
-  font-family: 'Inter', sans-serif;
-  outline: none;
-  resize: none;
-  line-height: 1.4;
-  max-height: 100px;
-  overflow-y: auto;
-  transition: border-color var(--t-fast);
-}
-.chat-composer-input:focus { border-color: var(--orange-border); }
-.chat-composer-input::placeholder { color: var(--muted); }
-.chat-composer-send {
-  width: 42px; height: 42px;
-  border-radius: 50%;
-  background: var(--orange);
-  border: none;
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px rgba(255,107,53,0.4);
-  transition: transform var(--t-fast), opacity var(--t-fast);
-}
-.chat-composer-send:active { transform: scale(0.92); }
-.chat-composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
+.chat-composer { display:flex; align-items:flex-end; gap:10px; padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px) * var(--safe-area-factor)); background:var(--surface); border-top:1px solid var(--border); flex-shrink:0; }
+.chat-composer-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:22px; padding:10px 16px; font-size:14px; color:var(--text); font-family:'Inter',sans-serif; outline:none; resize:none; line-height:1.4; max-height:100px; overflow-y:auto; transition:border-color var(--t-fast); }
+.chat-composer-input:focus { border-color:var(--orange-border); }
+.chat-composer-input::placeholder { color:var(--muted); }
+.chat-composer-send { width:42px; height:42px; border-radius:50%; background:var(--orange); border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; box-shadow:0 2px 8px rgba(255,107,53,0.4); transition:transform var(--t-fast),opacity var(--t-fast); }
+.chat-composer-send:active { transform:scale(0.92); }
+.chat-composer-send:disabled { opacity:0.35; cursor:not-allowed; }
 </style>
 </head>
 <body>
 <div id="app">
 
   <header id="app-header">
-    <div class="live-indicator" id="live-indicator">
-      <span class="live-dot-inner"></span>live
-    </div>
+    <div class="live-indicator" id="live-indicator"><span class="live-dot-inner"></span>live</div>
     <div style="flex:1"></div>
-    <button class="btn-menu" id="btn-menu" aria-label="Menu">
-      <span></span><span></span><span></span>
-    </button>
+    <button class="btn-menu" id="btn-menu" aria-label="Menu"><span></span><span></span><span></span></button>
   </header>
 
   <div class="menu-overlay" id="menu-overlay" hidden>
@@ -354,7 +236,7 @@
       <div class="popup-sub">Choisissez un moyen de contact</div>
       <div class="contact-grid">
         <a class="contact-item" href="tel:+221XXXXXXXXX"><div class="contact-icon contact-icon--call"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><span>Appel</span></a>
-        <a class="contact-item" href="mailto:hello@xetu.sn"><div class="contact-icon contact-icon--mail"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><span>Mail</span></a>
+        <a class="contact-item" href="/cdn-cgi/l/email-protection#375f525b5b58774f524342194459"><div class="contact-icon contact-icon--mail"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><span>Mail</span></a>
         <a class="contact-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener"><div class="contact-icon contact-icon--wa"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></div><span>WhatsApp</span></a>
         <a class="contact-item" href="https://instagram.com/xetu_dakar" target="_blank" rel="noopener"><div class="contact-icon contact-icon--ig"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></div><span>Instagram</span></a>
       </div>
@@ -425,12 +307,11 @@
       </div>
     </section>
 
-    <!-- ══ SCREEN ITINÉRAIRE V9.4 ══ -->
+    <!-- ══ SCREEN ITINÉRAIRE V9.5 ══ -->
     <section class="screen" id="screen-itin">
-      <div class="itin-body-wrap">
+      <div class="itin-body-wrap" id="itin-body-wrap">
         <div class="itin-body">
 
-          <!-- Résultat -->
           <div class="itin-result-card" id="itin-result-card" hidden>
             <div class="itin-result-step">
               <div class="itin-step-icon itin-step-icon--origin"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg></div>
@@ -453,7 +334,6 @@
             <button class="itin-reset-link" id="itin-reset-btn">Modifier le trajet</button>
           </div>
 
-          <!-- Double champ -->
           <div class="itin-fields-card" id="itin-fields-card">
             <div class="itin-field-row" id="itin-row-from">
               <div class="itin-field-dot itin-field-dot--from"></div>
@@ -474,7 +354,6 @@
         </div>
       </div>
 
-      <!-- FAB chat -->
       <div class="xfab-pulse" id="xfab-pulse"></div>
       <button class="xfab-btn" id="xfab-btn" aria-label="Parler à Xëtu">
         <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
@@ -483,8 +362,6 @@
 
     <!-- ══ SCREEN CHAT PLEIN ÉCRAN ══ -->
     <section class="screen" id="screen-chat">
-
-      <!-- Topbar -->
       <div class="chat-topbar">
         <button class="chat-topbar-back" id="chat-back-btn" aria-label="Retour">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
@@ -494,14 +371,14 @@
         </div>
         <div class="chat-topbar-info">
           <div class="chat-topbar-name">Xëtu</div>
-          <div class="chat-topbar-status chat-topbar-status--offline" id="chat-status-bar">
-            <span class="chat-status-dot-off" id="chat-status-dot"></span>
-            <span id="chat-status-txt">Connexion…</span>
+          <!-- FIX: statut "En ligne" fixe -->
+          <div class="chat-topbar-status">
+            <span class="chat-status-dot"></span>
+            En ligne
           </div>
         </div>
       </div>
 
-      <!-- Messages -->
       <div class="chat-messages-wrap" id="chat-messages">
         <div class="chat-msg chat-msg--bot">
           <div class="chat-bubble">Salam ! 👋<br>Je suis Xëtu, ton assistant bus à Dakar.<br>Pose-moi une question sur les lignes, les arrêts ou ton itinéraire.</div>
@@ -509,23 +386,19 @@
         </div>
       </div>
 
-      <!-- Chips -->
+      <!-- FIX: 3 chips uniquement -->
       <div class="chat-chips-wrap" id="chat-chips">
-        <button class="chat-chip" data-msg="Où est le bus 15 ?">🚌 Bus 15 ?</button>
-        <button class="chat-chip" data-msg="Bus 7 à Yoff">Bus 7 à Yoff</button>
-        <button class="chat-chip" data-msg="Comment aller à Sandaga ?">→ Sandaga</button>
-        <button class="chat-chip" data-msg="Quelles lignes passent à Liberté 5 ?">Liberté 5</button>
-        <button class="chat-chip" data-msg="Bus de nuit à Dakar ?">🌙 Bus de nuit</button>
+        <button class="chat-chip" data-msg="Comment aller à Sandaga ?">Comment aller à Sandaga ?</button>
+        <button class="chat-chip" data-msg="Bus 4 à Liberté 5">Bus 4 à Liberté 5</button>
+        <button class="chat-chip" data-msg="Où est le bus 8 ?">Où est le bus 8 ?</button>
       </div>
 
-      <!-- Composer -->
       <div class="chat-composer">
         <textarea class="chat-composer-input" id="chat-input" placeholder="Pose ta question…" rows="1" maxlength="500"></textarea>
         <button class="chat-composer-send" id="chat-send" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
       </div>
-
     </section>
 
     <section class="screen" id="screen-mylines">
@@ -570,7 +443,7 @@
 </div>
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   function _initMenuQR(){var canvas=document.getElementById('menu-qr-canvas');if(!canvas)return;var el=document.createElement('div');el.style.display='none';document.body.appendChild(el);new QRCode(el,{text:'https://xetudashbord.pages.dev/',width:120,height:120,colorDark:'#ff6b2b',colorLight:'#1a1f2e',correctLevel:QRCode.CorrectLevel.H});setTimeout(function(){var img=el.querySelector('img');var ctx=canvas.getContext('2d');var image=new Image();image.onload=function(){ctx.drawImage(image,0,0,120,120);};if(img)image.src=img.src;el.remove();},300);}
   document.addEventListener('DOMContentLoaded',_initMenuQR);
@@ -580,16 +453,16 @@
 (function(){
 'use strict';
 
-var API_BASE = '';
-var API_TIMEOUT_MS = 4000;
-var DEMO_REPLIES = {
-  'Où est le bus 15 ?': 'Aucun signalement récent pour le Bus 15. Tu peux en signaler un si tu le vois 🙏',
-  'Bus 7 à Yoff': '✅ Bus 7 signalé à Yoff il y a 8 min.',
-  'Comment aller à Sandaga ?': '🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée totale : ~11 min',
-  'Quelles lignes passent à Liberté 5 ?': '📍 À Liberté 5, tu as les lignes : 15, 24, 46, DDD.\nLe Bus 15 est le plus fréquent.',
-  'Bus de nuit à Dakar ?': '🌙 Dem Dikk ne propose pas de service de nuit officiel. Les minibus privés circulent jusqu\'à minuit environ sur les grands axes.'
+var API_BASE='';
+var API_TIMEOUT_MS=4000;
+
+var DEMO_REPLIES={
+  'Comment aller à Sandaga ?':'🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée totale : ~11 min',
+  'Bus 4 à Liberté 5':'✅ Bus 4 signalé à Liberté 5 il y a 4 min.',
+  'Où est le bus 8 ?':'🚌 Bus 8 signalé à Gare Aéroport Yoff il y a 6 min.'
 };
-var ROUTES = {
+
+var ROUTES={
   'Liberté 5→Sandaga':{bus:'Bus 15',stop:'Pompiers',ride:8,walk:3},
   'Plateau→Yoff':{bus:'Bus 7',stop:'Yoff Terminus',ride:22,walk:2},
   'Parcelles→Université':{bus:'Bus 24',stop:'Université',ride:18,walk:1},
@@ -602,7 +475,6 @@ var _stopIndex=null,_lignesInfo={};
 var _searchTab='arrets';
 var _userLat=null,_userLon=null;
 var _searchDebounce=null;
-var _prevScreen='itin'; // pour retour depuis chat
 
 function $(id){return document.getElementById(id);}
 
@@ -620,59 +492,23 @@ function goTo(screenId){
   }
   var sc=document.getElementById('screen-'+screenId);
   if(sc) sc.classList.add('active');
-  /* Géoloc auto à l'ouverture de l'itinéraire */
-  if(screenId==='itin') _tryGeolocFrom();
-  /* Focus composer à l'ouverture du chat */
+  /* géoloc auto désactivée — ne bloque plus le champ */
   if(screenId==='chat') setTimeout(function(){$('chat-input').focus();},300);
 }
 window.goTo=goTo;
 _navBtns.forEach(function(btn){btn.addEventListener('click',function(){goTo(btn.dataset.screen);});});
 document.getElementById('btn-back-signal')&&document.getElementById('btn-back-signal').addEventListener('click',function(){goTo('home');});
 
-/* ══ FAB → ouvre chat plein écran ══ */
-$('xfab-btn').addEventListener('click',function(){
-  _prevScreen='itin';
-  goTo('chat');
-});
-$('chat-back-btn').addEventListener('click',function(){
-  goTo(_prevScreen||'itin');
-});
+/* FAB → chat plein écran */
+$('xfab-btn').addEventListener('click',function(){goTo('chat');});
+$('chat-back-btn').addEventListener('click',function(){goTo('itin');});
 
-/* ══ GPS + géoloc auto ══ */
+/* ══ GPS ══ */
 if(navigator.geolocation){
-  navigator.geolocation.getCurrentPosition(function(p){
-    _userLat=p.coords.latitude; _userLon=p.coords.longitude;
-  },function(){},{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
+  navigator.geolocation.getCurrentPosition(function(p){_userLat=p.coords.latitude;_userLon=p.coords.longitude;},function(){},{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
 }
 
-function _tryGeolocFrom(){
-  /* Si départ déjà rempli, ne pas écraser */
-  if(_from) return;
-  if(!navigator.geolocation) return;
-  var timer=setTimeout(function(){/* timeout 3s silencieux */},3000);
-  navigator.geolocation.getCurrentPosition(function(p){
-    clearTimeout(timer);
-    _userLat=p.coords.latitude; _userLon=p.coords.longitude;
-    _loadStopsLocal().then(function(data){
-      var nearest=_findNearestStop(p.coords.latitude,p.coords.longitude,data.stops);
-      if(nearest&&!_from){
-        _from=nearest;
-        _renderFields();
-      }
-    });
-  },function(){clearTimeout(timer);},{enableHighAccuracy:false,timeout:3000,maximumAge:30000});
-}
-
-function _findNearestStop(lat,lon,stops){
-  var best=null,bestDist=Infinity;
-  Object.keys(stops).forEach(function(nom){
-    var s=stops[nom];
-    if(!s.lat||!s.lon) return;
-    var d=_haversine(lat,lon,s.lat,s.lon);
-    if(d<bestDist){bestDist=d;best=nom;}
-  });
-  return bestDist<900?best:null; /* max 900m */
-}
+/* géoloc auto supprimée — GPS utilisé uniquement pour le tri par distance */
 
 /* ══ Helpers ══ */
 function _haversine(a,b,c,d){var R=6371000,p=Math.PI/180;var x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
@@ -682,18 +518,47 @@ function _fmtDist(m){if(m===null||m===undefined)return '';return m<1000?'~'+m+' 
 function _fmtMin(n){if(n===null||n===undefined)return '';return n===0?'à l\'instant':'il y a '+n+' min';}
 function _timeNow(){var d=new Date();return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}
 
+/* ══ FAB masqué quand champ actif ══ */
+function _setFabVisible(visible){
+  var fab=$('xfab-btn'),pulse=$('xfab-pulse');
+  if(!fab) return;
+  if(visible){fab.classList.remove('xfab-hidden');pulse&&pulse.classList.remove('xfab-hidden');}
+  else{fab.classList.add('xfab-hidden');pulse&&pulse.classList.add('xfab-hidden');}
+}
+
+/* ══ FIX clavier mobile — scroll champ visible ══ */
+function _scrollFieldIntoView(){
+  setTimeout(function(){
+    var card=$('itin-fields-card');
+    if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
+  },350); /* délai pour laisser le clavier s'ouvrir */
+}
+
 /* ══ Render champs ══ */
 function _renderFields(){
+  /* Champ FROM */
   var rowFrom=$('itin-row-from'),valFrom=$('itin-val-from');
   rowFrom.classList.toggle('itin-field-active',_activeField==='from');
   if(_activeField==='from'){
+    _setFabVisible(false);
     valFrom.innerHTML='<input class="itin-field-input" id="itin-input-from" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
-    var inp=$('itin-input-from'); inp.value=_from;
+    var inp=$('itin-input-from');
+    inp.value=_from;
     setTimeout(function(){inp.focus();inp.select();},50);
-    inp.addEventListener('input',function(){clearTimeout(_searchDebounce);var q=this.value.trim();if(!q){$('itin-search-results-wrap').innerHTML='';return;}_searchDebounce=setTimeout(function(){_renderResults(q);},280);});
+    _scrollFieldIntoView();
+    inp.addEventListener('input',function(){
+      clearTimeout(_searchDebounce);
+      var q=this.value.trim();
+      if(!q){$('itin-search-results-wrap').innerHTML='';return;}
+      _searchDebounce=setTimeout(function(){_renderResults(q);},280);
+    });
+    inp.addEventListener('blur',function(){
+      /* Si blur sans sélection → on garde la valeur tapée */
+      var v=this.value.trim();
+      if(v) _from=v;
+    });
   } else if(_from){
     valFrom.innerHTML='<span class="itin-field-selected">'+_esc(_from)+'</span>'
-      +'<span class="itin-gps-badge" title="Géolocalisé"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M12 2a10 10 0 0 1 10 10c0 6.5-10 16-10 16S2 18.5 2 12A10 10 0 0 1 12 2z"/></svg></span>'
       +'<button class="itin-field-clear" id="itin-clear-from"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
     var cl=$('itin-clear-from');
     if(cl) cl.addEventListener('click',function(e){e.stopPropagation();_from='';_activeField='from';_renderFields();$('itin-search-results-wrap').innerHTML='';});
@@ -701,13 +566,26 @@ function _renderFields(){
     valFrom.innerHTML='<span class="itin-field-placeholder">Vous êtes où ?</span>';
   }
 
+  /* Champ TO */
   var rowTo=$('itin-row-to'),valTo=$('itin-val-to');
   rowTo.classList.toggle('itin-field-active',_activeField==='to');
   if(_activeField==='to'){
+    _setFabVisible(false);
     valTo.innerHTML='<input class="itin-field-input" id="itin-input-to" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
-    var inp2=$('itin-input-to'); inp2.value=_to;
+    var inp2=$('itin-input-to');
+    inp2.value=_to;
     setTimeout(function(){inp2.focus();inp2.select();},50);
-    inp2.addEventListener('input',function(){clearTimeout(_searchDebounce);var q=this.value.trim();if(!q){$('itin-search-results-wrap').innerHTML='';return;}_searchDebounce=setTimeout(function(){_renderResults(q);},280);});
+    _scrollFieldIntoView();
+    inp2.addEventListener('input',function(){
+      clearTimeout(_searchDebounce);
+      var q=this.value.trim();
+      if(!q){$('itin-search-results-wrap').innerHTML='';return;}
+      _searchDebounce=setTimeout(function(){_renderResults(q);},280);
+    });
+    inp2.addEventListener('blur',function(){
+      var v=this.value.trim();
+      if(v) _to=v;
+    });
   } else if(_to){
     valTo.innerHTML='<span class="itin-field-selected">'+_esc(_to)+'</span>'
       +'<button class="itin-field-clear" id="itin-clear-to"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -716,10 +594,21 @@ function _renderFields(){
   } else {
     valTo.innerHTML='<span class="itin-field-placeholder">Vous allez où ?</span>';
   }
+
+  /* FAB visible si aucun champ actif */
+  if(!_activeField) _setFabVisible(true);
 }
 
-$('itin-row-from').addEventListener('click',function(e){if(e.target.closest('.itin-field-clear'))return;_activeField='from';_searchTab='arrets';_renderFields();var q=_from;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';});
-$('itin-row-to').addEventListener('click',function(e){if(e.target.closest('.itin-field-clear'))return;_activeField='to';_searchTab='arrets';_renderFields();var q=_to;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';});
+$('itin-row-from').addEventListener('click',function(e){
+  if(e.target.closest('.itin-field-clear')) return;
+  _activeField='from';_searchTab='arrets';_renderFields();
+  var q=_from;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';
+});
+$('itin-row-to').addEventListener('click',function(e){
+  if(e.target.closest('.itin-field-clear')) return;
+  _activeField='to';_searchTab='arrets';_renderFields();
+  var q=_to;if(q.length>=2)_renderResults(q);else $('itin-search-results-wrap').innerHTML='';
+});
 document.addEventListener('click',function(e){
   if(!e.target.closest('#itin-fields-card')&&!e.target.closest('#itin-search-results-wrap')){
     if(_activeField){_activeField=null;_renderFields();$('itin-search-results-wrap').innerHTML='';}
@@ -729,17 +618,17 @@ document.addEventListener('click',function(e){
 /* ══ Sélection arrêt ══ */
 function _pickStop(nom){
   if(_activeField==='from'){
-    _from=nom; _activeField=null; _renderFields(); $('itin-search-results-wrap').innerHTML='';
+    _from=nom;_activeField=null;_renderFields();$('itin-search-results-wrap').innerHTML='';
     if(!_to){setTimeout(function(){_activeField='to';_renderFields();},200);}
     else{_calcFromTo(_from,_to);}
   } else if(_activeField==='to'){
-    _to=nom; _activeField=null; _renderFields(); $('itin-search-results-wrap').innerHTML='';
+    _to=nom;_activeField=null;_renderFields();$('itin-search-results-wrap').innerHTML='';
     if(_from){_calcFromTo(_from,_to);}
     else{setTimeout(function(){_activeField='from';_renderFields();},200);}
   }
 }
 
-/* ══ API ══ */
+/* ══ API backend ══ */
 async function _apiSearchStops(q){
   var url=API_BASE+'/api/stops/search?q='+encodeURIComponent(q);
   if(_userLat!==null) url+='&lat='+_userLat+'&lon='+_userLon;
@@ -749,6 +638,7 @@ async function _apiSearchStops(q){
   catch(e){clearTimeout(timer);return null;}
 }
 
+/* ══ Fallback JSON local ══ */
 async function _loadStopsLocal(){
   if(_stopIndex) return _stopIndex;
   var paths=['/data/routes_geometry_v13_fixed2.json','./data/routes_geometry_v13_fixed2.json','/routes_geometry_v13_fixed2.json'];
@@ -794,7 +684,6 @@ function _calcFromTo(from,to){
   $('itin-search-results-wrap').innerHTML='';
   $('itin-body-wrap').scrollTop=0;
 }
-
 $('itin-reset-btn').addEventListener('click',function(){
   $('itin-result-card').hidden=true;
   _from='';_to='';_activeField=null;
@@ -805,21 +694,32 @@ $('itin-reset-btn').addEventListener('click',function(){
 function _renderStopCards(stopsData,q){
   if(!stopsData.length) return '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucun arrêt pour « '+_esc(q)+' »</div></div>';
   var isFrom=_activeField==='from';
-  var html='<div class="itin-search-legend"><div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 2px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div><div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div></div>';
+  /* FIX légende — gap 20px déjà en CSS, items séparés */
+  var html='<div class="itin-search-legend">'
+    +'<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 3px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div>'
+    +'<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div>'
+    +'</div>';
   html+='<div class="itin-search-results">';
   stopsData.forEach(function(stop){
     var hasSig=stop.lignes.some(function(l){return l.has_recent;});
     html+='<div class="itin-arret-card'+(hasSig?' itin-arret-card--signale':'')+'">';
     html+='<div class="itin-arret-head"><div class="itin-arret-dot'+(hasSig?' itin-arret-dot--signale':'')+'"></div><div class="itin-arret-name">'+_esc(stop.nom)+'</div>';
-    if(stop.distance_m!==null&&stop.distance_m!==undefined)html+='<div class="itin-arret-dist">'+_fmtDist(stop.distance_m)+'</div>';
+    if(stop.distance_m!==null&&stop.distance_m!==undefined) html+='<div class="itin-arret-dist">'+_fmtDist(stop.distance_m)+'</div>';
     html+='</div><div class="itin-arret-lines">';
     stop.lignes.forEach(function(l){
       if(l.has_recent){html+='<div class="itin-line-badge-sig" data-stop="'+_esc(stop.nom)+'"><span class="itin-line-badge-sig-dot"></span>Bus '+_esc(l.numero);if(l.last_seen_min!==null)html+=' · '+_fmtMin(l.last_seen_min);html+='</div>';}
       else{html+='<div class="itin-line-badge-norm" data-stop="'+_esc(stop.nom)+'">'+_esc(l.numero)+'</div>';}
     });
     html+='</div><div class="itin-arret-sep"></div><div class="itin-arret-footer">';
-    if(isFrom){html+='<button class="itin-btn-from itin-pick-stop" data-stop="'+_esc(stop.nom)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>Partir d\'ici</button>';}
-    else{html+='<button class="itin-btn-to itin-pick-stop" data-stop="'+_esc(stop.nom)+'"><svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>Vers ici</button>';}
+    if(isFrom){
+      html+='<button class="itin-btn-from itin-pick-stop" data-stop="'+_esc(stop.nom)+'">'
+        +'<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="10" r="3"/><path d="M12 2a8 8 0 0 1 8 8c0 5.25-8 13-8 13S4 15.25 4 10a8 8 0 0 1 8-8z"/></svg>'
+        +'Partir d\'ici</button>';
+    } else {
+      html+='<button class="itin-btn-to itin-pick-stop" data-stop="'+_esc(stop.nom)+'">'
+        +'<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z"/></svg>'
+        +'Vers ici</button>';
+    }
     html+='</div></div>';
   });
   html+='</div>';
@@ -831,13 +731,18 @@ function _renderResults(q){
   if(!q||q.length<2){wrap.innerHTML='';return;}
   wrap.innerHTML='<div class="itin-search-empty"><div class="itin-search-empty-icon">⏳</div><div class="itin-search-empty-txt">Recherche…</div></div>';
   var renderWithData=function(stopsData,lignesData){
-    var html='<div class="itin-search-tabs"><button class="itin-search-tab'+(_searchTab==='arrets'?' active':'')+'" data-tab="arrets">Arrêts ('+stopsData.length+')</button><button class="itin-search-tab'+(_searchTab==='lignes'?' active':'')+'" data-tab="lignes">Lignes ('+lignesData.length+')</button></div>';
-    if(_searchTab==='arrets'){html+=_renderStopCards(stopsData,q);}
-    else{
+    var html='<div class="itin-search-tabs">'
+      +'<button class="itin-search-tab'+(_searchTab==='arrets'?' active':'')+'" data-tab="arrets">Arrêts ('+stopsData.length+')</button>'
+      +'<button class="itin-search-tab'+(_searchTab==='lignes'?' active':'')+'" data-tab="lignes">Lignes ('+lignesData.length+')</button>'
+      +'</div>';
+    if(_searchTab==='arrets'){
+      html+=_renderStopCards(stopsData,q);
+    } else {
       if(!lignesData.length){html+='<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucune ligne pour « '+_esc(q)+' »</div></div>';}
       else{html+='<div class="itin-search-results">';lignesData.forEach(function(item){html+='<div class="itin-ligne-card" data-ligne="'+_esc(item.num)+'"><div class="itin-ligne-badge-num">'+_esc(item.num)+'</div><div class="itin-ligne-info"><div class="itin-ligne-nom">'+_esc(item.info.nom)+'</div><div class="itin-ligne-sub">'+_esc(item.info.terminus_a)+' ↔ '+_esc(item.info.terminus_b)+'</div></div></div>';});html+='</div>';}
     }
-    wrap.innerHTML=html;_attachTabEvents();_attachResultEvents();
+    wrap.innerHTML=html;
+    _attachTabEvents();_attachResultEvents();
   };
   _apiSearchStops(q).then(function(apiResult){
     _loadStopsLocal().then(function(data){
@@ -849,7 +754,13 @@ function _renderResults(q){
 }
 
 function _attachTabEvents(){
-  document.querySelectorAll('.itin-search-tab').forEach(function(btn){btn.addEventListener('click',function(e){e.stopPropagation();_searchTab=btn.dataset.tab;var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');_renderResults(inp?inp.value.trim():_activeField==='from'?_from:_to);});});
+  document.querySelectorAll('.itin-search-tab').forEach(function(btn){
+    btn.addEventListener('click',function(e){
+      e.stopPropagation();_searchTab=btn.dataset.tab;
+      var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');
+      _renderResults(inp?inp.value.trim():(_activeField==='from'?_from:_to));
+    });
+  });
 }
 function _attachResultEvents(){
   document.querySelectorAll('.itin-pick-stop').forEach(function(btn){btn.addEventListener('click',function(e){e.stopPropagation();_pickStop(btn.dataset.stop);});});
@@ -858,34 +769,26 @@ function _attachResultEvents(){
 }
 
 /* ══ CHAT PLEIN ÉCRAN ══ */
-var _chatInput = $('chat-input');
-var _chatSend  = $('chat-send');
-var _chatMsgs  = $('chat-messages');
-var _chatChips = $('chat-chips');
+var _chatInput=$('chat-input');
+var _chatSend=$('chat-send');
+var _chatMsgs=$('chat-messages');
+var _chatChips=$('chat-chips');
 
-/* Auto-resize textarea */
 _chatInput.addEventListener('input',function(){
   this.style.height='auto';
   this.style.height=Math.min(this.scrollHeight,100)+'px';
   _chatSend.disabled=!this.value.trim();
 });
-_chatInput.addEventListener('keydown',function(e){
-  if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();_sendChat(this.value);}
-});
+_chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();_sendChat(this.value);}});
 _chatSend.addEventListener('click',function(){_sendChat(_chatInput.value);});
-
-document.querySelectorAll('.chat-chip').forEach(function(c){
-  c.addEventListener('click',function(){_sendChat(c.dataset.msg);});
-});
+document.querySelectorAll('.chat-chip').forEach(function(c){c.addEventListener('click',function(){_sendChat(c.dataset.msg);});});
 
 function _addChatMsg(text,role){
   var w=document.createElement('div');w.className='chat-msg chat-msg--'+role;
-  var b=document.createElement('div');b.className='chat-bubble';
-  b.innerHTML=text.replace(/\n/g,'<br>');
+  var b=document.createElement('div');b.className='chat-bubble';b.innerHTML=text.replace(/\n/g,'<br>');
   var t=document.createElement('div');t.className='chat-msg-time';t.textContent=_timeNow();
   w.appendChild(b);w.appendChild(t);
-  _chatMsgs.appendChild(w);
-  _chatMsgs.scrollTop=_chatMsgs.scrollHeight;
+  _chatMsgs.appendChild(w);_chatMsgs.scrollTop=_chatMsgs.scrollHeight;
 }
 function _showTyping(){
   var el=document.createElement('div');el.className='chat-msg chat-msg--bot';el.id='chat-typing-el';
@@ -894,27 +797,16 @@ function _showTyping(){
 }
 function _hideTyping(){var el=$('chat-typing-el');if(el)el.remove();}
 function _sendChat(text){
-  if(!text.trim()) return;
+  if(!text.trim())return;
   _addChatMsg(text,'user');
-  _chatInput.value='';_chatInput.style.height='auto';
-  _chatSend.disabled=true;
+  _chatInput.value='';_chatInput.style.height='auto';_chatSend.disabled=true;
   _chatChips.style.display='none';
   _showTyping();
   setTimeout(function(){
     _hideTyping();
-    var reply=DEMO_REPLIES[text]||'Message reçu ! 🚌 Je cherche pour toi…';
-    _addChatMsg(reply,'bot');
+    _addChatMsg(DEMO_REPLIES[text]||'Message reçu ! 🚌 Je cherche pour toi…','bot');
   },1200);
 }
-
-/* Statut WS → topbar chat */
-function _updateChatStatus(st){
-  var bar=$('chat-status-bar'),txt=$('chat-status-txt'),dot=$('chat-status-dot');
-  if(!bar)return;
-  if(st==='open'){bar.className='chat-topbar-status chat-topbar-status--online';dot.className='chat-status-dot-on';txt.textContent='En ligne';}
-  else{bar.className='chat-topbar-status chat-topbar-status--offline';dot.className='chat-status-dot-off';txt.textContent='Hors ligne';}
-}
-setInterval(function(){try{var st=window._xetuStore&&window._xetuStore.get&&window._xetuStore.get('wsStatus');if(st)_updateChatStatus(st);}catch(e){}},3000);
 
 /* Init */
 _renderFields();

@@ -1,20 +1,28 @@
 """
-db/queries.py — V5.4
+db/queries.py — V5.6
 Règle absolue : SEUL fichier qui touche Supabase.
+
+MIGRATIONS V5.6 depuis V5.5 :
+  - is_signalement_arret_recent() : anti-doublon communautaire (DEDUP_ARRET_WINDOW_MIN)
+    Vérifie si un bus de cette ligne a déjà été signalé à cet arrêt (toute source)
+    dans les 5 dernières minutes. Empêche 2 usagers de doubler le même bus.
+  - save_signalement() : branchement du check communautaire après le check strict
+    Pas de pénalité spam sur doublon communautaire (bonne foi).
+
+MIGRATIONS V5.5 depuis V5.4 :
+  - get_abonnements_actifs() + deactivate_abonnement() ajoutés
 
 MIGRATIONS V5.4 depuis V5.3 :
   - save_signalement() accepte lat/lon optionnels
-    Envoyés par api/report.py V1.1 quand source="web_geoloc"
-    Stockés dans la table si les colonnes existent, ignorés sinon.
 """
 from datetime import datetime, timedelta, timezone, date
 import logging
 from db.client import get_client
-from config.settings import SIGNALEMENT_TTL_MINUTES
+from config.settings import SIGNALEMENT_TTL_MINUTES, DEDUP_ARRET_WINDOW_MIN
 
 logger = logging.getLogger(__name__)
 
-DEDUP_WINDOW_SECONDS = 120  # 2 minutes
+DEDUP_WINDOW_SECONDS = 120  # 2 minutes — doublon strict même phone
 
 
 # ── Contacts ──────────────────────────────────────────────
@@ -103,6 +111,7 @@ def count_messages(conversation_id: str) -> int:
 # ── Signalements ──────────────────────────────────────────
 
 def is_signalement_doublon(ligne: str, arret: str, phone: str) -> bool:
+    """Check strict : même phone + même arrêt + même ligne dans les 2 dernières minutes."""
     db    = get_client()
     now   = datetime.now(timezone.utc)
     since = (now - timedelta(seconds=DEDUP_WINDOW_SECONDS)).isoformat()
@@ -117,20 +126,55 @@ def is_signalement_doublon(ligne: str, arret: str, phone: str) -> bool:
                  .execute())
         return bool(res.data)
     except Exception as e:
-        logger.error(f"[dedup] Erreur check doublon: {e}")
+        logger.error(f"[dedup] Erreur check doublon strict: {e}")
         return False
+
+
+def is_signalement_arret_recent(ligne: str, arret: str) -> bool:
+    """
+    V5.6 : Anti-doublon communautaire.
+    Vérifie si ce bus (ligne) a déjà été signalé à cet arrêt par N'IMPORTE QUEL
+    usager dans les DEDUP_ARRET_WINDOW_MIN dernières minutes.
+
+    Logique métier : un bus signalé à un arrêt vient de passer — il ne peut plus
+    y être. Un 2e usager qui le signale au même endroit dans les 5 min suivantes
+    voit le même bus. On bloque sans pénalité (bonne foi).
+    """
+    db    = get_client()
+    now   = datetime.now(timezone.utc)
+    since = (now - timedelta(minutes=DEDUP_ARRET_WINDOW_MIN)).isoformat()
+    try:
+        res = (db.table("signalements")
+                 .select("id")
+                 .eq("ligne", ligne)
+                 .eq("position", arret)
+                 .gte("timestamp", since)
+                 .limit(1)
+                 .execute())
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"[dedup_arret] Erreur check communautaire: {e}")
+        return False  # fail-open : on laisse passer en cas d'erreur DB
 
 
 def save_signalement(ligne: str, arret: str, phone: str,
                      lat: float | None = None,
                      lon: float | None = None) -> dict | None:
     """
-    V5.4 : accepte lat/lon optionnels envoyés par api/report.py
-    quand source="web_geoloc". Stockés si les colonnes existent en DB.
+    V5.6 : deux niveaux de déduplication.
+      1. Doublon strict  : même phone + même arrêt + 120s → pénalité spam
+      2. Doublon communautaire : même arrêt + même ligne + 5 min → silencieux, pas de pénalité
     """
+    # Check 1 : doublon strict (même phone)
     if is_signalement_doublon(ligne, arret, phone):
-        logger.info(f"[Dedup] Doublon ignoré — {phone[-4:]} ligne={ligne} arret={arret}")
+        logger.info(f"[Dedup] Doublon strict — {phone[-4:]} ligne={ligne} arret={arret}")
         penalise_spam(phone)
+        return None
+
+    # Check 2 : doublon communautaire (même arrêt, toute source)
+    if is_signalement_arret_recent(ligne, arret):
+        logger.info(f"[Dedup-Arret] Signalement communautaire récent — ligne={ligne} arret={arret!r}")
+        # Pas de pénalité — l'usager signale de bonne foi
         return None
 
     db = get_client()
@@ -195,121 +239,21 @@ def boost_corroboration(ligne: str, arret: str, phone_confirmateur: str):
                  .execute())
         if not res.data:
             return
-        original_phone = res.data[0]["phone"]
-
-        contact_res = (db.table("contacts")
-                         .select("fiabilite_score, profil_json")
-                         .eq("phone", original_phone)
-                         .execute())
-        if not contact_res.data:
+        phone_original = res.data[0]["phone"]
+        original = (db.table("contacts")
+                      .select("fiabilite_score")
+                      .eq("phone", phone_original)
+                      .execute())
+        if not original.data:
             return
-
-        current = contact_res.data[0].get("fiabilite_score", 0.5)
-        profil  = contact_res.data[0].get("profil_json") or {}
-
-        old_rate = profil.get("corroboration_rate", 0.5)
-        profil["corroboration_rate"] = min(1.0, old_rate + 0.05)
-
-        boosted = min(1.0, current * 1.05)
+        current  = original.data[0].get("fiabilite_score", 0.5)
+        boosted  = min(1.0, current + 0.05)
         db.table("contacts").update({
-            "fiabilite_score": round(boosted, 3),
-            "profil_json":     profil,
-        }).eq("phone", original_phone).execute()
-        logger.info(
-            f"[Reliability] Corroboration boost {original_phone[-4:]}: "
-            f"{current:.2f} → {boosted:.2f}"
-        )
+            "fiabilite_score": round(boosted, 3)
+        }).eq("phone", phone_original).execute()
+        logger.info(f"[Reliability] Corroboration {phone_original[-4:]}: {current:.2f} → {boosted:.2f}")
     except Exception as e:
-        logger.error(f"[Reliability] Erreur boost corroboration: {e}")
-
-
-def enrichir_signalement(ligne: str, arret: str, qualite: str, phone: str) -> bool:
-    db  = get_client()
-    now = datetime.now(timezone.utc).isoformat()
-
-    try:
-        res = (db.table("signalements")
-                 .select("id")
-                 .eq("ligne", ligne)
-                 .eq("position", arret)
-                 .eq("phone", phone)
-                 .gt("expires_at", now)
-                 .order("timestamp", desc=True)
-                 .limit(1)
-                 .execute())
-
-        if not res.data:
-            res_fallback = (db.table("signalements")
-                              .select("id")
-                              .eq("ligne", ligne)
-                              .eq("position", arret)
-                              .eq("phone", phone)
-                              .order("timestamp", desc=True)
-                              .limit(1)
-                              .execute())
-            if not res_fallback.data:
-                logger.warning(
-                    f"[enrichir_signalement] Aucun signalement trouvé "
-                    f"ligne={ligne} arret={arret} phone={phone}"
-                )
-                return False
-            sig_id = res_fallback.data[0]["id"]
-        else:
-            sig_id = res.data[0]["id"]
-
-        db.table("signalements").update({"qualite": qualite}).eq("id", sig_id).execute()
-        logger.info(
-            f"[enrichir_signalement] ligne={ligne} arret={arret} "
-            f"qualite='{qualite}' → signalement {sig_id} mis à jour"
-        )
-        return True
-
-    except Exception as e:
-        logger.error(f"[enrichir_signalement] Erreur: {e}")
-        return False
-
-
-# ── Signalements GPS (api/tracking.py) ────────────────────
-
-def is_recent_gps_signalement(phone: str, window_seconds: int = 30) -> bool:
-    db    = get_client()
-    now   = datetime.now(timezone.utc)
-    since = (now - timedelta(seconds=window_seconds)).isoformat()
-    try:
-        res = (db.table("signalements")
-                 .select("id")
-                 .eq("phone", phone)
-                 .gte("timestamp", since)
-                 .limit(1)
-                 .execute())
-        return bool(res.data)
-    except Exception as e:
-        logger.error(f"[gps_antispam] Erreur check: {e}")
-        return False
-
-
-def save_signalement_gps(ligne: str, arret: str, phone: str,
-                          ttl_minutes: int = 10) -> dict | None:
-    db         = get_client()
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
-    try:
-        res = db.table("signalements").insert({
-            "ligne":      ligne,
-            "position":   arret,
-            "phone":      phone,
-            "timestamp":  datetime.now(timezone.utc).isoformat(),
-            "expires_at": expires_at.isoformat(),
-            "valide":     True,
-            "qualite":    "gps",
-        }).execute()
-        logger.info(
-            f"[gps] Signalement enregistré — {phone[-4:]} ligne={ligne} "
-            f"arret={arret!r} TTL={ttl_minutes}min"
-        )
-        return res.data[0]
-    except Exception as e:
-        logger.error(f"[gps] save_signalement_gps erreur: {e}")
-        return None
+        logger.error(f"[Reliability] Erreur corroboration: {e}")
 
 
 def get_signalements_actifs(ligne: str) -> list[dict]:
@@ -402,6 +346,91 @@ def get_lignes_silencieuses(seuil_minutes: int) -> list[str]:
     return list(toutes - actives)
 
 
+def enrichir_signalement(ligne: str, arret: str, qualite: str,
+                          phone: str | None = None) -> bool:
+    db = get_client()
+    try:
+        query = (db.table("signalements")
+                   .select("id")
+                   .eq("ligne", ligne)
+                   .eq("position", arret)
+                   .order("timestamp", desc=True)
+                   .limit(1))
+        res = query.execute()
+
+        if not res.data and phone:
+            res_fallback = (db.table("signalements")
+                              .select("id")
+                              .eq("ligne", ligne)
+                              .eq("phone", phone)
+                              .order("timestamp", desc=True)
+                              .limit(1)
+                              .execute())
+            if not res_fallback.data:
+                logger.warning(
+                    f"[enrichir_signalement] Aucun signalement trouvé pour "
+                    f"ligne={ligne} arret={arret} phone={phone}"
+                )
+                return False
+            sig_id = res_fallback.data[0]["id"]
+        else:
+            sig_id = res.data[0]["id"]
+
+        db.table("signalements").update({"qualite": qualite}).eq("id", sig_id).execute()
+        logger.info(
+            f"[enrichir_signalement] ligne={ligne} arret={arret} "
+            f"qualite='{qualite}' → signalement {sig_id} mis à jour"
+        )
+        return True
+
+    except Exception as e:
+        logger.error(f"[enrichir_signalement] Erreur: {e}")
+        return False
+
+
+# ── Signalements GPS (api/tracking.py) ────────────────────
+
+def is_recent_gps_signalement(phone: str, window_seconds: int = 30) -> bool:
+    db    = get_client()
+    now   = datetime.now(timezone.utc)
+    since = (now - timedelta(seconds=window_seconds)).isoformat()
+    try:
+        res = (db.table("signalements")
+                 .select("id")
+                 .eq("phone", phone)
+                 .gte("timestamp", since)
+                 .limit(1)
+                 .execute())
+        return bool(res.data)
+    except Exception as e:
+        logger.error(f"[gps_antispam] Erreur check: {e}")
+        return False
+
+
+def save_signalement_gps(ligne: str, arret: str, phone: str,
+                          ttl_minutes: int = 10) -> dict | None:
+    db         = get_client()
+    expires_at = datetime.now(timezone.utc) + timedelta(minutes=ttl_minutes)
+    try:
+        res = db.table("signalements").insert({
+            "ligne":      ligne,
+            "position":   arret,
+            "phone":      phone,
+            "timestamp":  datetime.now(timezone.utc).isoformat(),
+            "expires_at": expires_at.isoformat(),
+            "valide":     True,
+            "qualite":    "gps",
+        }).execute()
+        logger.info(
+            f"[gps] Signalement enregistré — {phone[-4:]} ligne={ligne} "
+            f"arret={arret!r} TTL={ttl_minutes}min"
+        )
+        return res.data[0]
+    except Exception as e:
+        logger.error(f"[gps] save_signalement_gps erreur: {e}")
+        return None
+
+
 # ── Abonnements ───────────────────────────────────────────
 
 def get_abonnes(ligne: str) -> list[dict]:
@@ -440,12 +469,8 @@ def delete_abonnement(phone: str, ligne: str):
     db = get_client()
     db.table("abonnements").update({"actif": False}).eq("phone", phone).eq("ligne", ligne).execute()
 
-# ── Ajouts V5.5 dans db/queries.py — section Abonnements ──────────────────
-# Coller après def delete_abonnement() dans queries.py
 
 def get_abonnements_actifs(phone: str) -> list[dict]:
-    """Retourne les lignes actives pour ce phone/session_id.
-    Utilisé par GET /api/subscriptions."""
     db = get_client()
     try:
         res = (db.table("abonnements")
@@ -460,227 +485,18 @@ def get_abonnements_actifs(phone: str) -> list[dict]:
 
 
 def deactivate_abonnement(phone: str, ligne: str):
-    """Désactive un abonnement (soft delete).
-    Utilisé par DELETE /api/subscriptions/{ligne}."""
     db = get_client()
     try:
-        db.table("abonnements")\
-            .update({"actif": False})\
-            .eq("phone", phone)\
-            .eq("ligne", ligne)\
-            .execute()
-        logger.info(f"[queries] deactivate_abonnement — phone=…{phone[-6:]} ligne={ligne}")
+        db.table("abonnements").update({"actif": False}).eq("phone", phone).eq("ligne", ligne).execute()
     except Exception as e:
         logger.error(f"[queries] deactivate_abonnement erreur: {e}")
-        raise
 
 
-def get_abonnements_proactifs(avant_minutes: int = 15) -> list[dict]:
-    db          = get_client()
-    heure_cible = (datetime.now(timezone.utc) + timedelta(minutes=avant_minutes)).strftime("%H:%M")
-    res         = (db.table("abonnements")
-                     .select("*")
-                     .eq("actif", True)
-                     .eq("heure_alerte", heure_cible)
-                     .execute())
-    return res.data or []
-
-
-def get_abonnements_proactifs_heure(heure: str) -> list[dict]:
-    db  = get_client()
-    res = (db.table("abonnements")
-             .select("*")
-             .eq("actif", True)
-             .eq("heure_alerte", heure)
-             .execute())
-    return res.data or []
-
-
-# ── Tickets ───────────────────────────────────────────────
-
-def create_ticket(phone: str, motif: str) -> dict:
-    db  = get_client()
-    res = db.table("tickets").insert({
-        "phone":    phone,
-        "motif":    motif,
-        "priorite": "normale",
-        "statut":   "ouvert"
-    }).execute()
-    return res.data[0]
-
-
-# ── Lignes ────────────────────────────────────────────────
-
-def get_all_lignes() -> list[dict]:
-    db  = get_client()
-    res = db.table("lignes").select("*").eq("actif", True).execute()
-    return res.data or []
-
-
-def ligne_existe(numero: str) -> bool:
-    db  = get_client()
-    res = db.table("lignes").select("id").eq("numero", numero).execute()
-    return bool(res.data)
-
-
-# ── Sessions ──────────────────────────────────────────────
-
-SESSION_CONTEXT_TTL_SECONDS = 1800
-
-
-def get_session(phone: str) -> dict | None:
-    db  = get_client()
-    now = datetime.now(timezone.utc).isoformat()
-    res = (db.table("sessions")
-             .select("*")
-             .eq("phone", phone)
-             .gt("expires_at", now)
-             .limit(1)
-             .execute())
-    return res.data[0] if res.data else None
-
-
-def set_session(phone: str, etat: str,
-                ligne: str | None = None,
-                signalement: dict | None = None,
-                destination: str | None = None) -> dict:
-    db         = get_client()
-    expires_at = (datetime.now(timezone.utc)
-                  + timedelta(seconds=SESSION_CONTEXT_TTL_SECONDS)).isoformat()
-    data = {
-        "phone":       phone,
-        "etat":        etat,
-        "ligne":       ligne,
-        "signalement": signalement,
-        "destination": destination,
-        "expires_at":  expires_at,
-    }
-    res = db.table("sessions").upsert(data, on_conflict="phone").execute()
-    return res.data[0]
-
-
-def delete_session(phone: str):
-    db = get_client()
-    db.table("sessions").delete().eq("phone", phone).execute()
-
-
-def purge_sessions_expires():
-    db  = get_client()
-    now = datetime.now(timezone.utc).isoformat()
-    db.table("sessions").delete().lt("expires_at", now).execute()
-
-
-# ── Network memory ────────────────────────────────────────
-
-def get_network_memory() -> list[dict]:
-    db  = get_client()
-    res = db.table("network_memory").select("*").execute()
-    return res.data or []
-
-
-# ── Horaires ─────────────────────────────────────────────
-
-def save_schedules_batch(schedules: list[dict]):
-    db = get_client()
-    try:
-        db.table("schedules").upsert(schedules).execute()
-        logger.info(f"✅ {len(schedules)} horaires insérés/mis à jour.")
-    except Exception as e:
-        logger.error(f"❌ save_schedules_batch: {e}")
-
-
-def get_next_theoretical_bus(ligne: str, arret: str, limit: int = 3) -> list[dict]:
-    db       = get_client()
-    now_time = datetime.now(timezone.utc).strftime("%H:%M")
-    res      = (db.table("schedules")
-                  .select("heure_passage, arret, ligne")
-                  .eq("ligne", ligne)
-                  .ilike("arret", f"%{arret}%")
-                  .gte("heure_passage", now_time)
-                  .order("heure_passage", desc=False)
-                  .limit(limit)
-                  .execute())
-    return res.data or []
-
-
-def get_first_departure(ligne: str) -> str | None:
-    db  = get_client()
-    res = (db.table("schedules")
-             .select("heure_passage")
-             .eq("ligne", ligne)
-             .order("heure_passage", desc=False)
-             .limit(1)
-             .execute())
-    if res.data:
-        return res.data[0]["heure_passage"]
-    return None
-
-
-# ── Leaderboard ───────────────────────────────────────────
-
-def get_leaderboard(limit: int = 10) -> list[dict]:
-    db      = get_client()
-    un_mois = (datetime.now(timezone.utc) - timedelta(days=30)).isoformat()
-    res     = (db.table("messages")
-                 .select("conversations(contacts(phone, fiabilite_score))")
-                 .eq("intent", "signalement")
-                 .eq("role", "user")
-                 .gte("created_at", un_mois)
-                 .limit(5000)
-                 .execute())
-
-    compteur: dict[str, dict] = {}
-    for row in (res.data or []):
-        try:
-            contact = row["conversations"]["contacts"]
-            phone   = contact["phone"]
-            score   = contact.get("fiabilite_score", 0.5)
-            if phone not in compteur:
-                compteur[phone] = {
-                    "phone":           phone[-4:],
-                    "fiabilite_score": score,
-                    "nb_signalements": 0,
-                }
-            compteur[phone]["nb_signalements"] += 1
-        except (KeyError, TypeError):
-            continue
-
-    return sorted(compteur.values(),
-                  key=lambda x: x["nb_signalements"],
-                  reverse=True)[:limit]
-
-
-def get_stats_communaute() -> dict:
-    db          = get_client()
-    today_start = datetime.combine(
-        date.today(), datetime.min.time()
-    ).replace(tzinfo=timezone.utc).isoformat()
-
-    res_today = (db.table("signalements")
-                   .select("id", count="exact")
-                   .gte("timestamp", today_start)
-                   .execute())
-    res_all   = (db.table("messages")
-                   .select("id", count="exact")
-                   .eq("intent", "signalement")
-                   .eq("role", "user")
-                   .execute())
-    res_contacts = (db.table("contacts")
-                      .select("id", count="exact")
-                      .execute())
-
-    return {
-        "aujourd_hui":      res_today.count or 0,
-        "all_time":         res_all.count or 0,
-        "nb_contributeurs": res_contacts.count or 0,
-    }
-
-
-# ── Push Notifications ────────────────────────────────────
+# ── Push subscriptions ────────────────────────────────────
 
 def save_push_subscription(phone: str, endpoint: str, p256dh: str, auth: str):
+    db = get_client()
     try:
-        db = get_client()
         db.table("push_subscriptions").upsert({
             "phone":    phone,
             "endpoint": endpoint,
@@ -745,50 +561,12 @@ def get_signalements_recents(minutes: int = 5) -> list:
     try:
         db = get_client()
         since = (datetime.now(timezone.utc) - timedelta(minutes=minutes)).isoformat()
-        result = db.table("signalements")\
-            .select("ligne, position")\
+        res = db.table("signalements")\
+            .select("*")\
             .gte("timestamp", since)\
+            .order("timestamp", desc=True)\
             .execute()
-        return result.data or []
+        return res.data or []
     except Exception as e:
-        logger.error(f"[Push] get_signalements_recents erreur: {e}")
+        logger.error(f"[queries] get_signalements_recents erreur: {e}")
         return []
-
-
-def get_fiabilite_ligne(ligne: str) -> dict:
-    try:
-        db    = get_client()
-        since = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
-        res   = (db.table("signalements")
-                   .select("valide, qualite")
-                   .eq("ligne", ligne)
-                   .gte("timestamp", since)
-                   .execute())
-        rows = res.data or []
-        nb   = len(rows)
-        if nb == 0:
-            return {"score": 0.0, "nb_signalements": 0, "pct_valides": 0.0, "label": "❓ Pas de données"}
-
-        nb_valides   = sum(1 for r in rows if r.get("valide") is True)
-        nb_enrichis  = sum(1 for r in rows if r.get("qualite"))
-        pct_valides  = nb_valides / nb
-        pct_enrichis = nb_enrichis / nb
-
-        score = round((pct_valides * 0.6) + (pct_enrichis * 0.2) + min(nb / 20, 1.0) * 0.2, 2)
-
-        if score >= 0.75:
-            label = "🟢 Fiable"
-        elif score >= 0.45:
-            label = "🟡 Partielle"
-        else:
-            label = "🔴 Peu de données"
-
-        return {
-            "score":           score,
-            "nb_signalements": nb,
-            "pct_valides":     round(pct_valides, 2),
-            "label":           label,
-        }
-    except Exception as e:
-        logger.error(f"[get_fiabilite_ligne] ligne={ligne} erreur: {e}")
-        return {"score": 0.0, "nb_signalements": 0, "pct_valides": 0.0, "label": "❓ Erreur"}

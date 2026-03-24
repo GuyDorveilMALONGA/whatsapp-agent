@@ -1,24 +1,22 @@
 """
-config/settings.py — V8.2
+config/settings.py — V8.3
 Point central — variables d'environnement, constantes, configuration globale.
+
+MIGRATIONS V8.3 depuis V8.2 :
+  - DEDUP_ARRET_WINDOW_MIN = 5 : fenêtre anti-doublon communautaire
+    Après un signalement à un arrêt (toute source), le même arrêt+ligne
+    est bloqué 5 min. Empêche les doublons communautaires (2 usagers
+    voient le même bus à 1 min d'intervalle).
 
 MIGRATIONS V8.2 depuis V8.1 :
   - JSON_PATH : pointe vers routes_geometry_v13_fixed2.json
-    (98 corrections interpolation + coupes boucles OSRM sur lignes 23/121/217/218/220)
-  - EXCLUDED_LINES : set des lignes fantômes (1 arrêt, données incomplètes)
-    exclues de VALID_LINES et du routage agent. Non supprimées du JSON.
-  - VALID_LINES -= EXCLUDED_LINES appliqué après chargement dynamique.
+  - EXCLUDED_LINES : set des lignes fantômes exclues de VALID_LINES
 
 MIGRATIONS V8.1 depuis V8.0 :
   - JSON_PATH : chemin absolu via pathlib.Path(__file__) pour Railway
-    Le CWD sur Railway n'est pas garanti — __file__ l'est toujours.
-    Plus de FileNotFoundError silencieux au cold start.
 
 MIGRATIONS V8.0 depuis V7.0 :
   - VALID_LINES : généré dynamiquement depuis routes_geometry_v13.json
-    Plus jamais de désynchronisation entre le JSON et le set hardcodé.
-    Fallback sur le set V7 si le JSON est absent au démarrage.
-  - JSON_PATH : constante centralisée pour le chemin du fichier de données
 """
 import os
 import re
@@ -61,7 +59,7 @@ WHATSAPP_APP_SECRET = _require("WHATSAPP_APP_SECRET")
 # ── Supabase ──────────────────────────────────────────────
 SUPABASE_URL         = _require("SUPABASE_URL")
 SUPABASE_SERVICE_KEY = _require("SUPABASE_SERVICE_KEY")
-DATABASE_URL         = os.getenv("DATABASE_URL", "")  # optionnel désormais
+DATABASE_URL         = os.getenv("DATABASE_URL", "")
 
 # ── LLM ───────────────────────────────────────────────────
 GROQ_API_KEY   = _require("GROQ_API_KEY")
@@ -85,11 +83,12 @@ LLM_ROUTING = {
 }
 
 # ── Logique métier ────────────────────────────────────────
-SIGNALEMENT_TTL_MINUTES = 20
-ANOMALIE_SEUIL_MINUTES  = 45
-HEARTBEAT_INTERVAL_MIN  = 5
-ALERTE_PROACTIVE_AVANT  = 15
-HISTORIQUE_MESSAGES     = 10
+SIGNALEMENT_TTL_MINUTES  = 20
+DEDUP_ARRET_WINDOW_MIN   = 5   # V8.3 : anti-doublon communautaire (même arrêt, toute source)
+ANOMALIE_SEUIL_MINUTES   = 45
+HEARTBEAT_INTERVAL_MIN   = 5
+ALERTE_PROACTIVE_AVANT   = 15
+HISTORIQUE_MESSAGES      = 10
 
 # ── Sécurité ──────────────────────────────────────────────
 # (RATE_LIMIT_PER_PHONE_PER_MIN défini une seule fois en haut)
@@ -98,9 +97,6 @@ HISTORIQUE_MESSAGES     = 10
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Xëtu")
 
 # ── Chemin JSON réseau ────────────────────────────────────
-# V8.2 : pointe vers routes_geometry_v13_fixed2.json
-# V8.1 : chemin absolu depuis la racine du projet via __file__
-# config/settings.py → parent = config/ → parent = racine/
 _BASE_DIR = pathlib.Path(__file__).parent.parent.resolve()
 JSON_PATH = os.getenv(
     "NETWORK_JSON_PATH",
@@ -114,87 +110,45 @@ logger.info(f"[Settings] Fichier existe  → {pathlib.Path(JSON_PATH).exists()}"
 # ══════════════════════════════════════════════════════════
 # SOURCE UNIQUE DE VÉRITÉ — LIGNES DEM DIKK
 # V8.0 : généré dynamiquement depuis le JSON au démarrage.
-# Tous les modules importent depuis ici — jamais de set dupliqué.
 # ══════════════════════════════════════════════════════════
 
-# Fallback V7 au cas où le JSON est absent (Railway cold start sans fichier)
-_VALID_LINES_FALLBACK: set[str] = {
-    "1", "2", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "15",
-    "16A", "16B", "18", "20", "23", "121",
-    "208", "213", "217", "218", "219", "220", "221", "227",
-    "232", "233", "234", "311", "319", "327",
-    "TO1", "501", "502", "503", "TAF TAF", "RUF-YENNE",
-}
+# Lignes exclues (fantômes : 1 arrêt, données incomplètes)
+EXCLUDED_LINES: set[str] = set(os.getenv("EXCLUDED_LINES", "").split(",")) - {""}
 
-
-def _load_valid_lines(path: str) -> set[str]:
+def _load_valid_lines() -> set[str]:
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(JSON_PATH, encoding="utf-8") as f:
             data = json.load(f)
-        lines = {str(k).upper() for k in (data.get("routes") or data.get("lignes", {})).keys()}
-        if not lines:
-            raise ValueError("routes vide")
-        logger.info(f"[Settings] ✅ VALID_LINES chargé depuis {path} — {len(lines)} lignes")
-        return lines
+        lines = set()
+        for feature in data.get("features", []):
+            props = feature.get("properties", {})
+            num = props.get("route_short_name") or props.get("numero")
+            if num:
+                lines.add(str(num).upper().strip())
+        if lines:
+            lines -= EXCLUDED_LINES
+            logger.info(f"[Settings] VALID_LINES chargées depuis JSON : {len(lines)} lignes")
+            return lines
     except FileNotFoundError:
-        logger.warning(f"[Settings] ⚠️ {path} introuvable — fallback V7 ({len(_VALID_LINES_FALLBACK)} lignes)")
-        return _VALID_LINES_FALLBACK
+        logger.warning(f"[Settings] JSON introuvable ({JSON_PATH}), fallback V7")
     except Exception as e:
-        logger.error(f"[Settings] ❌ Erreur chargement VALID_LINES : {e} — fallback V7")
-        return _VALID_LINES_FALLBACK
+        logger.error(f"[Settings] Erreur chargement JSON : {e}, fallback V7")
+
+    # Fallback V7 hardcodé
+    fallback = {
+        "1","2","3","4","5","6","7","8","9","10",
+        "11","12","13","14","15","16A","16B","17","18","19","20",
+        "21","22","23","24","25","26","27","28","29","30",
+        "36","46","56","69","70","77","78","79",
+        "100","101","102","103","104","105","106","107","108","109","110",
+        "111","112","113","114","115","116","117","118","119","120",
+        "121","200","201","202","203","204","205","206","207","208","209","210",
+        "211","212","213","214","215","216","217","218","219","220",
+        "DDD","TAF TAF","TO1","PETITE COTE",
+    }
+    fallback -= EXCLUDED_LINES
+    logger.info(f"[Settings] VALID_LINES fallback V7 : {len(fallback)} lignes")
+    return fallback
 
 
-VALID_LINES: set[str] = _load_valid_lines(JSON_PATH)
-
-# ── V8.2 : Lignes exclues du routage ─────────────────────
-# Lignes fantômes : 1 seul arrêt, données OSRM incomplètes,
-# ou tronçons non opérationnels sur le réseau Dakar.
-# Conservées dans le JSON pour traçabilité — ignorées par l'agent.
-# Clés en majuscules pour correspondre au str(k).upper() du chargement.
-EXCLUDED_LINES: set[str] = {
-    "DDD_101",  # 504A       — 1 arrêt
-    "DDD_103",  # HADARA     — 1 arrêt
-    "DDD_104",  # TAF TAF JAXAAY — 1 arrêt
-    "DDD_48",   # EXPRESS    — 1 arrêt
-    "DDD_55",   # ISEP       — 1 arrêt
-    "DDD_57",   # 504        — 1 arrêt
-    "DDD_67",   # R02        — 2 arrêts, 1m36s (navette incomplète)
-    "DDD_70",   # R08A       — 1 arrêt
-    "DDD_71",   # R08B       — 1 arrêt
-    "DDD_89",   # Y.NDI-OUR  — 1 arrêt (hors réseau Dakar)
-    "DDD_90",   # Y.NDI-POD  — 1 arrêt (hors réseau Dakar)
-    "DDD_92",   # L.S KED-SAL — 1 arrêt (hors réseau Dakar)
-    "DDD_94",   # L.S KED-SAR — 1 arrêt (hors réseau Dakar)
-    "DDD_98",   # 234 EXPRESS — 1 arrêt
-}
-
-VALID_LINES -= EXCLUDED_LINES
-logger.info(
-    f"[Settings] Lignes exclues : {len(EXCLUDED_LINES)} — "
-    f"VALID_LINES final : {len(VALID_LINES)}"
-)
-
-# ── Message d'accueil ─────────────────────────────────────
-
-WELCOME_MESSAGE = """Salut ! Je suis *Xëtu* 🚌, ton assistant bus Dem Dikk à Dakar.
-
-Avec moi tu peux :
-• Localiser un bus : *Bus 15 est où ?*
-• Itinéraire : *Comment aller à Sandaga ?*
-• Signaler un bus : *Bus 15 à Liberté 5* (Aide les autres ! 🙏)
-• T'abonner : *Préviens-moi pour le Bus 15*
-
-— *Xëtu*"""
-
-
-# ══════════════════════════════════════════════════════════
-# SETU_SOUL V8.0
-# Fusion V7.0 (settings.py) + architecture cognitive V2 (doc interne)
-# Ajouts V8.0 :
-#   - [SYSTEM_INIT] / [END_SYSTEM_INIT] pour signaler les limites au LLM
-#   - Protocoles A/B/C/D/E/F explicites (nouveaux : E=banlieue, F=multi-ligne)
-#   - Dictionnaire wolof enrichi (bus express, terminus banlieue)
-#   - Cas edge v13 : TAF TAF, lignes 200/300, RUF-YENNE
-#   - Règle anti-ambiguïté 16A/16B
-#   - Tous les exemples few-shot conservés + 8 nouveaux
-# ══════════════════════════════════════════════════════════
+VALID_LINES: set[str] = _load_valid_lines()

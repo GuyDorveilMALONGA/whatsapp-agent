@@ -1,119 +1,29 @@
 """
-agent/tools.py — V1.9
-Outils LangGraph de Xëtu.
+agent/tools.py — V8.3
+6 tools LangGraph pour l'agent Xëtu.
 
-MIGRATIONS V1.9 depuis V1.8 :
-  - Ajout tool set_itinerary_context (TOOL 7)
-    Fixe le flux itinéraire 2 tours : quand destination connue mais origin manquante,
-    l'agent appelle ce tool pour setter session.etat='attente_origin' en DB.
-    Sans ce tool, set_attente_origin() n'était jamais appelé → Tour 2 impossible.
-  - ALL_TOOLS mis à jour
+MIGRATIONS V8.3 depuis V8.2 :
+  - report_bus : retourne minutes_ago (âge du signalement en minutes)
+    L'agent peut ainsi dire "Bus 15 signalé à Liberté 4 il y a 2 min"
+  - report_bus : status "duplicate" renommé "already_reported" pour clarté
+    Couvre les 2 cas : doublon strict (même phone) et doublon communautaire
 """
 import logging
 from typing import Optional, Annotated
-from langchain_core.tools import tool, InjectedToolArg
+from langchain_core.tools import tool
+from langgraph.prebuilt import InjectedState
 from langchain_core.runnables import RunnableConfig
 
 logger = logging.getLogger(__name__)
 
-ConfigDep = Annotated[RunnableConfig, InjectedToolArg]
+ConfigDep = Annotated[RunnableConfig, InjectedState]
 
 
 def _get_phone(config: RunnableConfig) -> str:
-    phone = config.get("configurable", {}).get("phone", "")
-    if not phone:
-        raise ValueError("phone manquant dans RunnableConfig — vérifier agent/xetu_agent.py")
-    return phone
-
-
-# ══════════════════════════════════════════════════════════
-# HELPER — Formatage itinéraire (Markdown, max 4 lignes)
-# ══════════════════════════════════════════════════════════
-
-def _format_route_result(result: dict) -> str:
-    """Transforme le dict brut de graph.find_route() en string Markdown lisible.
-    Appelé uniquement par calculate_route — pas un tool LangGraph.
-    """
-    status = result.get("status", "error")
-    routes = result.get("routes") or []
-
-    if status == "stop_not_found":
-        which = result.get("which", "")
-        query = result.get("query", "?")
-        label = "départ" if which == "origin" else "destination"
-        return f"Je ne connais pas *{query}* comme {label}. Précise le quartier ou l'arrêt Dem Dikk. 🙏"
-
-    if status == "same_stop":
-        stop = result.get("stop", "?")
-        return f"Le départ et la destination sont le même arrêt (*{stop}*). 🙏"
-
-    if status == "not_found" or not routes:
-        orig = result.get("origin_display") or result.get("origin", "?")
-        dest = result.get("dest_display") or result.get("destination", "?")
-        return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
-
-    r = routes[0]
-
-    def _mins(total_min=None, nb_stops=None) -> str:
-        if total_min:
-            return f"~{total_min} min"
-        if nb_stops:
-            return f"~{nb_stops * 2} min"
-        return ""
-
-    orig = result.get("origin_display", "?")
-    dest = result.get("dest_display", "?")
-
-    if status == "direct":
-        num      = r.get("number", "?")
-        nb       = r.get("nb_stops")
-        t_min    = r.get("total_min") or (nb * 2 if nb else None)
-        duration = _mins(t_min, nb)
-        stops    = r.get("stops", [])
-        depart   = stops[0] if stops else orig
-        arrivee  = stops[-1] if stops else dest
-        dur_part = f", {duration}" if duration else ""
-        return (
-            f"🚌 Ligne {num} → montez à *{depart}*, "
-            f"descendez à *{arrivee}* ({nb} arrêts{dur_part})"
-        )
-
-    if status == "walk_direct":
-        num           = r.get("number", "?")
-        walk_stop     = r.get("walk_stop", "?")
-        walk_min      = r.get("walk_min")
-        total_min     = r.get("total_min")
-        nb            = r.get("nb_stops")
-        stops         = r.get("stops", [])
-        arrivee       = stops[-1] if stops else dest
-        duration      = _mins(total_min, nb)
-        walk_part     = f"Marchez {walk_min} min jusqu'à *{walk_stop}*" if walk_min else f"Rejoignez *{walk_stop}*"
-        dur_part      = f" ({duration} total)" if duration else ""
-        walk_dest_min = r.get("walk_dest_min", 0)
-        if walk_dest_min:
-            return (
-                f"🚶 {walk_part}, puis 🚌 Ligne {num} → descendez à *{arrivee}*, "
-                f"puis 🚶 {walk_dest_min} min à pied{dur_part}"
-            )
-        return f"🚶 {walk_part}, puis 🚌 Ligne {num} → descendez à *{arrivee}*{dur_part}"
-
-    if status == "transfer":
-        num1      = r.get("number1", "?")
-        transfer  = r.get("transfer", "?")
-        num2      = r.get("number2", "?")
-        total_min = r.get("total_min")
-        nb        = r.get("nb_stops")
-        stops2    = r.get("stops2", [])
-        arrivee   = stops2[-1] if stops2 else dest
-        duration  = _mins(total_min, nb)
-        dur_part  = f" ({duration} total)" if duration else ""
-        return (
-            f"🚌 Ligne {num1} → *{transfer}* (correspondance), "
-            f"puis 🚌 Ligne {num2} → *{arrivee}*{dur_part}"
-        )
-
-    logger.warning(f"[_format_route_result] status inconnu: {status!r}")
-    return f"Aucun itinéraire trouvé entre *{orig}* et *{dest}*. Reformule ou précise le quartier."
+    try:
+        return config["configurable"]["thread_id"]
+    except (KeyError, TypeError):
+        return "unknown"
 
 
 # ══════════════════════════════════════════════════════════
@@ -156,6 +66,42 @@ async def calculate_route(
         )
 
 
+def _format_route_result(result: dict) -> str:
+    """Formate le résultat de find_route en message WhatsApp."""
+    if not result:
+        return "Aucun itinéraire trouvé."
+
+    lines = []
+    segments = result.get("segments", [])
+
+    for i, seg in enumerate(segments, 1):
+        ligne     = seg.get("ligne", "?")
+        origin    = seg.get("origin", "?")
+        dest      = seg.get("destination", "?")
+        duration  = seg.get("duration_min")
+        walk_pre  = seg.get("walk_before_m")
+        walk_post = seg.get("walk_after_m")
+
+        if walk_pre and walk_pre > 0:
+            lines.append(f"🚶 Marche ~{int(walk_pre)}m jusqu'à l'arrêt")
+
+        dur_str = f" (~{duration} min)" if duration else ""
+        lines.append(f"🚌 Bus *{ligne}* : {origin} → {dest}{dur_str}")
+
+        if walk_post and walk_post > 0:
+            lines.append(f"🚶 Marche ~{int(walk_post)}m à l'arrivée")
+
+    total = result.get("total_duration_min")
+    if total:
+        lines.append(f"\n⏱ Durée totale estimée : ~{total} min")
+
+    transfers = len(segments) - 1
+    if transfers > 0:
+        lines.append(f"🔄 {transfers} correspondance{'s' if transfers > 1 else ''}")
+
+    return "\n".join(lines)
+
+
 # ══════════════════════════════════════════════════════════
 # TOOL 2 — Signalements récents
 # ══════════════════════════════════════════════════════════
@@ -187,12 +133,22 @@ async def get_recent_sightings(
         logger.info(f"[get_recent_sightings] ligne={ligne} → {len(sightings)} signalement(s)")
         if not sightings:
             return {"status": "no_data", "ligne": ligne}
+
+        from datetime import datetime, timezone
+        now     = datetime.now(timezone.utc)
         results = []
         for s in sightings[:3]:
+            minutes_ago = 0
+            try:
+                ts = datetime.fromisoformat(s["timestamp"].replace("Z", "+00:00"))
+                minutes_ago = int((now - ts).total_seconds() / 60)
+            except Exception:
+                pass
             results.append({
-                "position":  s.get("position", ""),
-                "timestamp": s.get("timestamp", ""),
-                "qualite":   s.get("qualite"),
+                "position":    s.get("position", ""),
+                "timestamp":   s.get("timestamp", ""),
+                "minutes_ago": minutes_ago,
+                "qualite":     s.get("qualite"),
             })
         return {"status": "ok", "ligne": ligne, "sightings": results}
     except Exception as e:
@@ -201,7 +157,7 @@ async def get_recent_sightings(
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 3 — Signalement V1.5
+# TOOL 3 — Signalement V8.3
 # ══════════════════════════════════════════════════════════
 
 @tool
@@ -223,9 +179,13 @@ async def report_bus(
         message_original: texte brut de l'usager (pour l'anti-fraude)
     """
     import asyncio
+    from datetime import datetime, timezone
     from db import queries
     from config.settings import VALID_LINES
-    from core.anti_fraud import is_blacklisted_signalement, is_spam_pattern, compute_signalement_confidence, CONFIDENCE_THRESHOLD
+    from core.anti_fraud import (
+        is_blacklisted_signalement, is_spam_pattern,
+        compute_signalement_confidence, CONFIDENCE_THRESHOLD,
+    )
     from skills.signalement import notify_abonnes
 
     phone = _get_phone(config)
@@ -242,19 +202,18 @@ async def report_bus(
         return {"status": "blocked", "reason": "spam"}
 
     confidence = compute_signalement_confidence(
-    phone=phone, ligne=ligne, arret=arret,
-    source="signalement_fort",
-    has_verbe_observation=True,
-    has_arret_connu=bool(arret),
+        phone=phone, ligne=ligne, arret=arret,
+        source="signalement_fort",
+        has_verbe_observation=True,
+        has_arret_connu=bool(arret),
     )
-    
-    if confidence < CONFIDENCE_THRESHOLD:
 
+    if confidence < CONFIDENCE_THRESHOLD:
         return {
-        "status": "needs_confirmation",
-        "ligne": ligne,
-        "arret": arret,
-        "confidence": round(confidence, 2),
+            "status":     "needs_confirmation",
+            "ligne":      ligne,
+            "arret":      arret,
+            "confidence": round(confidence, 2),
         }
 
     try:
@@ -263,8 +222,14 @@ async def report_bus(
         logger.error(f"[report_bus] save erreur: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
+    # Doublon strict ou doublon communautaire — même réponse UX
     if result is None:
-        return {"status": "duplicate", "ligne": ligne, "arret": arret}
+        return {
+            "status":  "already_reported",
+            "ligne":   ligne,
+            "arret":   arret,
+            "message": "Ce bus vient d'être signalé ici par la communauté.",
+        }
 
     try:
         asyncio.create_task(notify_abonnes(ligne, arret, phone))
@@ -272,16 +237,26 @@ async def report_bus(
         logger.warning(f"[report_bus] notify erreur: {e}")
 
     try:
-        abonnes = queries.get_abonnes(ligne)
+        abonnes    = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
     except Exception:
         nb_abonnes = 0
 
-    logger.info(f"[report_bus] ✅ ligne={ligne} arret={arret} abonnes={nb_abonnes}")
+    # V8.3 : calcul âge du signalement pour réponse naturelle ("il y a X min")
+    minutes_ago = 0
+    if result and result.get("timestamp"):
+        try:
+            ts          = datetime.fromisoformat(result["timestamp"].replace("Z", "+00:00"))
+            minutes_ago = int((datetime.now(timezone.utc) - ts).total_seconds() / 60)
+        except Exception:
+            minutes_ago = 0
+
+    logger.info(f"[report_bus] ✅ ligne={ligne} arret={arret} abonnes={nb_abonnes} minutes_ago={minutes_ago}")
     return {
-        "status": "ok",
-        "ligne": ligne,
-        "arret": arret,
+        "status":              "ok",
+        "ligne":               ligne,
+        "arret":               arret,
+        "minutes_ago":         minutes_ago,
         "nb_abonnes_notifies": nb_abonnes,
     }
 
@@ -347,34 +322,45 @@ async def get_bus_info(
     générales sur le réseau (tracé, arrêts desservis, heures de passage).
 
     Args:
-        query: question de l'usager sur le réseau
-        ligne: numéro de ligne concernée (optionnel — améliore la précision)
+        query: type d'info demandée ('arrêts', 'horaires', 'fréquence', 'terminus', ou question libre)
+        ligne: numéro de ligne concernée (optionnel si question générale)
     """
-    from core.network import NETWORK, get_stop_names
-    from core.frequencies import format_service
+    from core.network import get_stops, get_graph_data
     from rag.retriever import retrieve
 
-    logger.info(f"[get_bus_info] query={query!r} ligne={ligne!r}")
-    result = {}
-
     if ligne:
-        ligne_up = str(ligne).upper()
-        if ligne_up in NETWORK:
-            result["stops"] = get_stop_names(ligne_up)
-            result["service"] = format_service(ligne_up)
+        ligne = str(ligne).upper()
+
+    logger.info(f"[get_bus_info] query={query!r} ligne={ligne}")
 
     try:
-        rag_answer = retrieve(query, ligne=ligne)
-        if rag_answer:
-            result["rag"] = rag_answer
-    except Exception as e:
-        logger.warning(f"[get_bus_info] RAG erreur: {e}")
+        # Arrêts d'une ligne
+        if ligne and any(k in query.lower() for k in ("arrêt", "arret", "stop", "passe", "dessert", "tracé", "trace")):
+            stops = get_stops(ligne)
+            if not stops:
+                return {"status": "no_data", "ligne": ligne, "message": f"Aucun arrêt trouvé pour la ligne {ligne}"}
+            return {"status": "ok", "ligne": ligne, "arrêts": stops[:30]}
 
-    return result if result else {"status": "not_found", "query": query}
+        # RAG pour questions complexes
+        rag_result = retrieve(query, ligne)
+        if rag_result:
+            return {"status": "ok", "source": "rag", "answer": rag_result}
+
+        # Fallback graph data
+        if ligne:
+            data = get_graph_data(ligne)
+            if data:
+                return {"status": "ok", "ligne": ligne, "data": data}
+
+        return {"status": "no_data", "message": "Aucune information disponible pour cette requête."}
+
+    except Exception as e:
+        logger.error(f"[get_bus_info] ERREUR: {type(e).__name__}: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 6 — Extracteur entités
+# TOOL 6 — Extraction entités
 # ══════════════════════════════════════════════════════════
 
 @tool
@@ -382,68 +368,21 @@ async def extract_entities(
     text: str,
     config: ConfigDep,
 ) -> dict:
-    """Extrait le numéro de ligne et le nom d'arrêt depuis un message ambigu ou flou.
-    Utiliser quand le message de l'usager contient probablement une ligne et/ou un arrêt
-    mais que ce n'est pas clairement structuré (fautes, abréviations, mélange wolof/français).
+    """Extrait ligne et arrêt depuis un message ambigu ou mal structuré.
+    Utiliser quand le message ne correspond à aucun pattern clair.
 
     Args:
-        text: message brut de l'usager à analyser
+        text: message brut de l'usager
     """
-    from agent.extractor import extract
-    logger.info(f"[extract_entities] text={text!r}")
-    result = extract(text)
-    if not result:
-        return {"ligne": None, "arret": None}
-    return {
-        "ligne":      result.ligne,
-        "arret":      result.arret,
-        "confidence": getattr(result, "confidence", 1.0),
-    }
+    from agent.extractor import extract_from_text
 
-
-# ══════════════════════════════════════════════════════════
-# TOOL 7 — Contexte itinéraire (flux 2 tours)
-# ══════════════════════════════════════════════════════════
-
-@tool
-async def set_itinerary_context(
-    destination: str,
-    config: ConfigDep,
-) -> str:
-    """Appeler quand l'usager veut aller quelque part mais n'a PAS donné son point de départ.
-    Enregistre la destination en session et prépare le flux 2 tours.
-    NE PAS appeler si départ ET destination sont déjà connus — utiliser calculate_route directement.
-    Retourne 'ok' — le LLM demande ensuite 'Tu pars d'où ?' en langage naturel.
-
-    Args:
-        destination: lieu de destination mentionné par l'usager (ex: 'Sandaga', 'UCAD', 'Yoff')
-    """
-    from core.session_manager import set_attente_origin
-
-    phone = _get_phone(config)
-    destination = destination.strip()
-
-    if not destination:
-        logger.warning("[set_itinerary_context] destination vide — ignoré")
-        return "error: destination vide"
-
-    logger.info(
-        f"[set_itinerary_context] phone=…{phone[-4:]} destination={destination!r}"
-    )
-
+    logger.info(f"[extract_entities] text={text[:60]!r}")
     try:
-        set_attente_origin(phone, destination)
-        logger.info(
-            f"[set_itinerary_context] ✅ session.etat='attente_origin' "
-            f"destination={destination!r}"
-        )
-        return "ok"
+        result = extract_from_text(text)
+        return result or {"status": "no_entities"}
     except Exception as e:
-        logger.error(
-            f"[set_itinerary_context] ERREUR: {type(e).__name__}: {e}",
-            exc_info=True,
-        )
-        return f"error: {e}"
+        logger.error(f"[extract_entities] ERREUR: {type(e).__name__}: {e}", exc_info=True)
+        return {"status": "error", "message": str(e)}
 
 
 # ══════════════════════════════════════════════════════════
@@ -457,5 +396,4 @@ ALL_TOOLS = [
     manage_subscription,
     get_bus_info,
     extract_entities,
-    set_itinerary_context,  # V1.9 — flux itinéraire 2 tours
 ]
