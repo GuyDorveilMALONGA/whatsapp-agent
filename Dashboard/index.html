@@ -443,7 +443,8 @@
 </div>
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   function _initMenuQR(){var canvas=document.getElementById('menu-qr-canvas');if(!canvas)return;var el=document.createElement('div');el.style.display='none';document.body.appendChild(el);new QRCode(el,{text:'https://xetudashbord.pages.dev/',width:120,height:120,colorDark:'#ff6b2b',colorLight:'#1a1f2e',correctLevel:QRCode.CorrectLevel.H});setTimeout(function(){var img=el.querySelector('img');var ctx=canvas.getContext('2d');var image=new Image();image.onload=function(){ctx.drawImage(image,0,0,120,120);};if(img)image.src=img.src;el.remove();},300);}
   document.addEventListener('DOMContentLoaded',_initMenuQR);
@@ -492,7 +493,6 @@ function goTo(screenId){
   }
   var sc=document.getElementById('screen-'+screenId);
   if(sc) sc.classList.add('active');
-  /* géoloc auto désactivée — ne bloque plus le champ */
   if(screenId==='chat') setTimeout(function(){$('chat-input').focus();},300);
 }
 window.goTo=goTo;
@@ -507,8 +507,6 @@ $('chat-back-btn').addEventListener('click',function(){goTo('itin');});
 if(navigator.geolocation){
   navigator.geolocation.getCurrentPosition(function(p){_userLat=p.coords.latitude;_userLon=p.coords.longitude;},function(){},{enableHighAccuracy:false,timeout:5000,maximumAge:60000});
 }
-
-/* géoloc auto supprimée — GPS utilisé uniquement pour le tri par distance */
 
 /* ══ Helpers ══ */
 function _haversine(a,b,c,d){var R=6371000,p=Math.PI/180;var x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));}
@@ -531,7 +529,7 @@ function _scrollFieldIntoView(){
   setTimeout(function(){
     var card=$('itin-fields-card');
     if(card) card.scrollIntoView({behavior:'smooth',block:'start'});
-  },350); /* délai pour laisser le clavier s'ouvrir */
+  },350);
 }
 
 /* ══ Render champs ══ */
@@ -544,7 +542,10 @@ function _renderFields(){
     valFrom.innerHTML='<input class="itin-field-input" id="itin-input-from" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp=$('itin-input-from');
     inp.value=_from;
-    setTimeout(function(){inp.focus();inp.select();},50);
+    /* FIX clavier mobile — focus synchrone dans la call stack du click,
+       pas dans un setTimeout (iOS Safari bloque le clavier sinon) */
+    inp.focus();
+    try{inp.select();}catch(e){}
     _scrollFieldIntoView();
     inp.addEventListener('input',function(){
       clearTimeout(_searchDebounce);
@@ -574,7 +575,10 @@ function _renderFields(){
     valTo.innerHTML='<input class="itin-field-input" id="itin-input-to" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp2=$('itin-input-to');
     inp2.value=_to;
-    setTimeout(function(){inp2.focus();inp2.select();},50);
+    /* FIX clavier mobile — focus synchrone dans la call stack du click,
+       pas dans un setTimeout (iOS Safari bloque le clavier sinon) */
+    inp2.focus();
+    try{inp2.select();}catch(e){}
     _scrollFieldIntoView();
     inp2.addEventListener('input',function(){
       clearTimeout(_searchDebounce);
@@ -694,7 +698,6 @@ $('itin-reset-btn').addEventListener('click',function(){
 function _renderStopCards(stopsData,q){
   if(!stopsData.length) return '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucun arrêt pour « '+_esc(q)+' »</div></div>';
   var isFrom=_activeField==='from';
-  /* FIX légende — gap 20px déjà en CSS, items séparés */
   var html='<div class="itin-search-legend">'
     +'<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 3px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div>'
     +'<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div>'

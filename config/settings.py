@@ -96,6 +96,15 @@ HISTORIQUE_MESSAGES      = 10
 # ── Business ──────────────────────────────────────────────
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Xëtu")
 
+# ── Messages système ──────────────────────────────────────
+WELCOME_MESSAGE = (
+    "Salam ! Je suis *Xëtu*, ton assistant bus Dem Dikk 🚌\n"
+    "Dis-moi par exemple :\n"
+    "• *Bus 15 à Liberté 5* — pour signaler un bus\n"
+    "• *Où est le bus 15 ?* — pour savoir où il est\n"
+    "• *Comment aller à Sandaga ?* — pour un itinéraire"
+)
+
 # ── Chemin JSON réseau ────────────────────────────────────
 _BASE_DIR = pathlib.Path(__file__).parent.parent.resolve()
 JSON_PATH = os.getenv(
