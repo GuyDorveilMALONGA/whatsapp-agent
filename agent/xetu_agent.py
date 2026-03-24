@@ -160,6 +160,16 @@ async def run(
     """
     global _fallback_count
 
+    # ── CHG-1 : Court-circuit AVANT tout appel LLM ────────
+    from agent.router import _is_greeting, _is_identity_question
+    from agent.normalizer import normalize as _norm_fn
+    _norm_msg = _norm_fn(message)
+    if _is_greeting(_norm_msg):
+        return "Salam ! Dis-moi pour quel bus tu as besoin. 🚌 — *Xëtu*"
+    if _is_identity_question(_norm_msg):
+        return "Je suis Xëtu, assistant bus Dem Dikk. 🚌 — *Xëtu*"
+    # ──────────────────────────────────────────────────────
+
     # ── Choix de l'agent ─────────────────────────────────
     agent_name = "groq"
     logger.info(f"[xetu_run] langue={langue!r} | phone=…{phone[-4:]!r} | agent={agent_name}")
