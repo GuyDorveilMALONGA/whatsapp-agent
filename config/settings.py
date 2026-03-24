@@ -1,12 +1,15 @@
 """
-config/settings.py — V8.3
+config/settings.py — V8.4
 Point central — variables d'environnement, constantes, configuration globale.
+
+MIGRATIONS V8.4 depuis V8.3 :
+  - FIX CRITIQUE : _load_valid_lines() corrigé pour format routes_geometry_v13_fixed2.json
+    Format réel : {"lignes": {"1": {...}, "4": {...}, ...}} (dict, pas liste ni GeoJSON)
+    Avant : cherchait "features" → tombait sur fallback V7 hardcodé
+    Maintenant : lit les clés du dict "lignes" directement
 
 MIGRATIONS V8.3 depuis V8.2 :
   - DEDUP_ARRET_WINDOW_MIN = 5 : fenêtre anti-doublon communautaire
-    Après un signalement à un arrêt (toute source), le même arrêt+ligne
-    est bloqué 5 min. Empêche les doublons communautaires (2 usagers
-    voient le même bus à 1 min d'intervalle).
 
 MIGRATIONS V8.2 depuis V8.1 :
   - JSON_PATH : pointe vers routes_geometry_v13_fixed2.json
@@ -16,7 +19,7 @@ MIGRATIONS V8.1 depuis V8.0 :
   - JSON_PATH : chemin absolu via pathlib.Path(__file__) pour Railway
 
 MIGRATIONS V8.0 depuis V7.0 :
-  - VALID_LINES : généré dynamiquement depuis routes_geometry_v13.json
+  - VALID_LINES : généré dynamiquement depuis le JSON au démarrage
 """
 import os
 import re
@@ -84,14 +87,14 @@ LLM_ROUTING = {
 
 # ── Logique métier ────────────────────────────────────────
 SIGNALEMENT_TTL_MINUTES  = 20
-DEDUP_ARRET_WINDOW_MIN   = 5   # V8.3 : anti-doublon communautaire (même arrêt, toute source)
+DEDUP_ARRET_WINDOW_MIN   = 5
 ANOMALIE_SEUIL_MINUTES   = 45
 HEARTBEAT_INTERVAL_MIN   = 5
 ALERTE_PROACTIVE_AVANT   = 15
 HISTORIQUE_MESSAGES      = 10
 
 # ── Sécurité ──────────────────────────────────────────────
-# (RATE_LIMIT_PER_PHONE_PER_MIN défini une seule fois en haut)
+# (RATE_LIMIT_PER_PHONE_PER_MIN défini en haut)
 
 # ── Business ──────────────────────────────────────────────
 BUSINESS_NAME = os.getenv("BUSINESS_NAME", "Xëtu")
@@ -118,17 +121,47 @@ logger.info(f"[Settings] Fichier existe  → {pathlib.Path(JSON_PATH).exists()}"
 
 # ══════════════════════════════════════════════════════════
 # SOURCE UNIQUE DE VÉRITÉ — LIGNES DEM DIKK
-# V8.0 : généré dynamiquement depuis le JSON au démarrage.
+# V8.4 : corrigé pour format {"lignes": {"1": {...}, "4": {...}}}
 # ══════════════════════════════════════════════════════════
 
 # Lignes exclues (fantômes : 1 arrêt, données incomplètes)
 EXCLUDED_LINES: set[str] = set(os.getenv("EXCLUDED_LINES", "").split(",")) - {""}
 
+
 def _load_valid_lines() -> set[str]:
     try:
         with open(JSON_PATH, encoding="utf-8") as f:
             data = json.load(f)
+
         lines = set()
+
+        # Format v13_fixed2 : {"lignes": {"1": {...}, "4": {...}, ...}}
+        lignes = data.get("lignes", {})
+        if isinstance(lignes, dict) and lignes:
+            for num in lignes.keys():
+                if num:
+                    lines.add(str(num).upper().strip())
+            if lines:
+                lines -= EXCLUDED_LINES
+                logger.info(
+                    f"[Settings] VALID_LINES chargées depuis JSON (dict) : {len(lines)} lignes"
+                )
+                return lines
+
+        # Format liste : {"lignes": [{...}, {...}]}
+        if isinstance(lignes, list) and lignes:
+            for ligne in lignes:
+                num = ligne.get("numero") or ligne.get("route_short_name")
+                if num:
+                    lines.add(str(num).upper().strip())
+            if lines:
+                lines -= EXCLUDED_LINES
+                logger.info(
+                    f"[Settings] VALID_LINES chargées depuis JSON (liste) : {len(lines)} lignes"
+                )
+                return lines
+
+        # Format GeoJSON : {"features": [...]}
         for feature in data.get("features", []):
             props = feature.get("properties", {})
             num = props.get("route_short_name") or props.get("numero")
@@ -136,8 +169,13 @@ def _load_valid_lines() -> set[str]:
                 lines.add(str(num).upper().strip())
         if lines:
             lines -= EXCLUDED_LINES
-            logger.info(f"[Settings] VALID_LINES chargées depuis JSON : {len(lines)} lignes")
+            logger.info(
+                f"[Settings] VALID_LINES chargées depuis JSON (GeoJSON) : {len(lines)} lignes"
+            )
             return lines
+
+        logger.warning("[Settings] Aucune ligne trouvée dans le JSON — fallback V7")
+
     except FileNotFoundError:
         logger.warning(f"[Settings] JSON introuvable ({JSON_PATH}), fallback V7")
     except Exception as e:
