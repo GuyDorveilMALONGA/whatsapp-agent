@@ -1,10 +1,10 @@
 /**
- * js/chat.js — V2.1
- * V2.1 :
- *  - Suggestions par défaut FR/Wolof, rotation aléatoire, 3 à la fois
- *  - Suggestions contextuelles après chaque réponse bot
- *  - Réapparition des suggestions quand chat est vide (état initial)
- *  - FIX bug 3 messages : welcome WS ignoré, message en HTML uniquement
+ * js/chat.js — V2.2
+ * V2.2 (fixes) :
+ *  - CHG-2 : chat-send-btn → chat-send (ID correct dans le HTML)
+ *  - CHG-2 : chat-suggestions → chat-chips (ID correct dans le HTML)
+ *  - CHG-3 : Attache les chips statiques HTML (data-msg) dans initChat()
+ *  - V2.1 conservé : suggestions FR/Wolof, rotation aléatoire, suggestions contextuelles
  */
 
 import * as store from './store.js';
@@ -77,7 +77,21 @@ function _isInitialState() {
 export function initChat() {
   _attachEvents();
   _subscribeStore();
-  // Afficher les suggestions par défaut au démarrage
+
+  // CHG-3 : Attacher les chips statiques du HTML (celles avec data-msg)
+  // Elles coexistent avec les chips dynamiques générées par setSuggestions()
+  document.querySelectorAll('#chat-chips .chat-chip[data-msg]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      const input = document.getElementById('chat-input');
+      if (input) input.value = chip.dataset.msg || chip.textContent;
+      const sendBtn = document.getElementById('chat-send'); // CHG-2
+      if (sendBtn) sendBtn.disabled = false;
+      _doSend();
+    });
+  });
+
+  // Afficher les suggestions dynamiques par défaut au démarrage
+  // (remplacera les chips statiques par des chips générées aléatoirement)
   setSuggestions(_pickSuggestions());
 }
 
@@ -85,10 +99,13 @@ export function initChat() {
 
 function _attachEvents() {
   const input   = document.getElementById('chat-input');
-  const sendBtn = document.getElementById('chat-send-btn');
+  const sendBtn = document.getElementById('chat-send'); // CHG-2 : était 'chat-send-btn'
   if (!input || !sendBtn) return;
 
   input.addEventListener('input', () => {
+    // Auto-resize textarea
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 100) + 'px';
     sendBtn.disabled = input.value.trim().length === 0;
   });
   input.addEventListener('keydown', (e) => {
@@ -111,7 +128,9 @@ function _doSend() {
   if (!text || text.length > MAX_INPUT) return;
   appendMessage('user', text);
   input.value = '';
-  document.getElementById('chat-send-btn').disabled = true;
+  input.style.height = 'auto';
+  const sendBtn = document.getElementById('chat-send'); // CHG-2
+  if (sendBtn) sendBtn.disabled = true;
   _clearSuggestions();
   Ws.sendChat(text);
 }
@@ -126,7 +145,12 @@ export function appendMessage(role, text) {
   const bubble = document.createElement('div');
   bubble.className = 'chat-bubble';
   bubble.innerHTML = _formatText(text);
+  // Ajouter l'heure comme dans la version originale
+  const time = document.createElement('div');
+  time.className = 'chat-msg-time';
+  time.textContent = _timeNow();
   wrap.appendChild(bubble);
+  wrap.appendChild(time);
   msgs.appendChild(wrap);
   _scrollToBottom();
 }
@@ -145,8 +169,8 @@ function _showTyping() {
   if (!msgs) return;
   _typingEl = document.createElement('div');
   _typingEl.className = 'chat-msg chat-msg--bot';
-  _typingEl.innerHTML = `<div class="chat-bubble chat-bubble--typing">
-    <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+  _typingEl.innerHTML = `<div class="chat-bubble chat-typing">
+    <span class="chat-typing-dot"></span><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span>
   </div>`;
   msgs.appendChild(_typingEl);
   _scrollToBottom();
@@ -159,17 +183,18 @@ function _hideTyping() {
 // ── Suggestions ───────────────────────────────────────────
 
 export function setSuggestions(list = []) {
-  const c = document.getElementById('chat-suggestions');
+  const c = document.getElementById('chat-chips'); // CHG-2 : était 'chat-suggestions'
   if (!c) return;
   c.innerHTML = '';
   list.forEach(text => {
     const chip = document.createElement('button');
-    chip.className   = 'chat-suggestion-chip';
+    chip.className   = 'chat-chip';
     chip.textContent = text;
     chip.addEventListener('click', () => {
       const input = document.getElementById('chat-input');
       if (input) input.value = text;
-      document.getElementById('chat-send-btn').disabled = false;
+      const sendBtn = document.getElementById('chat-send'); // CHG-2
+      if (sendBtn) sendBtn.disabled = false;
       _doSend();
     });
     c.appendChild(chip);
@@ -177,7 +202,7 @@ export function setSuggestions(list = []) {
 }
 
 function _clearSuggestions() {
-  const c = document.getElementById('chat-suggestions');
+  const c = document.getElementById('chat-chips'); // CHG-2 : était 'chat-suggestions'
   if (c) c.innerHTML = '';
 }
 
@@ -232,6 +257,11 @@ function _scrollToBottom() {
     const msgs = document.getElementById('chat-messages');
     if (msgs) msgs.scrollTop = msgs.scrollHeight;
   });
+}
+
+function _timeNow() {
+  const d = new Date();
+  return d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0');
 }
 
 function _formatText(text) {

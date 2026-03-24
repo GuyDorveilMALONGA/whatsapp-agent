@@ -1,13 +1,13 @@
 """
-skills/signalement.py — V5.0
-Enregistre un signalement + notifie les abonnés.
+skills/signalement.py — V5.1
+Enregistre un signalement + notifie les abonnés WhatsApp ET push PWA.
 
-MIGRATIONS V5.0 depuis V4.2 :
-  - FIX B9 : set_session() au lieu de set_context() (qui n'existait pas)
-    La session post_signalement fonctionne ENFIN.
-  - FIX B10 : VALID_LINES importé depuis config.settings (source unique)
-  - FIX : _notify_abonnes renommé en notify_abonnes (public, appelé depuis main.py)
-  - Extraction arrêt inchangée (déjà solide en V4.2)
+MIGRATIONS V5.1 depuis V5.0 :
+  - FIX CRITIQUE : notify_abonnes branche maintenant les push PWA
+    (avant : uniquement WhatsApp via send_message)
+    Flux : get_push_subscriptions_by_ligne() → send_push_notification()
+  - Les deux canaux (WA + PWA) sont notifiés en parallèle séquentiel
+  - Log distinct pour WA vs PWA pour faciliter le debug
 """
 import re
 import logging
@@ -15,7 +15,7 @@ from fastapi import BackgroundTasks
 from db import queries
 from services.whatsapp import send_message
 from config.settings import VALID_LINES
-from core.session_manager import set_session  # FIX B9 : import correct
+from core.session_manager import set_session
 
 logger = logging.getLogger(__name__)
 
@@ -50,18 +50,24 @@ def _extract_arret_from_text(text: str) -> str | None:
 
 async def notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
     """
-    Notifie les abonnés avec délai entre chaque envoi.
-    Appelé via BackgroundTasks.
-    FIX V5.0 : renommé de _notify_abonnes → notify_abonnes (public).
+    Notifie les abonnés WhatsApp ET les abonnés push PWA.
+    V5.1 : ajout push PWA via send_push_notification()
+
+    Deux canaux indépendants — une erreur sur l'un ne bloque pas l'autre.
     """
     import asyncio
+    from api.push import send_push_notification
+
+    notifies_wa   = 0
+    notifies_push = 0
+
+    # ── 1. Notifications WhatsApp (abonnés table abonnements) ─────────────
     try:
         abonnes = queries.get_abonnes(ligne)
         alerte  = (
             f"🔔 Bus {ligne} signalé à *{arret}* à l'instant.\n"
             f"Communauté Xëtu 🚌"
         )
-        notifies = 0
         for i, abonne in enumerate(abonnes):
             if abonne["phone"] == signaleur_phone:
                 continue
@@ -69,14 +75,32 @@ async def notify_abonnes(ligne: str, arret: str, signaleur_phone: str):
                 await asyncio.sleep(1.0)
             ok = await send_message(abonne["phone"], alerte)
             if ok:
-                notifies += 1
+                notifies_wa += 1
             await asyncio.sleep(_NOTIFICATION_DELAY_SEC)
-
-        logger.info(f"[Signalement] Bus {ligne} @ {arret} → {notifies} notifié(s)")
-        return notifies
+        logger.info(f"[Signalement] Bus {ligne} @ {arret} → {notifies_wa} notifié(s) WA")
     except Exception as e:
-        logger.error(f"[Signalement] Erreur notification: {e}")
-        return 0
+        logger.error(f"[Signalement] Erreur notifications WhatsApp: {e}")
+
+    # ── 2. Push PWA (abonnés table push_subscriptions via abonnements) ────
+    try:
+        push_subs = queries.get_push_subscriptions_by_ligne(ligne)
+        for sub in push_subs:
+            if sub.get("phone") == signaleur_phone:
+                continue
+            ok = await send_push_notification(
+                phone=sub["phone"],
+                ligne=ligne,
+                arret=arret,
+                titre=f"🚌 Bus {ligne} signalé !",
+                corps=f"Bus {ligne} à {arret} — signalé à l'instant par la communauté.",
+            )
+            if ok:
+                notifies_push += 1
+        logger.info(f"[Signalement] Bus {ligne} @ {arret} → {notifies_push} notifié(s) PWA")
+    except Exception as e:
+        logger.error(f"[Signalement] Erreur notifications push PWA: {e}")
+
+    return notifies_wa + notifies_push
 
 
 async def handle(
@@ -124,7 +148,6 @@ async def handle(
 
     # ── 4. Validation arrêt ───────────────────────────────
     if not arret:
-        # FIX B9 : set_session au lieu de set_context (qui n'existait pas !)
         try:
             set_session(phone, etat="attente_arret", ligne=ligne)
         except Exception as e:
@@ -145,21 +168,19 @@ async def handle(
     if arret:
         arret = arret[0].upper() + arret[1:]
 
-    # ── 4b. ANTI-FRAUDE (RED TEAM) ────────────────────────
+    # ── 4b. ANTI-FRAUDE ───────────────────────────────────
     from core.anti_fraud import (
         compute_signalement_confidence, CONFIDENCE_THRESHOLD,
         check_distance_coherence, is_spam_pattern,
     )
 
-    # Check spam pattern (>5 signalements en 10 min, ou 4+ lignes en 5 min)
     if is_spam_pattern(phone, ligne):
         logger.warning(f"[Signalement] Spam détecté {phone[-4:]}, rejeté")
         queries.penalise_spam(phone)
         if langue == "wolof":
-            return f"⚠️ Yaw, boo bëggë wéer nit ñi, signal bu baax. Xaaral tuuti. 🙏"
-        return f"⚠️ Tu signales beaucoup en peu de temps. Attends quelques minutes. 🙏"
+            return "⚠️ Yaw, boo bëggë wéer nit ñi, signal bu baax. Xaaral tuuti. 🙏"
+        return "⚠️ Tu signales beaucoup en peu de temps. Attends quelques minutes. 🙏"
 
-    # Check cohérence distance (bus fantôme progressif)
     if not check_distance_coherence(phone, ligne, arret):
         logger.warning(f"[Signalement] Distance incohérente {phone[-4:]}, rejeté")
         queries.penalise_spam(phone)
@@ -167,7 +188,6 @@ async def handle(
             return f"⚠️ Bus {ligne} mënul a nekk ci {arret} léggi. Dinga ko signalé ci kanam. 🙏"
         return f"⚠️ Le Bus {ligne} ne peut pas être à *{arret}* si vite. Vérifie et réessaie. 🙏"
 
-    # Score de confiance
     confidence = compute_signalement_confidence(
         phone=phone, ligne=ligne, arret=arret,
         source="signalement_fort" if is_signalement_fort else "llm",
@@ -179,7 +199,6 @@ async def handle(
             f"[Signalement] Confiance trop basse {phone[-4:]}: "
             f"{confidence:.2f} < {CONFIDENCE_THRESHOLD} → demande confirmation"
         )
-        # Au lieu de rejeter → demander confirmation (Red Team recommandation #4)
         set_session(
             phone,
             etat="attente_confirmation_signalement",
@@ -217,7 +236,7 @@ async def handle(
             return f"👍 Bus {ligne} ci *{arret}* — déjà signalé récemment. Jërëjëf !"
         return f"👍 Bus {ligne} à *{arret}* — déjà signalé il y a moins de 2 min. Merci quand même ! 🙏"
 
-    # ── 8. Session post_signalement — FIX B9 ─────────────
+    # ── 8. Session post_signalement ───────────────────────
     try:
         set_session(
             phone,
@@ -228,23 +247,32 @@ async def handle(
     except Exception as e:
         logger.warning(f"[Signalement] Impossible de set post_signalement: {e}")
 
-    # ── 9. Comptage abonnés ───────────────────────────────
+    # ── 9. Comptage abonnés WA ────────────────────────────
     try:
         abonnes    = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
     except Exception:
         nb_abonnes = 0
 
-    # ── 10. Notifications via BackgroundTasks ─────────────
+    # ── 10. Comptage abonnés PWA ──────────────────────────
+    try:
+        push_subs  = queries.get_push_subscriptions_by_ligne(ligne)
+        nb_push    = sum(1 for s in push_subs if s.get("phone") != phone)
+    except Exception:
+        nb_push = 0
+
+    nb_total = nb_abonnes + nb_push
+
+    # ── 11. Notifications (background) ───────────────────
     background_tasks.add_task(notify_abonnes, ligne, arret, phone)
 
     logger.info(
         f"[Signalement] ligne={ligne} arret={arret} phone={phone} "
-        f"fort={is_signalement_fort} abonnes={nb_abonnes}"
+        f"fort={is_signalement_fort} abonnes_wa={nb_abonnes} abonnes_pwa={nb_push}"
     )
 
-    # ── 11. Réponse ───────────────────────────────────────
-    if nb_abonnes == 0:
+    # ── 12. Réponse ───────────────────────────────────────
+    if nb_total == 0:
         if langue == "wolof":
             return f"✅ Jërëjëf ! Bus {ligne} ci *{arret}* — enregistré. 🙏"
         return f"✅ Merci ! Bus {ligne} à *{arret}* enregistré. 🙏"
@@ -252,9 +280,9 @@ async def handle(
     if langue == "wolof":
         return (
             f"✅ Jërëjëf ! Bus {ligne} ci *{arret}* — enregistré.\n"
-            f"Danga dém {nb_abonnes} nit yi 🙏"
+            f"Danga dém {nb_total} nit yi 🙏"
         )
     return (
         f"✅ Merci ! Bus {ligne} à *{arret}* enregistré.\n"
-        f"Tu viens d'aider *{nb_abonnes}* personne(s) 🙏"
+        f"Tu viens d'aider *{nb_total}* personne(s) 🙏"
     )

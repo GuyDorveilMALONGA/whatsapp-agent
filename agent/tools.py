@@ -1,12 +1,14 @@
 """
-agent/tools.py — V8.3
+agent/tools.py — V8.4
 6 tools LangGraph pour l'agent Xëtu.
 
-MIGRATIONS V8.3 depuis V8.2 :
-  - report_bus : retourne minutes_ago (âge du signalement en minutes)
-    L'agent peut ainsi dire "Bus 15 signalé à Liberté 4 il y a 2 min"
-  - report_bus : status "duplicate" renommé "already_reported" pour clarté
-    Couvre les 2 cas : doublon strict (même phone) et doublon communautaire
+MIGRATIONS V8.4 depuis V8.3 :
+  - FIX CRITIQUE : calculate_route — guard défensif sur origin/destination vides
+    Avant : le LLM appelait calculate_route avec origin=None/vide → crash graph → "erreur inattendue"
+    Maintenant : retourne une demande de clarification propre sans appeler graph.find_route()
+  - FIX : docstring calculate_route corrigé — suppression mention set_itinerary_context
+    (tool inexistant → le LLM l'appelait quand même avec des valeurs vides)
+    Nouveau comportement : si origin manquante → retourner une string de demande directement
 """
 import logging
 from typing import Optional, Annotated
@@ -37,15 +39,36 @@ async def calculate_route(
     config: ConfigDep,
 ) -> str:
     """Calcule un itinéraire en bus Dem Dikk à Dakar.
-    Utiliser UNIQUEMENT si l'utilisateur fournit un départ ET une destination.
-    Ne pas appeler si l'une des deux est manquante — appeler set_itinerary_context à la place.
+    Utiliser quand l'utilisateur donne explicitement un départ ET une destination.
+    Si l'une des deux est manquante, NE PAS inventer une valeur — retourner une
+    demande de clarification directement sans appeler ce tool.
     Retourne une string Markdown prête à envoyer — ne pas reformater ni résumer.
 
     Args:
-        origin: point de départ (quartier, arrêt ou lieu connu de Dakar)
-        destination: point d'arrivée (quartier, arrêt ou lieu connu de Dakar)
+        origin: point de départ explicitement mentionné (quartier, arrêt ou lieu connu de Dakar)
+        destination: point d'arrivée explicitement mentionné (quartier, arrêt ou lieu connu de Dakar)
     """
     from agent.graph import get_graph
+
+    # ── Guard défensif — protège contre appel avec valeurs vides/inventées ──
+    _VALEURS_VIDES = {"", "none", "inconnu", "?", "unknown", "null", "n/a", "non précisé"}
+
+    if not origin or origin.strip().lower() in _VALEURS_VIDES:
+        dest_display = destination.strip() if destination and destination.strip() else "ta destination"
+        return (
+            f"Pour t'indiquer comment aller à *{dest_display}*, "
+            f"dis-moi d'où tu pars. Exemple : _De Liberté 6 à {dest_display}_ 🚌\n\n— *Xëtu*"
+        )
+
+    if not destination or destination.strip().lower() in _VALEURS_VIDES:
+        return (
+            "Dis-moi où tu veux aller. "
+            "Exemple : _De Colobane à Yoff_ 🚌\n\n— *Xëtu*"
+        )
+
+    origin      = origin.strip()
+    destination = destination.strip()
+
     logger.info(f"[calculate_route] origin={origin!r} destination={destination!r}")
     graph = get_graph()
     try:
@@ -71,7 +94,7 @@ def _format_route_result(result: dict) -> str:
     if not result:
         return "Aucun itinéraire trouvé."
 
-    lines = []
+    lines    = []
     segments = result.get("segments", [])
 
     for i, seg in enumerate(segments, 1):
@@ -157,7 +180,7 @@ async def get_recent_sightings(
 
 
 # ══════════════════════════════════════════════════════════
-# TOOL 3 — Signalement V8.3
+# TOOL 3 — Signalement V8.4
 # ══════════════════════════════════════════════════════════
 
 @tool
@@ -222,7 +245,6 @@ async def report_bus(
         logger.error(f"[report_bus] save erreur: {type(e).__name__}: {e}", exc_info=True)
         return {"status": "error", "message": str(e)}
 
-    # Doublon strict ou doublon communautaire — même réponse UX
     if result is None:
         return {
             "status":  "already_reported",
@@ -233,16 +255,25 @@ async def report_bus(
 
     try:
         asyncio.create_task(notify_abonnes(ligne, arret, phone))
+        logger.info(f"[report_bus] notify_abonnes task créé — ligne={ligne} arret={arret}")
     except Exception as e:
         logger.warning(f"[report_bus] notify erreur: {e}")
 
     try:
         abonnes    = queries.get_abonnes(ligne)
         nb_abonnes = sum(1 for a in abonnes if a["phone"] != phone)
+        logger.info(f"[report_bus] abonnés WA trouvés pour ligne {ligne}: {nb_abonnes}")
     except Exception:
         nb_abonnes = 0
 
-    # V8.3 : calcul âge du signalement pour réponse naturelle ("il y a X min")
+    try:
+        push_subs  = queries.get_push_subscriptions_by_ligne(ligne)
+        nb_push    = sum(1 for s in push_subs if s.get("phone") != phone)
+        logger.info(f"[report_bus] abonnés PWA trouvés pour ligne {ligne}: {nb_push}")
+    except Exception:
+        nb_push = 0
+
+    # Calcul âge du signalement
     minutes_ago = 0
     if result and result.get("timestamp"):
         try:
@@ -251,13 +282,16 @@ async def report_bus(
         except Exception:
             minutes_ago = 0
 
-    logger.info(f"[report_bus] ✅ ligne={ligne} arret={arret} abonnes={nb_abonnes} minutes_ago={minutes_ago}")
+    logger.info(
+        f"[report_bus] ✅ ligne={ligne} arret={arret} "
+        f"abonnes_wa={nb_abonnes} abonnes_pwa={nb_push} minutes_ago={minutes_ago}"
+    )
     return {
         "status":              "ok",
         "ligne":               ligne,
         "arret":               arret,
         "minutes_ago":         minutes_ago,
-        "nb_abonnes_notifies": nb_abonnes,
+        "nb_abonnes_notifies": nb_abonnes + nb_push,
     }
 
 

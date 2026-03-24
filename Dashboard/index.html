@@ -24,12 +24,7 @@
 <link rel="stylesheet" href="css/signal-grid.css">
 <link rel="stylesheet" href="css/variables-light.css">
 <style>
-/* ══ FIX iOS KEYBOARD — bloque le resize de la viewport ══
-   iOS resize window.innerHeight quand le clavier s'ouvre.
-   On fixe #app à la hauteur initiale et on ignore les
-   resize causés par le clavier (seule la rotation change
-   la largeur, donc on ne répond qu'aux changements de width).
-════════════════════════════════════════════════════════════ */
+/* ══ FIX iOS KEYBOARD ══ */
 html { height: 100%; overflow: hidden; }
 body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; left: 0; }
 #app { height: 100%; overflow: hidden; display: flex; flex-direction: column; }
@@ -242,7 +237,7 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
       <div class="popup-sub">Choisissez un moyen de contact</div>
       <div class="contact-grid">
         <a class="contact-item" href="tel:+221XXXXXXXXX"><div class="contact-icon contact-icon--call"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.18 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6 6l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/></svg></div><span>Appel</span></a>
-        <a class="contact-item" href="/cdn-cgi/l/email-protection#375f525b5b58774f524342194459"><div class="contact-icon contact-icon--mail"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><span>Mail</span></a>
+        <a class="contact-item" href="mailto:contact@xetu.sn"><div class="contact-icon contact-icon--mail"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div><span>Mail</span></a>
         <a class="contact-item" href="https://wa.me/221XXXXXXXXX" target="_blank" rel="noopener"><div class="contact-icon contact-icon--wa"><svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg></div><span>WhatsApp</span></a>
         <a class="contact-item" href="https://instagram.com/xetu_dakar" target="_blank" rel="noopener"><div class="contact-icon contact-icon--ig"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="5"/><circle cx="17.5" cy="6.5" r="1" fill="currentColor" stroke="none"/></svg></div><span>Instagram</span></a>
       </div>
@@ -378,8 +373,8 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
         <div class="chat-topbar-info">
           <div class="chat-topbar-name">Xëtu</div>
           <div class="chat-topbar-status">
-            <span class="chat-status-dot"></span>
-            En ligne
+            <span class="chat-status-dot" id="chat-status-dot"></span>
+            <span id="chat-status-label">En ligne</span>
           </div>
         </div>
       </div>
@@ -391,6 +386,7 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
         </div>
       </div>
 
+      <!-- CHG-2 : id="chat-chips" conservé, les chips statiques sont attachées par chat.js -->
       <div class="chat-chips-wrap" id="chat-chips">
         <button class="chat-chip" data-msg="Comment aller à Sandaga ?">Comment aller à Sandaga ?</button>
         <button class="chat-chip" data-msg="Bus 4 à Liberté 5">Bus 4 à Liberté 5</button>
@@ -399,6 +395,7 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
 
       <div class="chat-composer">
         <textarea class="chat-composer-input" id="chat-input" placeholder="Pose ta question…" rows="1" maxlength="500"></textarea>
+        <!-- CHG-2 : id="chat-send" (était déjà correct dans le HTML, chat.js cherchait "chat-send-btn") -->
         <button class="chat-composer-send" id="chat-send" disabled>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="white"><path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
         </button>
@@ -447,7 +444,6 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
 </div>
 <div id="toast-container" aria-live="polite" aria-atomic="false"></div>
 
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <script>
   function _initMenuQR(){var canvas=document.getElementById('menu-qr-canvas');if(!canvas)return;var el=document.createElement('div');el.style.display='none';document.body.appendChild(el);new QRCode(el,{text:'https://xetudashbord.pages.dev/',width:120,height:120,colorDark:'#ff6b2b',colorLight:'#1a1f2e',correctLevel:QRCode.CorrectLevel.H});setTimeout(function(){var img=el.querySelector('img');var ctx=canvas.getContext('2d');var image=new Image();image.onload=function(){ctx.drawImage(image,0,0,120,120);};if(img)image.src=img.src;el.remove();},300);}
@@ -459,45 +455,23 @@ body { height: 100%; overflow: hidden; position: fixed; width: 100%; top: 0; lef
 'use strict';
 
 /* ══════════════════════════════════════════════════════════
-   FIX iOS KEYBOARD — viewport height verrouillé au chargement.
-
-   Problème : iOS Safari/Chrome resize window.innerHeight quand
-   le clavier s'ouvre → tout le layout (nav, screens) saute.
-
-   Solution : on mémorise window.innerHeight au chargement,
-   on l'applique en style inline sur #app, et on ne le
-   recalcule QUE si la largeur change (rotation d'écran).
-   Les changements de hauteur seuls (clavier) sont ignorés.
+   FIX iOS KEYBOARD
 ══════════════════════════════════════════════════════════ */
 (function fixIosKeyboard(){
   var app=document.getElementById('app');
   if(!app) return;
-
   var _h=window.innerHeight;
   var _w=window.innerWidth;
   app.style.height=_h+'px';
-
   window.addEventListener('resize',function(){
     var newW=window.innerWidth;
     var newH=window.innerHeight;
-    if(newW!==_w){
-      // Rotation d'écran → on accepte le nouveau layout
-      _w=newW;
-      _h=newH;
-      app.style.height=_h+'px';
-    }
-    // Si seule la hauteur change (clavier iOS) → on ignore
+    if(newW!==_w){ _w=newW; _h=newH; app.style.height=_h+'px'; }
   },{passive:true});
 })();
 
 var API_BASE='';
 var API_TIMEOUT_MS=4000;
-
-var DEMO_REPLIES={
-  'Comment aller à Sandaga ?':'🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée totale : ~11 min',
-  'Bus 4 à Liberté 5':'✅ Bus 4 signalé à Liberté 5 il y a 4 min.',
-  'Où est le bus 8 ?':'🚌 Bus 8 signalé à Gare Aéroport Yoff il y a 6 min.'
-};
 
 var ROUTES={
   'Liberté 5→Sandaga':{bus:'Bus 15',stop:'Pompiers',ride:8,walk:3},
@@ -550,7 +524,6 @@ function _norm(s){return String(s).toLowerCase().normalize('NFD').replace(/[\u03
 function _esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
 function _fmtDist(m){if(m===null||m===undefined)return '';return m<1000?'~'+m+' m':'~'+(m/1000).toFixed(1)+' km';}
 function _fmtMin(n){if(n===null||n===undefined)return '';return n===0?'à l\'instant':'il y a '+n+' min';}
-function _timeNow(){var d=new Date();return d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');}
 
 /* ══ FAB masqué quand champ actif ══ */
 function _setFabVisible(visible){
@@ -562,7 +535,6 @@ function _setFabVisible(visible){
 
 /* ══ Render champs ══ */
 function _renderFields(){
-  /* Champ FROM */
   var rowFrom=$('itin-row-from'),valFrom=$('itin-val-from');
   rowFrom.classList.toggle('itin-field-active',_activeField==='from');
   if(_activeField==='from'){
@@ -570,8 +542,6 @@ function _renderFields(){
     valFrom.innerHTML='<input class="itin-field-input" id="itin-input-from" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp=$('itin-input-from');
     inp.value=_from;
-    /* FIX clavier mobile — focus synchrone dans la call stack du click
-       iOS Safari bloque le clavier si focus() est dans un setTimeout */
     inp.focus();
     try{inp.select();}catch(e){}
     inp.addEventListener('input',function(){
@@ -580,10 +550,7 @@ function _renderFields(){
       if(!q){$('itin-search-results-wrap').innerHTML='';return;}
       _searchDebounce=setTimeout(function(){_renderResults(q);},280);
     });
-    inp.addEventListener('blur',function(){
-      var v=this.value.trim();
-      if(v) _from=v;
-    });
+    inp.addEventListener('blur',function(){var v=this.value.trim();if(v) _from=v;});
   } else if(_from){
     valFrom.innerHTML='<span class="itin-field-selected">'+_esc(_from)+'</span>'
       +'<button class="itin-field-clear" id="itin-clear-from"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -593,7 +560,6 @@ function _renderFields(){
     valFrom.innerHTML='<span class="itin-field-placeholder">Vous êtes où ?</span>';
   }
 
-  /* Champ TO */
   var rowTo=$('itin-row-to'),valTo=$('itin-val-to');
   rowTo.classList.toggle('itin-field-active',_activeField==='to');
   if(_activeField==='to'){
@@ -601,7 +567,6 @@ function _renderFields(){
     valTo.innerHTML='<input class="itin-field-input" id="itin-input-to" type="text" placeholder="Quartier ou arrêt…" autocomplete="off" maxlength="60">';
     var inp2=$('itin-input-to');
     inp2.value=_to;
-    /* FIX clavier mobile — focus synchrone dans la call stack du click */
     inp2.focus();
     try{inp2.select();}catch(e){}
     inp2.addEventListener('input',function(){
@@ -610,10 +575,7 @@ function _renderFields(){
       if(!q){$('itin-search-results-wrap').innerHTML='';return;}
       _searchDebounce=setTimeout(function(){_renderResults(q);},280);
     });
-    inp2.addEventListener('blur',function(){
-      var v=this.value.trim();
-      if(v) _to=v;
-    });
+    inp2.addEventListener('blur',function(){var v=this.value.trim();if(v) _to=v;});
   } else if(_to){
     valTo.innerHTML='<span class="itin-field-selected">'+_esc(_to)+'</span>'
       +'<button class="itin-field-clear" id="itin-clear-to"><svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
@@ -794,47 +756,7 @@ function _attachResultEvents(){
   document.querySelectorAll('.itin-ligne-card').forEach(function(card){card.addEventListener('click',function(){_searchTab='arrets';var inp=$(_activeField==='from'?'itin-input-from':'itin-input-to');if(inp)inp.value=card.dataset.ligne;_renderResults(card.dataset.ligne);});});
 }
 
-/* ══ CHAT ══ */
-var _chatInput=$('chat-input');
-var _chatSend=$('chat-send');
-var _chatMsgs=$('chat-messages');
-var _chatChips=$('chat-chips');
-
-_chatInput.addEventListener('input',function(){
-  this.style.height='auto';
-  this.style.height=Math.min(this.scrollHeight,100)+'px';
-  _chatSend.disabled=!this.value.trim();
-});
-_chatInput.addEventListener('keydown',function(e){if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();_sendChat(this.value);}});
-_chatSend.addEventListener('click',function(){_sendChat(_chatInput.value);});
-document.querySelectorAll('.chat-chip').forEach(function(c){c.addEventListener('click',function(){_sendChat(c.dataset.msg);});});
-
-function _addChatMsg(text,role){
-  var w=document.createElement('div');w.className='chat-msg chat-msg--'+role;
-  var b=document.createElement('div');b.className='chat-bubble';b.innerHTML=text.replace(/\n/g,'<br>');
-  var t=document.createElement('div');t.className='chat-msg-time';t.textContent=_timeNow();
-  w.appendChild(b);w.appendChild(t);
-  _chatMsgs.appendChild(w);_chatMsgs.scrollTop=_chatMsgs.scrollHeight;
-}
-function _showTyping(){
-  var el=document.createElement('div');el.className='chat-msg chat-msg--bot';el.id='chat-typing-el';
-  el.innerHTML='<div class="chat-bubble chat-typing"><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span><span class="chat-typing-dot"></span></div>';
-  _chatMsgs.appendChild(el);_chatMsgs.scrollTop=_chatMsgs.scrollHeight;
-}
-function _hideTyping(){var el=$('chat-typing-el');if(el)el.remove();}
-function _sendChat(text){
-  if(!text.trim())return;
-  _addChatMsg(text,'user');
-  _chatInput.value='';_chatInput.style.height='auto';_chatSend.disabled=true;
-  _chatChips.style.display='none';
-  _showTyping();
-  setTimeout(function(){
-    _hideTyping();
-    _addChatMsg(DEMO_REPLIES[text]||'Message reçu ! 🚌 Je cherche pour toi…','bot');
-  },1200);
-}
-
-/* Init */
+/* ══ Init itinéraire ══ */
 _renderFields();
 
 })();
