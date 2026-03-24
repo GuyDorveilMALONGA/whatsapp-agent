@@ -1,10 +1,9 @@
 /**
- * js/signal.js — V3.6
- * V3.6 : Autocomplete dropdown arrêts sur #arret-input
- *        - Filtre les arrêts de la ligne sélectionnée en temps réel
- *        - Chargé depuis routes_geometry_v13_fixed2.json via _loadRoutes()
- *        - Dropdown positionné sous l'input, max 6 résultats
- *        - Ferme au blur, sélection au click sans perdre le focus
+ * js/signal.js — V3.7
+ * V3.7 : FIX _loadRoutes — wrapper j.lignes correct + fallback j
+ *        FIX _loadArrets — résolution clé ligne robuste
+ *        FIX _snapToStop — idem résolution clé
+ *        Structure JSON : { lignes: { "1": { arrets: [{nom, lat, lon}] }, "4": {...} } }
  */
 
 import * as store  from './store.js';
@@ -273,37 +272,76 @@ function _selectLigne(ligne) {
   _selectedLigne = ligne;
   _saveFavoriteLine(ligne);
   _updateSendBtn();
-  // Charger les arrêts pour l'autocomplete
   _loadArrets(ligne);
-
   if (_geolocData?.lat) {
     _snapAndFill(_geolocData.lat, _geolocData.lon, ligne).then(() => _updateSendBtn());
   }
 }
 
+// ── Résolution clé ligne dans le JSON ─────────────────────
+// Structure : { "1": {...}, "4": {...}, "16A": {...}, "TAF TAF": {...} }
+// Les clés sont exactement les numéros de ligne tels quels.
+
+function _resolveLineData(routes, ligne) {
+  if (!routes || !ligne) return null;
+  const l = String(ligne);
+  return routes[l]
+      || routes[l.toUpperCase()]
+      || routes[l.toLowerCase()]
+      || routes[String(parseInt(l))]   // "04" → "4"
+      || null;
+}
+
+// ── Cache routes ──────────────────────────────────────────
+
+let _routesCache = null;
+
+async function _loadRoutes() {
+  if (_routesCache) return _routesCache;
+
+  const paths = [
+    '/data/routes_geometry_v13_fixed2.json',
+    './data/routes_geometry_v13_fixed2.json',
+    '/routes_geometry_v13_fixed2.json',
+    './routes_geometry_v13_fixed2.json',
+  ];
+
+  for (const path of paths) {
+    try {
+      const r = await fetch(path);
+      if (!r.ok) continue;
+      const j = await r.json();
+      // Structure réelle : { version, generated_at, source, lignes: { "1": {...}, "4": {...} } }
+      _routesCache = j.lignes || j.routes || j;
+      console.log('[Signal] Routes chargées depuis', path,
+        '— lignes:', Object.keys(_routesCache).length);
+      return _routesCache;
+    } catch {
+      continue;
+    }
+  }
+
+  console.error('[Signal] Impossible de charger routes_geometry_v13_fixed2.json');
+  _routesCache = {};
+  return _routesCache;
+}
+
 // ── Autocomplete arrêts ───────────────────────────────────
 
 async function _loadArrets(ligne) {
-  const routes = await _loadRoutes();
-  // Essayer plusieurs formats de clé : "4", "04", "4".toUpperCase()
-  const keys = [
-    String(ligne),
-    String(ligne).toUpperCase(),
-    String(parseInt(ligne)),          // "04" → "4"
-    String(ligne).padStart(2, '0'),   // "4"  → "04"
-  ];
-  let lineData = null;
-  for (const k of keys) {
-    if (routes[k]) { lineData = routes[k]; break; }
-  }
+  const routes   = await _loadRoutes();
+  const lineData = _resolveLineData(routes, ligne);
+
   if (!lineData) {
-    console.warn('[Signal] Ligne introuvable dans routes:', ligne, 'clés dispo:', Object.keys(routes).slice(0, 10));
+    console.warn('[Signal] Ligne introuvable dans routes:', ligne);
     _arretsList = [];
     return;
   }
+
+  // Structure arrêt : { nom, lat, lon, confidence, temps_vers_suivant_sec }
   const stops = lineData.arrets || lineData.stops || [];
   _arretsList = stops.map(s => s.nom || s.name).filter(Boolean);
-  console.log('[Signal] Arrêts chargés pour ligne', ligne, ':', _arretsList.length);
+  console.log('[Signal] Arrêts chargés — ligne', ligne, ':', _arretsList.length);
 }
 
 function _showDropdown(matches) {
@@ -322,7 +360,7 @@ function _showDropdown(matches) {
     item.className   = 'arret-dropdown-item';
     item.textContent = name;
     item.addEventListener('mousedown', (e) => {
-      e.preventDefault(); // empêche blur avant click
+      e.preventDefault();
       input.value = name;
       _removeDropdown();
       _updateSendBtn();
@@ -330,7 +368,6 @@ function _showDropdown(matches) {
         _snapAndFill(_geolocData.lat, _geolocData.lon, _selectedLigne);
       }
     });
-    // Support touch
     item.addEventListener('touchend', (e) => {
       e.preventDefault();
       input.value = name;
@@ -354,7 +391,6 @@ function _onArretInput(e) {
   const val = e.target.value.trim().toLowerCase();
   if (!val) { _removeDropdown(); return; }
 
-  // Si les arrêts ne sont pas encore chargés, les charger puis afficher
   if (!_arretsList.length && _selectedLigne) {
     _loadArrets(_selectedLigne).then(() => {
       const matches = _arretsList.filter(n => n.toLowerCase().includes(val));
@@ -371,7 +407,7 @@ function _onArretFocus() {
   if (!_selectedLigne) return;
 
   const show = () => {
-    const val = document.getElementById('arret-input')?.value.trim().toLowerCase() || '';
+    const val     = document.getElementById('arret-input')?.value.trim().toLowerCase() || '';
     const matches = val
       ? _arretsList.filter(n => n.toLowerCase().includes(val))
       : _arretsList;
@@ -385,53 +421,35 @@ function _onArretFocus() {
   }
 }
 
-// ── Snap ──────────────────────────────────────────────────
+// ── Snap GPS → arrêt le plus proche ──────────────────────
 
 async function _snapToStop(lat, lon, ligne) {
   const routes   = await _loadRoutes();
-  const key      = String(ligne).toUpperCase();
-  const lineData = routes[key] || routes[String(ligne)];
+  const lineData = _resolveLineData(routes, ligne);
   if (!lineData) return { snapped: false };
+
   const stops = lineData.arrets || lineData.stops || [];
   let best = null, bestDist = Infinity;
+
   for (const s of stops) {
-    if (!s.lat || !s.lon) continue;
+    if (s.lat == null || s.lon == null) continue;
     const d = _haversine(lat, lon, s.lat, s.lon);
     if (d < bestDist) { bestDist = d; best = s.nom || s.name || null; }
   }
+
   const dist = Math.round(bestDist);
-  return bestDist <= 800 ? { snapped: true, name: best, dist } : { snapped: false, dist };
+  return bestDist <= 800
+    ? { snapped: true, name: best, dist }
+    : { snapped: false, dist };
 }
 
-let _routesCache = null;
-async function _loadRoutes() {
-  if (_routesCache) return _routesCache;
-  // Essayer chemin absolu depuis la racine
-  const paths = [
-    '/data/routes_geometry_v13_fixed2.json',
-    './data/routes_geometry_v13_fixed2.json',
-    '/routes_geometry_v13_fixed2.json',
-  ];
-  for (const path of paths) {
-    try {
-      const r = await fetch(path);
-      if (!r.ok) continue;
-      const j = await r.json();
-      _routesCache = j.lignes || j.routes || {};
-      console.log('[Signal] Routes chargées depuis', path, '— lignes:', Object.keys(_routesCache).length);
-      return _routesCache;
-    } catch { continue; }
-  }
-  console.error('[Signal] Impossible de charger le fichier routes');
-  _routesCache = {};
-  return _routesCache;
-}
+// ── Haversine ─────────────────────────────────────────────
 
 function _haversine(a, b, c, d) {
-  const R = 6371000, p1 = a * Math.PI/180, p2 = c * Math.PI/180;
-  const dp = (c-a)*Math.PI/180, dl = (d-b)*Math.PI/180;
-  const x = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
-  return R*2*Math.atan2(Math.sqrt(x), Math.sqrt(1-x));
+  const R = 6371000, p1 = a * Math.PI / 180, p2 = c * Math.PI / 180;
+  const dp = (c - a) * Math.PI / 180, dl = (d - b) * Math.PI / 180;
+  const x  = Math.sin(dp / 2) ** 2 + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(x), Math.sqrt(1 - x));
 }
 
 // ── UI helpers ────────────────────────────────────────────
@@ -447,11 +465,9 @@ function _showMapLabel(active) {
   const label = document.getElementById('signal-map-label');
   if (!label) return;
   label.hidden = false;
-  if (active) {
-    label.innerHTML = `<span class="pos-dot pos-dot--active"></span> Ta position GPS`;
-  } else {
-    label.innerHTML = `<span class="pos-dot pos-dot--wait"></span> Position en attente`;
-  }
+  label.innerHTML = active
+    ? `<span class="pos-dot pos-dot--active"></span> Ta position GPS`
+    : `<span class="pos-dot pos-dot--wait"></span> Position en attente`;
 }
 
 function _showGeoStatus(text, cls) {
@@ -470,12 +486,12 @@ function _updateSendBtn() {
   const hint   = document.getElementById('send-hint');
   if (btn) { btn.disabled = !ok; btn.classList.toggle('btn-send--pulse', ok); }
   if (hint) {
-    if (!_selectedLigne)                           hint.textContent = 'Sélectionne une ligne';
-    else if (_geolocPending)                       hint.textContent = '⏳ GPS en cours…';
-    else if (!ok)                                  hint.textContent = 'Indique l\'arrêt ou attends le GPS';
-    else if (hasGps && _geolocData?.nearest_stop)  hint.textContent = `📍 ${_geolocData.nearest_stop}`;
-    else if (hasGps)                               hint.textContent = '📍 Position GPS prête';
-    else                                           hint.textContent = 'Prêt à envoyer';
+    if (!_selectedLigne)                          hint.textContent = 'Sélectionne une ligne';
+    else if (_geolocPending)                      hint.textContent = '⏳ GPS en cours…';
+    else if (!ok)                                 hint.textContent = 'Indique l\'arrêt ou attends le GPS';
+    else if (hasGps && _geolocData?.nearest_stop) hint.textContent = `📍 ${_geolocData.nearest_stop}`;
+    else if (hasGps)                              hint.textContent = '📍 Position GPS prête';
+    else                                          hint.textContent = 'Prêt à envoyer';
   }
 }
 
@@ -512,9 +528,10 @@ async function _handleSend(onSuccess) {
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; btn.classList.remove('btn-send--pulse'); }
 
   const payload = {
-    ligne: _selectedLigne, arret,
-    source:    hasGps ? 'web_geoloc' : 'web_dashboard',
-    client_ts: new Date().toISOString(),
+    ligne:      _selectedLigne,
+    arret,
+    source:     hasGps ? 'web_geoloc' : 'web_dashboard',
+    client_ts:  new Date().toISOString(),
     session_id: SESSION_ID,
   };
   if (_selectedQual) payload.observation = _selectedQual;
@@ -522,7 +539,8 @@ async function _handleSend(onSuccess) {
 
   try {
     const res = await fetch(`${API_BASE}/api/report`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
     if (res.status === 201 || res.status === 200) {
@@ -557,19 +575,27 @@ function _reset() {
   const arretInput = document.getElementById('arret-input');
   if (arretInput) arretInput.value = '';
   _removeDropdown();
+
   const geoStatus = document.getElementById('geoloc-status');
   if (geoStatus) geoStatus.hidden = true;
+
   const gpsBtn = document.getElementById('btn-gps');
   if (gpsBtn) { gpsBtn.disabled = false; gpsBtn.textContent = '📍 GPS'; }
+
   document.querySelectorAll('.quality-tag').forEach(b => b.classList.remove('selected'));
+
   const qualPanel = document.getElementById('quality-panel');
   if (qualPanel) qualPanel.hidden = true;
+
   const qualBtn = document.getElementById('btn-quality-toggle');
   if (qualBtn) qualBtn.textContent = '＋ Ajouter une observation (optionnel)';
+
   if (_mapSignal && _userMarker) { _mapSignal.removeLayer(_userMarker); _userMarker = null; }
   _showMapLabel(false);
+
   const mapLabel = document.getElementById('signal-map-label');
   if (mapLabel) mapLabel.hidden = false;
+
   _buildLigneGrid();
   _updateSendBtn();
 }
@@ -597,13 +623,12 @@ function _attachEvents(onSuccess) {
 
   const arretInput = document.getElementById('arret-input');
   if (arretInput) {
-    arretInput.addEventListener('input',  _onArretInput);
-    arretInput.addEventListener('focus',  _onArretFocus);
-    arretInput.addEventListener('blur',   () => setTimeout(_removeDropdown, 150));
+    arretInput.addEventListener('input',   _onArretInput);
+    arretInput.addEventListener('focus',   _onArretFocus);
+    arretInput.addEventListener('blur',    () => setTimeout(_removeDropdown, 150));
     arretInput.addEventListener('keydown', (e) => {
       if (e.key === 'Escape') _removeDropdown();
       if (e.key === 'ArrowDown') {
-        // Focus premier item du dropdown
         const first = _dropdownEl?.querySelector('.arret-dropdown-item');
         if (first) { e.preventDefault(); first.focus(); }
       }

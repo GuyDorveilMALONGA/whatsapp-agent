@@ -23,148 +23,232 @@
 <link rel="stylesheet" href="css/overlay-styles.css">
 <link rel="stylesheet" href="css/signal-grid.css">
 <link rel="stylesheet" href="css/variables-light.css">
-
-
 <style>
-/* ══ ITINÉRAIRE ══════════════════════════════════════════ */
-#screen-itin { background: var(--bg); }
+/* ══ ITINÉRAIRE V9.2 ══════════════════════════════════════ */
+/* FIX: pas de display:flex → base.css gère via .screen.active */
+#screen-itin { background: var(--bg); flex-direction: column; }
+.itin-body-wrap { flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; min-height:0; }
+/* Padding top réduit — la search bar est le premier élément */
+.itin-body { padding:14px 14px 120px; display:flex; flex-direction:column; gap:10px; }
 
-.itin-body-wrap {
-  flex: 1;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  min-height: 0;
-}
+/* ══ RÉSULTAT ITINÉRAIRE ══ */
+.itin-result-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:14px; display:flex; flex-direction:column; gap:0; animation:slideUp 0.2s ease both; }
+.itin-result-card[hidden] { display:none !important; }
+.itin-result-step { display:flex; align-items:flex-start; gap:12px; padding:4px 0; }
+.itin-step-icon { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; flex-shrink:0; margin-top:2px; }
+.itin-step-icon--origin { background:rgba(255,255,255,0.07); border:1px solid var(--border); color:var(--muted); }
+.itin-step-icon--bus { background:var(--orange-dim); border:1px solid var(--orange-border); color:var(--orange); }
+.itin-step-icon--dest { background:var(--orange); color:#fff; }
+.itin-step-info { flex:1; }
+.itin-step-main { font-size:13px; font-weight:500; color:var(--text); line-height:1.4; }
+.itin-step-sub { font-size:11px; color:var(--muted); margin-top:2px; }
+.itin-result-divider { width:1px; height:14px; background:var(--orange-border); margin-left:14px; }
+.itin-result-footer { display:flex; align-items:center; justify-content:space-between; padding-top:12px; margin-top:6px; border-top:1px solid var(--border); }
+.itin-result-duration-label { font-size:11px; color:var(--muted); }
+.itin-result-duration-val { font-size:16px; font-weight:700; color:var(--orange); }
+.itin-reset-link { background:none; border:none; font-size:11px; color:var(--muted); text-decoration:underline; text-underline-offset:2px; text-align:center; cursor:pointer; margin-top:8px; font-family:'Inter',sans-serif; }
 
-.itin-header { padding: 18px 16px 12px; flex-shrink: 0; }
-.itin-header-title { font-size: 20px; font-weight: 700; color: var(--text); line-height: 1; }
-.itin-header-sub { font-size: 12px; color: var(--muted); margin-top: 3px; }
-.itin-body { padding: 0 14px 120px; display: flex; flex-direction: column; gap: 12px; }
+/* ══ BARRE DE RECHERCHE ══ */
+.itin-search-bar { display:flex; align-items:center; gap:10px; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; transition:border-color var(--t-fast),box-shadow var(--t-fast); }
+.itin-search-bar:focus-within { border-color:var(--orange-border); box-shadow:0 0 0 3px rgba(255,107,53,0.08); }
+.itin-search-input { flex:1; background:transparent; border:none; outline:none; font-size:14px; font-family:'Inter',sans-serif; color:var(--text); caret-color:var(--orange); }
+.itin-search-input::placeholder { color:var(--muted); }
+.itin-search-clear { background:none; border:none; color:var(--muted); cursor:pointer; padding:2px; display:none; align-items:center; transition:color var(--t-fast); flex-shrink:0; }
+.itin-search-clear:hover { color:var(--text); }
+.itin-search-clear.visible { display:flex; }
 
-.itin-form-card {
+/* ══ TABS ══ */
+.itin-search-tabs { display:flex; border-bottom:1px solid var(--border); }
+.itin-search-tab { font-size:12px; font-weight:500; padding:7px 14px 9px; color:var(--muted); background:none; border:none; border-bottom:2px solid transparent; margin-bottom:-1px; cursor:pointer; font-family:'Inter',sans-serif; transition:color var(--t-fast),border-color var(--t-fast); white-space:nowrap; }
+.itin-search-tab.active { color:var(--orange); border-bottom-color:var(--orange); }
+
+/* ══ LÉGENDE ══ */
+.itin-search-legend { display:flex; gap:14px; flex-wrap:wrap; padding:2px 0; }
+.itin-legend-item { display:flex; align-items:center; gap:5px; font-size:10px; color:var(--muted); }
+.itin-legend-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; }
+
+.itin-search-count { font-size:11px; color:var(--muted); }
+.itin-search-results { display:flex; flex-direction:column; gap:8px; }
+
+/* ══ CARTE ARRÊT — redesign pour matcher la capture ══ */
+.itin-arret-card {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  position: relative;
-  z-index: 10;
+  transition: border-color var(--t-fast);
+  animation: slideUp 0.2s ease both;
 }
-.itin-field {
+.itin-arret-card:hover { border-color: rgba(255,107,53,0.3); }
+.itin-arret-card--signale {
+  border-color: rgba(0,214,127,0.4);
+  background: rgba(0,214,127,0.03);
+}
+
+/* En-tête arrêt : nom + distance */
+.itin-arret-head {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 14px;
-  cursor: pointer;
-  transition: background var(--t-fast);
-  position: relative;
-  z-index: 11;
-  -webkit-tap-highlight-color: rgba(255,107,53,0.1);
-  user-select: none;
+  gap: 10px;
+  padding: 13px 14px 8px;
 }
-.itin-field:hover { background: rgba(255,255,255,0.03); }
-.itin-field--active {
-  background: rgba(255,107,53,0.15) !important;
-  box-shadow: inset 0 0 0 1px rgba(255,107,53,0.35);
+.itin-arret-dot {
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  background: var(--orange);
+  flex-shrink: 0;
 }
-.itin-field-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
-.itin-field-dot--from { background: transparent; border: 2px solid rgba(255,255,255,0.4); }
-.itin-field-dot--to { background: var(--orange); }
-.itin-field-text { flex: 1; font-size: 14px; color: var(--muted); transition: color var(--t-fast); pointer-events: none; }
-.itin-field-text.itin-filled { color: var(--text); font-weight: 500; }
-/* Input inline qui remplace le texte quand le champ est actif */
-.itin-field-input {
-  flex: 1;
-  background: transparent;
-  border: none;
-  outline: none;
+.itin-arret-dot--signale {
+  background: var(--green);
+  box-shadow: 0 0 0 4px rgba(0,214,127,0.18);
+}
+.itin-arret-name {
   font-size: 14px;
-  font-family: 'Inter', sans-serif;
+  font-weight: 600;
   color: var(--text);
-  padding: 0;
-  width: 100%;
-  caret-color: var(--orange);
+  flex: 1;
 }
-.itin-field-input::placeholder { color: var(--muted); opacity: 0.7; }
-.itin-swap-btn { width: 30px; height: 30px; border-radius: 50%; background: rgba(255,255,255,0.06); border: 1px solid var(--border); color: var(--muted); display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: background var(--t-fast), color var(--t-fast); position: relative; z-index: 12; }
-.itin-swap-btn:hover { background: var(--orange-dim); color: var(--orange); border-color: var(--orange-border); }
-.itin-connector { padding: 0 14px 0 18px; }
-.itin-connector-line { width: 1px; height: 10px; background: var(--border); margin-left: 4px; }
-.itin-go-btn { width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 13px; background: var(--orange); border: none; color: #fff; font-size: 14px; font-weight: 600; font-family: 'Inter', sans-serif; cursor: pointer; transition: opacity var(--t-fast); box-shadow: var(--shadow-orange); position: relative; z-index: 12; }
-.itin-go-btn:disabled { opacity: 0.35; cursor: not-allowed; box-shadow: none; }
-.itin-go-btn:not(:disabled):active { opacity: 0.88; }
+.itin-arret-dist {
+  font-size: 11px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
 
-.itin-suggest-wrap { background: var(--surface2); border: 1px solid var(--orange-border); border-radius: var(--radius-md); overflow: hidden; position: relative; z-index: 15; max-height: 220px; overflow-y: auto; }
-.itin-suggest-wrap:not([hidden]) { animation: slideUp 0.15s ease both; }
-.itin-suggest-item { display: flex; align-items: center; gap: 10px; padding: 11px 14px; font-size: 13px; color: var(--text-dim); cursor: pointer; border-bottom: 1px solid var(--border); transition: background var(--t-fast); }
-.itin-suggest-item:last-child { border-bottom: none; }
-.itin-suggest-item:hover { background: var(--orange-dim); color: var(--text); }
-.itin-suggest-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-.itin-suggest-match { color: var(--orange); font-weight: 600; }
+/* Badges de lignes */
+.itin-arret-lines {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 14px 12px;
+}
 
-.itin-result-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 14px; display: flex; flex-direction: column; gap: 0; animation: slideUp 0.2s ease both; }
-.itin-result-card[hidden] { display: none !important; }
-.itin-result-step { display: flex; align-items: flex-start; gap: 12px; padding: 4px 0; }
-.itin-step-icon { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
-.itin-step-icon--origin { background: rgba(255,255,255,0.07); border: 1px solid var(--border); color: var(--muted); }
-.itin-step-icon--bus { background: var(--orange-dim); border: 1px solid var(--orange-border); color: var(--orange); }
-.itin-step-icon--dest { background: var(--orange); color: #fff; }
-.itin-step-info { flex: 1; }
-.itin-step-main { font-size: 13px; font-weight: 500; color: var(--text); line-height: 1.4; }
-.itin-step-sub { font-size: 11px; color: var(--muted); margin-top: 2px; }
-.itin-result-divider { width: 1px; height: 14px; background: var(--orange-border); margin-left: 14px; }
-.itin-result-footer { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; margin-top: 6px; border-top: 1px solid var(--border); }
-.itin-result-duration-label { font-size: 11px; color: var(--muted); }
-.itin-result-duration-val { font-size: 16px; font-weight: 700; color: var(--orange); }
-.itin-reset-link { background: none; border: none; font-size: 11px; color: var(--muted); text-decoration: underline; text-underline-offset: 2px; text-align: center; cursor: pointer; margin-top: 8px; font-family: 'Inter', sans-serif; }
+/* Badge ligne avec signalement : fond vert, texte "Bus X · il y a N min" */
+.itin-line-badge-sig {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(0,214,127,0.12);
+  border: 1px solid rgba(0,214,127,0.35);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--green);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast);
+}
+.itin-line-badge-sig:hover { background: rgba(0,214,127,0.22); }
+.itin-line-badge-sig-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
 
-.itin-sep { display: flex; align-items: center; gap: 10px; }
-.itin-sep-line { flex: 1; height: 1px; background: var(--border); }
-.itin-sep-txt { font-size: 10px; color: var(--muted); white-space: nowrap; letter-spacing: 0.04em; }
-.itin-chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.itin-chip { background: var(--orange-dim); border: 1px solid var(--orange-border); border-radius: var(--radius-full); padding: 7px 13px; font-size: 12px; color: rgba(255,107,53,0.9); font-family: 'Inter', sans-serif; cursor: pointer; white-space: nowrap; transition: background var(--t-fast); }
-.itin-chip:hover { background: rgba(255,107,53,0.25); }
+/* Badge ligne normal : fond orange */
+.itin-line-badge-norm {
+  display: flex;
+  align-items: center;
+  background: rgba(255,107,53,0.12);
+  border: 1px solid rgba(255,107,53,0.25);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(255,107,53,0.9);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background var(--t-fast);
+}
+.itin-line-badge-norm:hover { background: rgba(255,107,53,0.22); }
 
-/* FAB */
-.xfab-pulse { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 18px); right: 18px; width: 52px; height: 52px; border-radius: 50%; background: var(--orange); opacity: 0.3; animation: xfabPulse 2s ease-out infinite; pointer-events: none; z-index: 30; display: none; }
-@keyframes xfabPulse { 0% { transform: scale(1); opacity: 0.3; } 100% { transform: scale(1.85); opacity: 0; } }
-.xfab-btn { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 18px); right: 18px; width: 52px; height: 52px; border-radius: 50%; background: var(--orange); border: none; color: #fff; display: none; align-items: center; justify-content: center; cursor: pointer; z-index: 31; box-shadow: var(--shadow-orange); transition: transform var(--t-fast); }
-.xfab-btn:active { transform: scale(0.93); }
-#screen-itin.active .xfab-pulse { display: block; }
-#screen-itin.active .xfab-btn   { display: flex; }
+/* Footer arrêt : "Arrêt multi-lignes" + "Voir sur la carte →" */
+.itin-arret-sep { height:1px; background:rgba(255,255,255,0.05); margin:0 14px; }
+.itin-arret-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 14px;
+}
+.itin-arret-footer-txt { font-size:11px; color:var(--muted); }
+.itin-arret-action {
+  font-size: 11px;
+  color: var(--orange);
+  background: none;
+  border: none;
+  font-family: 'Inter', sans-serif;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
 
-/* Widget chat */
-.xchat-widget { position: fixed; bottom: calc(var(--nav-h) + env(safe-area-inset-bottom, 0px) * var(--safe-area-factor) + 80px); right: 12px; width: 300px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-xl); overflow: hidden; z-index: 32; box-shadow: 0 8px 32px rgba(0,0,0,0.5); transform: scale(0.88) translateY(16px); transform-origin: bottom right; opacity: 0; transition: transform 0.22s cubic-bezier(0.34,1.56,0.64,1), opacity 0.18s ease; pointer-events: none; }
-.xchat-widget.xchat-open { transform: scale(1) translateY(0); opacity: 1; pointer-events: all; }
-.xchat-header { background: var(--surface2); padding: 10px 12px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); }
-.xchat-avatar { width: 32px; height: 32px; border-radius: 50%; background: var(--orange); display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.xchat-header-info { flex: 1; }
-.xchat-name { font-size: 13px; font-weight: 600; color: var(--text); }
-.xchat-status { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--green); margin-top: 1px; }
-.xchat-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
-.xchat-close-btn { background: none; border: none; color: var(--muted); cursor: pointer; padding: 4px; display: flex; align-items: center; transition: color var(--t-fast); }
-.xchat-close-btn:hover { color: var(--text); }
-.xchat-messages { height: 210px; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
-.xchat-msg { display: flex; }
-.xchat-msg--bot  { justify-content: flex-start; }
-.xchat-msg--user { justify-content: flex-end; }
-.xchat-bubble { max-width: 86%; padding: 9px 12px; border-radius: var(--radius-lg); font-size: 12px; line-height: 1.5; animation: slideUp 0.18s ease both; }
-.xchat-msg--bot  .xchat-bubble { background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
-.xchat-msg--user .xchat-bubble { background: var(--orange); color: #fff; border-bottom-right-radius: 4px; }
-.xchat-typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
-.xchat-typing-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: typingBounce 1.2s infinite ease-in-out; }
-.xchat-typing-dot:nth-child(2) { animation-delay: 0.15s; }
-.xchat-typing-dot:nth-child(3) { animation-delay: 0.3s; }
-.xchat-chips-bar { display: flex; gap: 6px; overflow-x: auto; padding: 6px 10px; border-top: 1px solid var(--border); scrollbar-width: none; }
-.xchat-chips-bar::-webkit-scrollbar { display: none; }
-.xchat-chip { background: var(--orange-dim); border: 1px solid var(--orange-border); border-radius: var(--radius-full); padding: 5px 11px; font-size: 11px; color: rgba(255,107,53,0.9); font-family: 'Inter', sans-serif; white-space: nowrap; cursor: pointer; flex-shrink: 0; transition: background var(--t-fast); }
-.xchat-chip:hover { background: rgba(255,107,53,0.22); }
-.xchat-composer { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); background: var(--surface); }
-.xchat-input { flex: 1; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius-full); padding: 8px 13px; font-size: 12px; color: var(--text); font-family: 'Inter', sans-serif; outline: none; transition: border-color var(--t-fast); }
-.xchat-input:focus { border-color: var(--orange-border); }
-.xchat-input::placeholder { color: var(--muted); }
-.xchat-send { width: 30px; height: 30px; border-radius: 50%; background: var(--orange); border: none; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0; transition: transform var(--t-fast); }
-.xchat-send:active { transform: scale(0.9); }
+/* ══ CARTE LIGNE ══ */
+.itin-ligne-card { background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-lg); padding:12px 14px; display:flex; align-items:center; gap:12px; cursor:pointer; transition:border-color var(--t-fast); animation:slideUp 0.2s ease both; }
+.itin-ligne-card:hover { border-color:var(--orange-border); }
+.itin-ligne-badge-num { background:var(--orange); color:#fff; font-size:13px; font-weight:700; padding:6px 11px; border-radius:var(--radius-md); flex-shrink:0; min-width:42px; text-align:center; }
+.itin-ligne-info { flex:1; min-width:0; }
+.itin-ligne-nom { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.itin-ligne-sub { font-size:11px; color:var(--muted); margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.itin-ligne-count { font-size:11px; color:var(--muted); flex-shrink:0; }
+
+/* ══ VIDE / LOADING ══ */
+.itin-search-empty { display:flex; flex-direction:column; align-items:center; gap:6px; padding:32px 16px; color:var(--muted); text-align:center; }
+.itin-search-empty-icon { font-size:28px; }
+.itin-search-empty-txt { font-size:12px; }
+
+/* Bandeau départ sélectionné */
+.itin-from-chip { display:inline-flex; align-items:center; gap:6px; background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:6px 12px; font-size:12px; color:rgba(255,107,53,0.9); }
+.itin-from-chip-x { font-size:16px; line-height:1; color:var(--orange); cursor:pointer; margin-left:2px; }
+
+/* ══ FAB ══ */
+.xfab-pulse { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:52px; height:52px; border-radius:50%; background:var(--orange); opacity:0.3; animation:xfabPulse 2s ease-out infinite; pointer-events:none; z-index:30; display:none; transition:opacity 0.2s; }
+@keyframes xfabPulse { 0%{transform:scale(1);opacity:0.3} 100%{transform:scale(1.85);opacity:0} }
+.xfab-btn { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 18px); right:18px; width:52px; height:52px; border-radius:50%; background:var(--orange); border:none; color:#fff; display:none; align-items:center; justify-content:center; cursor:pointer; z-index:31; box-shadow:var(--shadow-orange); transition:transform var(--t-fast),opacity 0.2s; }
+.xfab-btn:active { transform:scale(0.93); }
+.xfab-btn.xfab-hidden { opacity:0; pointer-events:none; transform:scale(0.8); }
+.xfab-pulse.xfab-hidden { display:none !important; }
+#screen-itin.active .xfab-pulse { display:block; }
+#screen-itin.active .xfab-btn { display:flex; }
+
+/* ══ CHAT WIDGET ══ */
+.xchat-widget { position:fixed; bottom:calc(var(--nav-h) + env(safe-area-inset-bottom,0px) * var(--safe-area-factor) + 80px); right:12px; width:320px; background:var(--surface); border:1px solid var(--border); border-radius:var(--radius-xl); overflow:hidden; z-index:32; box-shadow:0 8px 32px rgba(0,0,0,0.5); transform:scale(0.88) translateY(16px); transform-origin:bottom right; opacity:0; transition:transform 0.22s cubic-bezier(0.34,1.56,0.64,1),opacity 0.18s ease; pointer-events:none; }
+.xchat-widget.xchat-open { transform:scale(1) translateY(0); opacity:1; pointer-events:all; }
+.xchat-header { background:var(--surface2); padding:10px 12px; display:flex; align-items:center; gap:10px; border-bottom:1px solid var(--border); }
+.xchat-avatar { width:32px; height:32px; border-radius:50%; background:var(--orange); display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.xchat-header-info { flex:1; }
+.xchat-name { font-size:13px; font-weight:600; color:var(--text); }
+.xchat-status { display:flex; align-items:center; gap:5px; font-size:10px; margin-top:1px; }
+.xchat-status--online { color:var(--green); }
+.xchat-status--offline { color:var(--muted); }
+.xchat-dot-online { width:5px; height:5px; border-radius:50%; background:var(--green); animation:pulse 1.5s infinite; }
+.xchat-dot-offline { width:5px; height:5px; border-radius:50%; background:var(--muted); }
+.xchat-close-btn { background:none; border:none; color:var(--muted); cursor:pointer; padding:4px; display:flex; align-items:center; transition:color var(--t-fast); }
+.xchat-close-btn:hover { color:var(--text); }
+.xchat-messages { height:220px; overflow-y:auto; padding:12px; display:flex; flex-direction:column; gap:8px; }
+.xchat-msg { display:flex; }
+.xchat-msg--bot { justify-content:flex-start; }
+.xchat-msg--user { justify-content:flex-end; }
+.xchat-bubble { max-width:86%; padding:9px 12px; border-radius:var(--radius-lg); font-size:12px; line-height:1.5; animation:slideUp 0.18s ease both; }
+.xchat-msg--bot .xchat-bubble { background:var(--surface2); color:var(--text); border:1px solid var(--border); border-bottom-left-radius:4px; }
+.xchat-msg--user .xchat-bubble { background:var(--orange); color:#fff; border-bottom-right-radius:4px; }
+.xchat-typing { display:flex; gap:4px; align-items:center; padding:10px 14px; }
+.xchat-typing-dot { width:6px; height:6px; border-radius:50%; background:var(--muted); animation:typingBounce 1.2s infinite ease-in-out; }
+.xchat-typing-dot:nth-child(2) { animation-delay:0.15s; }
+.xchat-typing-dot:nth-child(3) { animation-delay:0.3s; }
+.xchat-chips-bar { display:flex; gap:6px; overflow-x:auto; padding:6px 10px; border-top:1px solid var(--border); scrollbar-width:none; }
+.xchat-chips-bar::-webkit-scrollbar { display:none; }
+.xchat-chip { background:var(--orange-dim); border:1px solid var(--orange-border); border-radius:var(--radius-full); padding:5px 11px; font-size:11px; color:rgba(255,107,53,0.9); font-family:'Inter',sans-serif; white-space:nowrap; cursor:pointer; flex-shrink:0; transition:background var(--t-fast); }
+.xchat-chip:hover { background:rgba(255,107,53,0.22); }
+.xchat-composer { display:flex; align-items:center; gap:8px; padding:8px 10px; border-top:1px solid var(--border); background:var(--surface); }
+.xchat-input { flex:1; background:var(--surface2); border:1px solid var(--border); border-radius:var(--radius-full); padding:8px 13px; font-size:12px; color:var(--text); font-family:'Inter',sans-serif; outline:none; transition:border-color var(--t-fast); }
+.xchat-input:focus { border-color:var(--orange-border); }
+.xchat-input::placeholder { color:var(--muted); }
+.xchat-send { width:30px; height:30px; border-radius:50%; background:var(--orange); border:none; display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:transform var(--t-fast); }
+.xchat-send:active { transform:scale(0.9); }
 </style>
 </head>
 <body>
@@ -194,12 +278,8 @@
           <svg class="menu-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
           WhatsApp
         </a>
-        <!-- Dans .menu-list, avant le bouton "Avis" -->
         <button class="menu-item" id="menu-theme-btn">
-          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <circle cx="12" cy="12" r="5"/>
-              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
-          </svg>
+          <svg class="menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
           <span id="menu-theme-label">Thème · Sombre</span>
         </button>
         <button class="menu-item" id="menu-avis">
@@ -352,41 +432,12 @@
       </div>
     </section>
 
+    <!-- ══ SCREEN ITINÉRAIRE V9.2 — straight sur la search ══ -->
     <section class="screen" id="screen-itin">
-
-      <div class="itin-header">
-        <div class="itin-header-title">Itinéraire</div>
-        <div class="itin-header-sub">Trouve ton bus à Dakar</div>
-      </div>
-
       <div class="itin-body-wrap">
         <div class="itin-body">
 
-          <div class="itin-form-card" id="itin-form-card">
-            <div class="itin-field" id="itin-field-from">
-              <div class="itin-field-dot itin-field-dot--from"></div>
-              <div class="itin-field-text" id="itin-from-text">D'où tu pars ?</div>
-              <button class="itin-swap-btn" id="itin-swap-btn" aria-label="Inverser">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <line x1="12" y1="5" x2="12" y2="19"/><polyline points="5 12 12 19 19 12"/>
-                </svg>
-              </button>
-            </div>
-            <div class="itin-connector"><div class="itin-connector-line"></div></div>
-            <div class="itin-field" id="itin-field-to">
-              <div class="itin-field-dot itin-field-dot--to"></div>
-              <div class="itin-field-text" id="itin-to-text">Où tu vas ?</div>
-            </div>
-            <button class="itin-go-btn" id="itin-go-btn" disabled>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
-              Calculer l'itinéraire
-            </button>
-          </div>
-
-          <div class="itin-suggest-wrap" id="itin-suggest-wrap" hidden>
-            <div class="itin-suggest-list" id="itin-suggest-list"></div>
-          </div>
-
+          <!-- Résultat itinéraire (caché par défaut) -->
           <div class="itin-result-card" id="itin-result-card" hidden>
             <div class="itin-result-step">
               <div class="itin-step-icon itin-step-icon--origin">
@@ -424,27 +475,29 @@
             <button class="itin-reset-link" id="itin-reset-btn">Modifier le trajet</button>
           </div>
 
-          <div class="itin-sep" id="itin-sep">
-            <div class="itin-sep-line"></div>
-            <span class="itin-sep-txt">trajets fréquents</span>
-            <div class="itin-sep-line"></div>
+          <!-- SEARCH BAR — premier élément visible -->
+          <div class="itin-search-bar" id="itin-search-bar">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--orange)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input class="itin-search-input" id="itin-search-input" type="text" placeholder="Chercher un arrêt ou quartier…" autocomplete="off" maxlength="60">
+            <button class="itin-search-clear" id="itin-search-clear" aria-label="Effacer">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
           </div>
-          <div class="itin-chips" id="itin-chips">
-            <button class="itin-chip" data-from="Plateau" data-to="Yoff">Plateau → Yoff</button>
-            <button class="itin-chip" data-from="Liberté 5" data-to="Sandaga">Liberté 5 → Sandaga</button>
-            <button class="itin-chip" data-from="Parcelles" data-to="Université">Parcelles → Université</button>
-            <button class="itin-chip" data-from="HLM" data-to="Gare routière">HLM → Gare</button>
-          </div>
+
+          <!-- Résultats injectés par JS -->
+          <div id="itin-search-results-wrap"></div>
 
         </div>
       </div>
 
+      <!-- FAB -->
       <div class="xfab-pulse" id="xfab-pulse"></div>
       <button class="xfab-btn" id="xfab-btn" aria-label="Parler à Xëtu">
         <svg id="xfab-icon-chat" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"/></svg>
         <svg id="xfab-icon-close" width="22" height="22" viewBox="0 0 24 24" fill="currentColor" style="display:none;position:absolute;"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
       </button>
 
+      <!-- Chat widget -->
       <div class="xchat-widget" id="xchat-widget">
         <div class="xchat-header">
           <div class="xchat-avatar">
@@ -452,7 +505,10 @@
           </div>
           <div class="xchat-header-info">
             <div class="xchat-name">Xëtu</div>
-            <div class="xchat-status"><span class="xchat-dot"></span><span>Mi ngi ci biir</span></div>
+            <div class="xchat-status xchat-status--offline" id="xchat-status-bar">
+              <span class="xchat-dot-offline" id="xchat-status-dot"></span>
+              <span id="xchat-status-txt">Connexion…</span>
+            </div>
           </div>
           <button class="xchat-close-btn" id="xchat-close-btn" aria-label="Fermer">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -548,29 +604,13 @@
   document.addEventListener('DOMContentLoaded', _initMenuQR);
 </script>
 
-<!--
-  ══════════════════════════════════════════════════════════════
-  IIFE Itinéraire + FAB chat — V8.3 FIX
-  ──────────────────────────────────────────────────────────────
-  Au clic sur un champ :
-    1. Le texte placeholder disparaît
-    2. Un <input> apparaît à la place → l'utilisateur tape
-    3. Les suggestions se filtrent en temps réel (min 2 chars)
-    4. Au pick, l'input disparaît et le texte revient
-  ══════════════════════════════════════════════════════════════
--->
 <script>
 (function () {
   'use strict';
 
-  var STOPS = [
-    'Liberté 5','Liberté 6','Plateau','Sandaga','Yoff','Parcelles',
-    'HLM','Gare routière','Université','Grand Yoff','Guédiawaye',
-    'Pikine','Thiaroye','Médina','Colobane','Fann','Point E',
-    'Mermoz','Sacré-Cœur','Ouakam','Petersen','Leclerc','Rufisque',
-    'Keur Massar','Malika',"Patte d'Oie",'Dieuppeul',
-    'Parcelles Assainies','Gare de Dakar',"Place de l'Indépendance"
-  ];
+  /* ══ Config ══ */
+  var API_BASE = '';  // même origine — Railway sert backend + frontend
+  var API_TIMEOUT_MS = 4000;
 
   var ROUTES = {
     'Liberté 5→Sandaga':    { bus:'Bus 15', stop:'Pompiers',      ride:8,  walk:3 },
@@ -585,271 +625,475 @@
     'Comment aller à Sandaga ?': '🚌 Bus 15 depuis Liberté 5 → Pompiers (8 min)\n🚶 Marche 3 min → Sandaga\nDurée : ~11 min'
   };
 
-  var _from = '', _to = '', _field = null, _chatOpen = false;
-  var _activeInput = null; // référence vers l'input inline actif
+  /* ══ State ══ */
+  var _from = '', _chatOpen = false;
+  var _stopIndex = null;      // fallback local JSON
+  var _searchTab = 'arrets';
+  var _userLat = null, _userLon = null;
+  var _searchDebounce = null;
+  var _lignesInfo = {};       // num → {nom, terminus_a, terminus_b} (fallback)
 
   function $(id) { return document.getElementById(id); }
 
-  /* ── Autocomplete ── */
-  function suggest(q) {
-    if (!q || q.length < 2) return [];
-    var ql = q.toLowerCase();
-    return STOPS.filter(function(s){ return s.toLowerCase().indexOf(ql) !== -1; }).slice(0,6);
+  /* ══ GPS silencieux ══ */
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(function(p) {
+      _userLat = p.coords.latitude;
+      _userLon = p.coords.longitude;
+    }, function(){}, { enableHighAccuracy:false, timeout:5000, maximumAge:60000 });
   }
 
-  function hl(s, q) {
-    var i = s.toLowerCase().indexOf(q.toLowerCase());
-    if (i < 0) return s;
-    return s.slice(0,i)+'<span class="itin-suggest-match">'+s.slice(i,i+q.length)+'</span>'+s.slice(i+q.length);
+  function _haversine(a,b,c,d) {
+    var R=6371000, p=Math.PI/180;
+    var x=Math.sin((c-a)*p/2)**2+Math.cos(a*p)*Math.cos(c*p)*Math.sin((d-b)*p/2)**2;
+    return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+  }
+  function _norm(s) {
+    return String(s).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[-'.]/g,' ').trim();
+  }
+  function _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function _fmtDist(m) {
+    if (m === null || m === undefined) return '';
+    return m < 1000 ? '~'+m+' m' : '~'+(m/1000).toFixed(1)+' km';
+  }
+  function _fmtMin(n) {
+    if (n === null || n === undefined) return '';
+    if (n === 0) return 'à l\'instant';
+    return 'il y a '+n+' min';
   }
 
-  function renderSug(q) {
-    var items = suggest(q || '');
-    var wrap = $('itin-suggest-wrap');
-    if (!items.length) { wrap.hidden = true; return; }
-    $('itin-suggest-list').innerHTML = items.map(function(s){
-      return '<div class="itin-suggest-item" data-val="'+s+'"><div class="itin-suggest-dot"></div><span>'+hl(s,q)+'</span></div>';
-    }).join('');
-    $('itin-suggest-list').querySelectorAll('.itin-suggest-item').forEach(function(el){
-      el.addEventListener('click', function(e){
-        e.stopPropagation();
-        e.stopImmediatePropagation();
-        pick(el.dataset.val);
-      });
-    });
-    wrap.hidden = false;
-  }
-
-  /* ── Inline input : remplace le texte par un champ de saisie ── */
-  function showInlineInput(fieldId, textId, placeholder) {
-    var fieldEl = $(fieldId);
-    var textEl  = $(textId);
-
-    // Cacher le texte
-    textEl.style.display = 'none';
-
-    // Créer l'input s'il n'existe pas déjà
-    var input = fieldEl.querySelector('.itin-field-input');
-    if (!input) {
-      input = document.createElement('input');
-      input.type = 'text';
-      input.className = 'itin-field-input';
-      input.autocomplete = 'off';
-      input.maxLength = 80;
-      // Insérer avant le swap button (ou à la fin)
-      var swap = fieldEl.querySelector('.itin-swap-btn');
-      if (swap) fieldEl.insertBefore(input, swap);
-      else fieldEl.appendChild(input);
+  /* ══ Appel API backend avec fallback ══ */
+  async function _apiSearchStops(q) {
+    var url = API_BASE+'/api/stops/search?q='+encodeURIComponent(q);
+    if (_userLat !== null) url += '&lat='+_userLat+'&lon='+_userLon;
+    var ctrl = new AbortController();
+    var timer = setTimeout(function(){ ctrl.abort(); }, API_TIMEOUT_MS);
+    try {
+      var r = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!r.ok) throw new Error('HTTP '+r.status);
+      var data = await r.json();
+      return { source: 'api', stops: data.stops || [], total: data.total || 0 };
+    } catch(e) {
+      clearTimeout(timer);
+      return null; // → fallback JSON local
     }
+  }
 
-    input.placeholder = placeholder;
-    input.value = '';
-    input.style.display = '';
-    _activeInput = input;
+  /* ══ Fallback : chargement JSON arrêts local ══ */
+  async function _loadStopsLocal() {
+    if (_stopIndex) return _stopIndex;
+    var paths = [
+      '/data/routes_geometry_v13_fixed2.json',
+      './data/routes_geometry_v13_fixed2.json',
+      '/routes_geometry_v13_fixed2.json'
+    ];
+    for (var i=0;i<paths.length;i++) {
+      try {
+        var r = await fetch(paths[i]);
+        if (!r.ok) continue;
+        var j = await r.json();
+        var lignes = j.lignes || j;
+        var stops = {};
+        Object.keys(lignes).forEach(function(num) {
+          var d = lignes[num];
+          _lignesInfo[num] = { nom:d.nom||('Ligne '+num), terminus_a:d.terminus_a||'', terminus_b:d.terminus_b||'' };
+          (d.arrets||[]).forEach(function(a) {
+            var nom=(a.nom||'').trim(); if (!nom) return;
+            if (!stops[nom]) stops[nom]={lignes:[],lat:a.lat,lon:a.lon};
+            if (stops[nom].lignes.indexOf(num)<0) stops[nom].lignes.push(num);
+          });
+        });
+        _stopIndex = { stops:stops };
+        return _stopIndex;
+      } catch(e) { continue; }
+    }
+    _stopIndex = { stops:{} };
+    return _stopIndex;
+  }
 
-    // Focus après un micro-délai (mobile keyboard)
-    setTimeout(function(){ input.focus(); }, 50);
-
-    // Écouter la frappe
-    input.addEventListener('input', function() {
-      renderSug(input.value);
+  /* Convertit le format JSON local → format API pour rendu unifié */
+  function _localToApiFormat(stopsRes, recentLines) {
+    return stopsRes.map(function(r) {
+      return {
+        nom: r.nom,
+        lat: r.lat,
+        lon: r.lon,
+        distance_m: r.dist,
+        lignes: r.lignes.map(function(l) {
+          var isRecent = recentLines.indexOf(l) >= 0;
+          return { numero: l, has_recent: isRecent, last_seen_min: isRecent ? null : null };
+        })
+      };
     });
+  }
 
-    // Entrée = prendre la première suggestion
-    input.addEventListener('keydown', function(e) {
-      if (e.key === 'Enter') {
-        var first = $('itin-suggest-list')?.querySelector('.itin-suggest-item');
-        if (first) pick(first.dataset.val);
+  function _searchStopsLocal(q, stops) {
+    var qn=_norm(q), res=[];
+    Object.keys(stops).forEach(function(nom) {
+      if (_norm(nom).indexOf(qn)>=0) {
+        var info=stops[nom];
+        var dist=(_userLat&&info.lat)?Math.round(_haversine(_userLat,_userLon,info.lat,info.lon)):null;
+        res.push({nom:nom,lignes:info.lignes,lat:info.lat,lon:info.lon,dist:dist});
       }
     });
-
-    // Empêcher la propagation pour que le document listener ne ferme pas
-    input.addEventListener('click', function(e) {
-      e.stopPropagation();
-      e.stopImmediatePropagation();
-    }, true);
-  }
-
-  function hideInlineInput(fieldId, textId) {
-    var fieldEl = $(fieldId);
-    var textEl  = $(textId);
-    var input   = fieldEl.querySelector('.itin-field-input');
-    if (input) {
-      input.remove();
-    }
-    textEl.style.display = '';
-    _activeInput = null;
-  }
-
-  function activateField(f) {
-    _field = f;
-    $('itin-field-from').classList.toggle('itin-field--active', f==='from');
-    $('itin-field-to').classList.toggle('itin-field--active', f==='to');
-
-    // Fermer l'input de l'autre champ
-    if (f === 'from') {
-      hideInlineInput('itin-field-to', 'itin-to-text');
-      showInlineInput('itin-field-from', 'itin-from-text', 'Tape ton quartier…');
-    } else {
-      hideInlineInput('itin-field-from', 'itin-from-text');
-      showInlineInput('itin-field-to', 'itin-to-text', 'Tape ta destination…');
-    }
-  }
-
-  function deactivate() {
-    _field = null;
-    $('itin-suggest-wrap').hidden = true;
-    $('itin-field-from').classList.remove('itin-field--active');
-    $('itin-field-to').classList.remove('itin-field--active');
-    hideInlineInput('itin-field-from', 'itin-from-text');
-    hideInlineInput('itin-field-to', 'itin-to-text');
-  }
-
-  function pick(val) {
-    if (_field === 'from') {
-      _from = val;
-      hideInlineInput('itin-field-from', 'itin-from-text');
-      $('itin-from-text').textContent = val;
-      $('itin-from-text').classList.add('itin-filled');
-      $('itin-suggest-wrap').hidden = true;
-      $('itin-field-from').classList.remove('itin-field--active');
-      updateBtn();
-      setTimeout(function(){ activateField('to'); }, 150);
-    } else {
-      _to = val;
-      hideInlineInput('itin-field-to', 'itin-to-text');
-      $('itin-to-text').textContent = val;
-      $('itin-to-text').classList.add('itin-filled');
-      $('itin-suggest-wrap').hidden = true;
-      $('itin-field-to').classList.remove('itin-field--active');
-      _field = null;
-      updateBtn();
-    }
-  }
-
-  /* ── Listeners champs (capture phase) ── */
-  $('itin-field-from').addEventListener('click', function(e){
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    activateField('from');
-  }, true);
-
-  $('itin-field-to').addEventListener('click', function(e){
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    if (!_from) { activateField('from'); return; }
-    activateField('to');
-  }, true);
-
-  /* Fermer : bubble phase */
-  document.addEventListener('click', function(e){
-    if (!e.target.closest('#itin-form-card') && !e.target.closest('#itin-suggest-wrap')) {
-      deactivate();
-    }
-  }, false);
-
-  /* ── Swap ── */
-  $('itin-swap-btn').addEventListener('click', function(e){
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-    deactivate();
-    var t=_from; _from=_to; _to=t;
-    $('itin-from-text').textContent = _from || "D'où tu pars ?";
-    $('itin-to-text').textContent   = _to   || 'Où tu vas ?';
-    $('itin-from-text').classList.toggle('itin-filled', !!_from);
-    $('itin-to-text').classList.toggle('itin-filled', !!_to);
-    updateBtn();
-  }, true);
-
-  /* ── Chips ── */
-  document.querySelectorAll('.itin-chip').forEach(function(c){
-    c.addEventListener('click', function(){
-      deactivate();
-      _from=c.dataset.from; _to=c.dataset.to;
-      $('itin-from-text').textContent=_from; $('itin-from-text').classList.add('itin-filled');
-      $('itin-to-text').textContent=_to;     $('itin-to-text').classList.add('itin-filled');
-      updateBtn(); setTimeout(calc, 250);
+    res.sort(function(a,b){
+      if (a.dist!==null&&b.dist!==null) return a.dist-b.dist;
+      if (a.dist!==null) return -1; if (b.dist!==null) return 1;
+      return a.nom.localeCompare(b.nom);
     });
-  });
-
-  /* ── Calcul ── */
-  function updateBtn(){ $('itin-go-btn').disabled = !(_from && _to); }
-
-  $('itin-go-btn').addEventListener('click', calc);
-
-  function calc(){
-    if (!_from||!_to) return;
-    deactivate();
-    var r = ROUTES[_from+'→'+_to] || {bus:'Bus 15',stop:'Centre ville',ride:15,walk:5};
-    $('itin-res-from').textContent    = _from;
-    $('itin-res-to').textContent      = _to;
-    $('itin-res-bus').textContent     = r.bus+' depuis '+_from;
-    $('itin-res-bus-sub').textContent = "jusqu'à "+r.stop+' · '+r.ride+' min';
-    $('itin-res-walk').textContent    = 'Marche '+r.walk+' min depuis '+r.stop;
-    $('itin-res-duration').textContent= '~'+(r.ride+r.walk)+' min';
-    $('itin-form-card').style.display ='none';
-    $('itin-sep').style.display       ='none';
-    $('itin-chips').style.display     ='none';
-    $('itin-result-card').hidden      = false;
+    return res.slice(0,12);
   }
 
-  $('itin-reset-btn').addEventListener('click', function(){
-    _from=''; _to='';
-    $('itin-from-text').textContent="D'où tu pars ?"; $('itin-from-text').classList.remove('itin-filled');
-    $('itin-to-text').textContent='Où tu vas ?';      $('itin-to-text').classList.remove('itin-filled');
-    $('itin-result-card').hidden      = true;
-    $('itin-form-card').style.display ='';
-    $('itin-sep').style.display       ='';
-    $('itin-chips').style.display     ='';
-    updateBtn();
+  function _searchLignesLocal(q) {
+    var qn=_norm(q), res=[];
+    Object.keys(_lignesInfo).forEach(function(num) {
+      var info=_lignesInfo[num];
+      if (_norm(num).indexOf(qn)>=0||_norm(info.nom).indexOf(qn)>=0||
+          _norm(info.terminus_a).indexOf(qn)>=0||_norm(info.terminus_b).indexOf(qn)>=0) {
+        res.push({num:num,info:info});
+      }
+    });
+    res.sort(function(a,b){
+      var na=parseFloat(a.num),nb=parseFloat(b.num);
+      if (!isNaN(na)&&!isNaN(nb)) return na-nb;
+      return a.num.localeCompare(b.num);
+    });
+    return res.slice(0,10);
+  }
+
+  function _getRecentLines() {
+    try { return (window._xetuStore&&window._xetuStore.get('buses')||[]).map(function(b){return String(b.ligne||b.line||'');}); }
+    catch(e) { return []; }
+  }
+
+  function _setSearchActive(active) {
+    var fab=$('xfab-btn'), pulse=$('xfab-pulse');
+    if (active) { fab&&fab.classList.add('xfab-hidden'); pulse&&pulse.classList.add('xfab-hidden'); }
+    else { fab&&fab.classList.remove('xfab-hidden'); pulse&&pulse.classList.remove('xfab-hidden'); }
+  }
+
+  /* ══ Calcul itinéraire ══ */
+  function _calcFromTo(from, to) {
+    var r = ROUTES[from+'→'+to] || { bus:'Bus 15', stop:'Centre ville', ride:15, walk:5 };
+    $('itin-res-from').textContent = from;
+    $('itin-res-to').textContent = to;
+    $('itin-res-bus').textContent = r.bus+' depuis '+from;
+    $('itin-res-bus-sub').textContent = "jusqu'à "+r.stop+' · '+r.ride+' min';
+    $('itin-res-walk').textContent = 'Marche '+r.walk+' min depuis '+r.stop;
+    $('itin-res-duration').textContent = '~'+(r.ride+r.walk)+' min';
+    $('itin-result-card').hidden = false;
+    $('itin-search-results-wrap').innerHTML = '';
+    $('itin-search-input').value = '';
+    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
+    $('itin-search-clear').classList.remove('visible');
+    _setSearchActive(false);
+    _from = '';
+    $('itin-body-wrap').scrollTop = 0;
+  }
+
+  /* ══ Render HTML des cartes arrêts (format API unifié) ══ */
+  function _renderStopCards(stopsData, q) {
+    if (!stopsData.length) return '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucun arrêt pour « '+_esc(q)+' »</div></div>';
+
+    var html = '';
+
+    /* Bandeau départ sélectionné */
+    if (_from) {
+      html += '<div style="padding:2px 0 4px">';
+      html += '<div class="itin-from-chip"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="4"/></svg>';
+      html += _esc(_from)+'<span class="itin-from-chip-x" id="itin-clear-from">×</span></div>';
+      html += '<div style="font-size:11px;color:var(--muted);margin-top:4px">Choisis ta destination</div></div>';
+    }
+
+    /* Légende */
+    html += '<div class="itin-search-legend">';
+    html += '<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--green);box-shadow:0 0 0 2px rgba(0,214,127,0.2)"></div>Bus signalé récemment</div>';
+    html += '<div class="itin-legend-item"><div class="itin-legend-dot" style="background:var(--orange)"></div>Arrêt normal</div>';
+    html += '</div>';
+
+    html += '<div class="itin-search-count">'+stopsData.length+' arrêt'+(stopsData.length>1?'s':'')+' pour « '+_esc(q)+' »</div>';
+    html += '<div class="itin-search-results">';
+
+    stopsData.forEach(function(stop) {
+      var hasSig = stop.lignes.some(function(l){ return l.has_recent; });
+      html += '<div class="itin-arret-card'+(hasSig?' itin-arret-card--signale':'')+'">';
+
+      /* En-tête */
+      html += '<div class="itin-arret-head">';
+      html += '<div class="itin-arret-dot'+(hasSig?' itin-arret-dot--signale':'')+'"></div>';
+      html += '<div class="itin-arret-name">'+_esc(stop.nom)+'</div>';
+      if (stop.distance_m !== null && stop.distance_m !== undefined) {
+        html += '<div class="itin-arret-dist">'+_fmtDist(stop.distance_m)+'</div>';
+      }
+      html += '</div>';
+
+      /* Badges lignes */
+      html += '<div class="itin-arret-lines">';
+      stop.lignes.forEach(function(l) {
+        if (l.has_recent) {
+          /* Badge vert avec "Bus X · il y a N min" */
+          html += '<div class="itin-line-badge-sig" data-stop="'+_esc(stop.nom)+'" data-ligne="'+_esc(l.numero)+'">';
+          html += '<span class="itin-line-badge-sig-dot"></span>';
+          html += 'Bus '+_esc(l.numero);
+          if (l.last_seen_min !== null) html += ' · '+_fmtMin(l.last_seen_min);
+          html += '</div>';
+        } else {
+          /* Badge orange compact */
+          html += '<div class="itin-line-badge-norm" data-stop="'+_esc(stop.nom)+'" data-ligne="'+_esc(l.numero)+'">';
+          html += _esc(l.numero);
+          html += '</div>';
+        }
+      });
+      html += '</div>';
+
+      /* Footer */
+      html += '<div class="itin-arret-sep"></div>';
+      html += '<div class="itin-arret-footer">';
+      html += '<div class="itin-arret-footer-txt">'+(stop.lignes.length>=2?'Arrêt multi-lignes':'Arrêt intermédiaire')+'</div>';
+      if (_from) {
+        html += '<button class="itin-arret-action itin-arret-dest" data-to="'+_esc(stop.nom)+'">→ Aller ici</button>';
+      } else {
+        html += '<button class="itin-arret-action itin-arret-from" data-from="'+_esc(stop.nom)+'">';
+        html += 'Voir sur la carte <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></button>';
+      }
+      html += '</div></div>';
+    });
+
+    html += '</div>';
+    return html;
+  }
+
+  /* ══ Render résultats (appel API + fallback) ══ */
+  function _renderResults(q) {
+    var wrap = $('itin-search-results-wrap');
+    if (!q || q.length < 2) { wrap.innerHTML = ''; return; }
+
+    wrap.innerHTML = '<div class="itin-search-empty"><div class="itin-search-empty-icon">⏳</div><div class="itin-search-empty-txt">Recherche…</div></div>';
+
+    /* Tab HTML sera reconstruit après résultats */
+    var renderWithData = function(stopsData, lignesData) {
+      var html = '';
+
+      /* Tabs */
+      html += '<div class="itin-search-tabs">';
+      html += '<button class="itin-search-tab'+(_searchTab==='arrets'?' active':'')+'" data-tab="arrets">Arrêts ('+stopsData.length+')</button>';
+      html += '<button class="itin-search-tab'+(_searchTab==='lignes'?' active':'')+'" data-tab="lignes">Lignes ('+lignesData.length+')</button>';
+      html += '</div>';
+
+      if (_searchTab === 'arrets') {
+        html += _renderStopCards(stopsData, q);
+      } else {
+        /* Tab lignes (fallback local uniquement, pas besoin d'API) */
+        if (!lignesData.length) {
+          html += '<div class="itin-search-empty"><div class="itin-search-empty-icon">🔍</div><div class="itin-search-empty-txt">Aucune ligne pour « '+_esc(q)+' »</div></div>';
+        } else {
+          html += '<div class="itin-search-count">'+lignesData.length+' ligne'+(lignesData.length>1?'s':'')+' trouvée'+(lignesData.length>1?'s':'')+'</div>';
+          html += '<div class="itin-search-results">';
+          lignesData.forEach(function(item) {
+            html += '<div class="itin-ligne-card" data-ligne="'+_esc(item.num)+'">';
+            html += '<div class="itin-ligne-badge-num">'+_esc(item.num)+'</div>';
+            html += '<div class="itin-ligne-info"><div class="itin-ligne-nom">'+_esc(item.info.nom)+'</div>';
+            html += '<div class="itin-ligne-sub">'+_esc(item.info.terminus_a)+' ↔ '+_esc(item.info.terminus_b)+'</div></div>';
+            html += '</div>';
+          });
+          html += '</div>';
+        }
+      }
+
+      wrap.innerHTML = html;
+      _attachTabEvents();
+      _attachResultEvents();
+    };
+
+    /* Essaye l'API, fallback sur JSON local si timeout/erreur */
+    _apiSearchStops(q).then(function(apiResult) {
+      if (apiResult) {
+        /* API OK — lignes depuis fallback local pour le tab Lignes */
+        _loadStopsLocal().then(function() {
+          var lignesData = _searchLignesLocal(q);
+          renderWithData(apiResult.stops, lignesData);
+        });
+      } else {
+        /* Fallback local */
+        _loadStopsLocal().then(function(data) {
+          var recentLines = _getRecentLines();
+          var stopsLocal = _searchStopsLocal(q, data.stops);
+          var stopsData = _localToApiFormat(stopsLocal, recentLines);
+          var lignesData = _searchLignesLocal(q);
+          renderWithData(stopsData, lignesData);
+        });
+      }
+    });
+  }
+
+  function _attachTabEvents() {
+    document.querySelectorAll('.itin-search-tab').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        _searchTab = btn.dataset.tab;
+        _renderResults($('itin-search-input').value.trim());
+      });
+    });
+  }
+
+  function _attachResultEvents() {
+    /* Effacer départ */
+    var clearFrom = document.getElementById('itin-clear-from');
+    if (clearFrom) clearFrom.addEventListener('click', function(e) {
+      e.stopPropagation();
+      _from = '';
+      $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
+      _renderResults($('itin-search-input').value.trim());
+    });
+
+    /* "Voir sur la carte / Partir d'ici" → mémorise départ */
+    document.querySelectorAll('.itin-arret-from').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        _from = btn.dataset.from;
+        $('itin-search-input').value = '';
+        $('itin-search-input').placeholder = 'Destination depuis '+_from+' ?';
+        $('itin-search-clear').classList.remove('visible');
+        $('itin-search-results-wrap').innerHTML = '';
+        $('itin-search-input').focus();
+      });
+    });
+
+    /* "→ Aller ici" → calcule le trajet */
+    document.querySelectorAll('.itin-arret-dest').forEach(function(btn) {
+      btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        _calcFromTo(_from, btn.dataset.to);
+      });
+    });
+
+    /* Clic sur badge ligne (vert ou orange) → sélectionne comme départ */
+    document.querySelectorAll('.itin-line-badge-sig, .itin-line-badge-norm').forEach(function(b) {
+      b.addEventListener('click', function(e) {
+        e.stopPropagation();
+        if (!_from && b.dataset.stop) {
+          _from = b.dataset.stop;
+          $('itin-search-input').value = '';
+          $('itin-search-input').placeholder = 'Destination depuis '+_from+' ?';
+          $('itin-search-clear').classList.remove('visible');
+          $('itin-search-results-wrap').innerHTML = '';
+          $('itin-search-input').focus();
+        }
+      });
+    });
+
+    /* Ligne card → filtre arrêts de cette ligne */
+    document.querySelectorAll('.itin-ligne-card').forEach(function(card) {
+      card.addEventListener('click', function() {
+        _searchTab = 'arrets';
+        $('itin-search-input').value = card.dataset.ligne;
+        $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
+        $('itin-search-clear').classList.add('visible');
+        _setSearchActive(true);
+        _renderResults(card.dataset.ligne);
+      });
+    });
+  }
+
+  /* ══ Events recherche ══ */
+  $('itin-search-input').addEventListener('input', function() {
+    var q = this.value.trim();
+    $('itin-search-clear').classList.toggle('visible', q.length > 0);
+    _setSearchActive(q.length > 0 || !!_from);
+    clearTimeout(_searchDebounce);
+    if (!q) { $('itin-search-results-wrap').innerHTML = ''; return; }
+    _searchDebounce = setTimeout(function(){ _renderResults(q); }, 280);
+  });
+  $('itin-search-input').addEventListener('focus', function() {
+    var q = this.value.trim();
+    if (q.length >= 2) _renderResults(q);
+  });
+  $('itin-search-clear').addEventListener('click', function() {
+    $('itin-search-input').value = '';
+    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
+    this.classList.remove('visible');
+    $('itin-search-results-wrap').innerHTML = '';
+    _from = '';
+    _setSearchActive(false);
+    $('itin-search-input').focus();
   });
 
-  /* ── FAB + Chat ── */
+  /* ══ Reset résultat ══ */
+  $('itin-reset-btn').addEventListener('click', function() {
+    $('itin-result-card').hidden = true;
+    _from = '';
+    $('itin-search-input').value = '';
+    $('itin-search-input').placeholder = 'Chercher un arrêt ou quartier…';
+    $('itin-search-results-wrap').innerHTML = '';
+    $('itin-search-clear').classList.remove('visible');
+    _setSearchActive(false);
+  });
+
+  /* ══ Statut WS ══ */
+  function _updateChatStatus(st) {
+    var bar=$('xchat-status-bar'),txt=$('xchat-status-txt'),dot=$('xchat-status-dot');
+    if (!bar) return;
+    if (st==='open') {
+      bar.className='xchat-status xchat-status--online';
+      dot.className='xchat-dot-online'; txt.textContent='Mi ngi ci biir';
+    } else if (st==='connecting') {
+      bar.className='xchat-status xchat-status--offline';
+      dot.className='xchat-dot-offline'; txt.textContent='Connexion…';
+    } else {
+      bar.className='xchat-status xchat-status--offline';
+      dot.className='xchat-dot-offline'; txt.textContent='Hors ligne';
+    }
+  }
+  setInterval(function(){
+    try{ var st=window._xetuStore&&window._xetuStore.get&&window._xetuStore.get('wsStatus'); if(st)_updateChatStatus(st); }catch(e){}
+  },3000);
+
+  /* ══ FAB + Chat ══ */
   function openChat(){
     _chatOpen=true;
     $('xchat-widget').classList.add('xchat-open');
-    $('xfab-pulse').style.display     ='none';
-    $('xfab-icon-chat').style.display ='none';
+    $('xfab-pulse').style.display='none';
+    $('xfab-icon-chat').style.display='none';
     $('xfab-icon-close').style.display='';
-    setTimeout(function(){ $('xchat-input').focus(); },280);
+    setTimeout(function(){$('xchat-input').focus();},280);
   }
   function closeChat(){
     _chatOpen=false;
     $('xchat-widget').classList.remove('xchat-open');
-    $('xfab-pulse').style.display     ='';
-    $('xfab-icon-chat').style.display ='';
+    $('xfab-icon-chat').style.display='';
     $('xfab-icon-close').style.display='none';
+    if (!$('itin-search-input').value.trim()) $('xfab-pulse').style.display='';
   }
-
-  $('xfab-btn').addEventListener('click', function(){ _chatOpen ? closeChat() : openChat(); });
-  $('xchat-close-btn').addEventListener('click', closeChat);
+  $('xfab-btn').addEventListener('click',function(){_chatOpen?closeChat():openChat();});
+  $('xchat-close-btn').addEventListener('click',closeChat);
 
   function addMsg(text,role){
-    var w=document.createElement('div'); w.className='xchat-msg xchat-msg--'+role;
-    var b=document.createElement('div'); b.className='xchat-bubble';
+    var w=document.createElement('div');w.className='xchat-msg xchat-msg--'+role;
+    var b=document.createElement('div');b.className='xchat-bubble';
     b.innerHTML=text.replace(/\n/g,'<br>');
-    w.appendChild(b); $('xchat-messages').appendChild(w);
+    w.appendChild(b);$('xchat-messages').appendChild(w);
     $('xchat-messages').scrollTop=$('xchat-messages').scrollHeight;
   }
   function showTyping(){
-    var el=document.createElement('div'); el.className='xchat-msg xchat-msg--bot'; el.id='xchat-typing-el';
+    var el=document.createElement('div');el.className='xchat-msg xchat-msg--bot';el.id='xchat-typing-el';
     el.innerHTML='<div class="xchat-bubble xchat-typing"><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span><span class="xchat-typing-dot"></span></div>';
-    $('xchat-messages').appendChild(el); $('xchat-messages').scrollTop=$('xchat-messages').scrollHeight;
+    $('xchat-messages').appendChild(el);$('xchat-messages').scrollTop=$('xchat-messages').scrollHeight;
   }
-  function hideTyping(){ var el=$('xchat-typing-el'); if(el) el.remove(); }
-
+  function hideTyping(){var el=$('xchat-typing-el');if(el)el.remove();}
   function sendChat(text){
-    if(!text.trim()) return;
-    addMsg(text,'user'); $('xchat-input').value='';
+    if (!text.trim()) return;
+    addMsg(text,'user');$('xchat-input').value='';
     $('xchat-chips-bar').style.display='none';
     showTyping();
-    setTimeout(function(){ hideTyping(); addMsg(DEMO[text]||'Message reçu ! 🚌 Je cherche pour toi.','bot'); },1100);
+    setTimeout(function(){hideTyping();addMsg(DEMO[text]||'Message reçu ! 🚌 Je cherche pour toi.','bot');},1100);
   }
-
-  $('xchat-send').addEventListener('click', function(){ sendChat($('xchat-input').value); });
-  $('xchat-input').addEventListener('keydown', function(e){ if(e.key==='Enter') sendChat($('xchat-input').value); });
+  $('xchat-send').addEventListener('click',function(){sendChat($('xchat-input').value);});
+  $('xchat-input').addEventListener('keydown',function(e){if(e.key==='Enter')sendChat($('xchat-input').value);});
   document.querySelectorAll('.xchat-chip').forEach(function(c){
-    c.addEventListener('click', function(){ sendChat(c.dataset.msg); });
+    c.addEventListener('click',function(){sendChat(c.dataset.msg);});
   });
 
 })();
