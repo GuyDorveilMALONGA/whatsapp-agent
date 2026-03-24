@@ -7,6 +7,7 @@
 import * as store   from './store.js';
 import * as Toast   from './toast.js';
 import * as Ws      from './ws.js';
+
 import { REFRESH_SEC, API_BASE } from './constants.js';
 import { fetchBuses, fetchLeaderboard } from './api.js';
 import { subscribeToPush, isPushSubscribed } from './push.js';
@@ -14,6 +15,9 @@ import { initHome }    from './home.js';
 import { initSignal, onScreenEnter as signalScreenEnter } from './signal.js';
 import { initChat }    from './chat.js';
 import { initMylines } from './mylines.js';
+import { initTheme } from './theme.js';
+
+
 
 const NAV_SCREENS = ['home', 'itin', 'mylines'];
 const _navBtns    = document.querySelectorAll('.nav-btn');
@@ -253,6 +257,7 @@ async function _loadData() {
 // ── Init ──────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
+   initTheme();
   _initMenu();
   _initPopups();
 

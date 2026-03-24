@@ -3,7 +3,7 @@
  * xetu-v6 : stratégie cache /api/buses pour mode offline démo
  */
 
-const CACHE_VERSION = 'xetu-v9';
+const CACHE_VERSION = 'xetu-v25';
 const CACHE_NAME    = CACHE_VERSION;
 const DATA_CACHE    = 'xetu-data-v1'; // cache données API — survit aux updates SW
 
@@ -31,6 +31,8 @@ const PRECACHE_URLS = [
   '/js/toast.js',
   '/js/constants.js',
   '/js/reader.js',
+  '/css/variables-light.css',
+  '/js/theme.js',
 ];
 
 // ── Install ───────────────────────────────────────────────
