@@ -1,26 +1,16 @@
 """
-core/network.py — V5.3
+core/network.py — V6.0
 Singleton JSON réseau Dem Dikk — source de vérité unique.
 
-MIGRATIONS V5.3 depuis V5.2 :
-  - FIX CRITIQUE : lecture JSON corrigée pour format v13_fixed2
-    Format réel : {"lignes": {"1": {...}, "4": {...}}} (dict keyed by numero)
-    Avant : cherchait "routes" puis "lignes" mais itérait comme si c'était
-    un format différent → NETWORK vide → 0 arrêts → aucun itinéraire trouvé
-    Maintenant : itère correctement sur dict lignes, lit "arrets"+"nom"
-  - _build_graph_data() : aliases_terrain lu depuis le bon endroit
-  - Cache pickle invalidé automatiquement (hash JSON change)
-
-MIGRATIONS V5.2 depuis V5.1 :
-  - Ajout get_unified_index() : index fusionné officiel + aliases terrain
-  - _ARRETS_INDEX étendu aux aliases_terrain au chargement
-
-MIGRATIONS V5.1 depuis V5.0 :
-  - Logs de diagnostic au démarrage pour Railway
-
-MIGRATIONS V5.0 depuis V4 :
-  - Source : routes_geometry_v4.json → routes_geometry_v13.json
-  - Adaptateur _build_graph_data() pour agent/graph.py
+MIGRATION V6.0 depuis V5.3 :
+  - Source : routes_geometry_v13_fixed2.json → xetu_network_v3.json
+  - Format V3 : {"arrets": {"ligne_1": [...]}, "lignes": {"ligne_1": {...}}, "hubs": [...], "quartiers": [...]}
+  - Clés V3 : "ligne_1" → NETWORK["1"], "ligne_16a" → NETWORK["16A"], "ligne_218a" → NETWORK["218A"]
+  - Arrêts V3 : lat/lng (pas lat/lon), noms[] (multi-noms), nom_principal, pas de travel_time
+  - _ARRETS_INDEX alimenté avec TOUS les noms[] de chaque arrêt (pas juste le premier)
+  - HUBS et QUARTIERS exposés en tant que données globales
+  - _build_graph_data() adapté : lng→lon, travel_time_to_next_sec=None (fallback 120s dans graph.py)
+  - get_unified_index() simplifié : noms[] remplace les aliases_terrain
 """
 
 import sys
@@ -43,6 +33,8 @@ _RAW: dict = {}
 _ARRETS_INDEX: dict[str, str] = {}
 _GRAPH_DATA: dict | None = None
 _UNIFIED_INDEX: dict[str, dict] | None = None
+HUBS: list[dict] = []
+QUARTIERS: list[dict] = []
 
 # ── Logs de diagnostic Railway ────────────────────────────
 logger.info(f"[Network] CWD       = {os.getcwd()}")
@@ -53,34 +45,98 @@ try:
 except Exception:
     pass
 
+# ─────────────────────────────────────────────────────────────
+# Chargement JSON — V6.0 format xetu_network_v3.json
+# ─────────────────────────────────────────────────────────────
+
+def _lid_to_num(lid: str) -> str:
+    """ligne_1 → 1, ligne_16a → 16A, ligne_218a → 218A"""
+    return lid.replace("ligne_", "").upper().strip()
+
+
+def _adapt_stop_v3(stop: dict) -> dict:
+    """Convertit un arrêt V3 au format attendu par le reste du code (lat/lon)."""
+    return {
+        "nom":  stop.get("nom_principal", stop.get("nom", "")),
+        "lat":  stop.get("lat"),
+        "lon":  stop.get("lng", stop.get("lon")),  # V3 = lng, legacy = lon
+        "noms": stop.get("noms", []),
+        "confiance_gps":  stop.get("confiance_gps", "haute"),
+        "confiance_nom":  stop.get("confiance_nom", "haute"),
+        "nom_quality":    stop.get("nom_quality", "lisible"),
+        "id":             stop.get("id", ""),
+        "ordre":          stop.get("ordre"),
+    }
+
+
 try:
     with open(JSON_PATH, "r", encoding="utf-8") as f:
         _RAW = json.load(f)
 
-    # Format v13_fixed2 : {"lignes": {"1": {...}, "4": {...}}}
-    # Format legacy     : {"routes": {"1": {...}}}
-    _lignes_raw = _RAW.get("lignes") or _RAW.get("routes", {})
+    _arrets_raw = _RAW.get("arrets", {})
+    _lignes_meta = _RAW.get("lignes", {})
 
-    for _line_id, _line in _lignes_raw.items():
-        num = str(_line_id).upper().strip()
-        if not num:
-            continue
-        NETWORK[num] = _line
+    # Détection du format
+    if _arrets_raw and isinstance(_arrets_raw, dict):
+        # ── Format V3 : xetu_network_v3.json ──
+        logger.info("[Network] Format V3 détecté (xetu_network_v3.json)")
 
-        # Arrêts officiels — JSON v13_fixed2 : "arrets" + "nom"
-        for stop in _line.get("arrets", _line.get("stops", [])):
-            nom = stop.get("nom", stop.get("name", ""))
-            if nom:
-                _ARRETS_INDEX[nom.lower()] = nom
+        for lid, arrets_list in _arrets_raw.items():
+            num = _lid_to_num(lid)
+            if not num:
+                continue
 
-        # Aliases terrain
-        for _alias in _line.get("aliases_terrain", []):
-            if _alias and _alias.lower() not in _ARRETS_INDEX:
-                _ARRETS_INDEX[_alias.lower()] = _alias
+            meta = _lignes_meta.get(lid, {})
+            adapted_stops = [_adapt_stop_v3(s) for s in arrets_list]
+
+            NETWORK[num] = {
+                "nom":        meta.get("nom_officiel", f"Ligne {num}"),
+                "categorie":  meta.get("type", ""),
+                "terminus_a": meta.get("terminus_depart", ""),
+                "terminus_b": meta.get("terminus_arrivee", ""),
+                "est_boucle": meta.get("est_boucle", False),
+                "arrets":     adapted_stops,
+            }
+
+            # Indexer TOUS les noms de chaque arrêt
+            for stop in arrets_list:
+                for nom in stop.get("noms", []):
+                    if nom and nom.lower() not in _ARRETS_INDEX:
+                        _ARRETS_INDEX[nom.lower()] = nom
+                # Aussi le nom_principal s'il n'est pas dans noms[]
+                np = stop.get("nom_principal", "")
+                if np and np.lower() not in _ARRETS_INDEX:
+                    _ARRETS_INDEX[np.lower()] = np
+
+        # Charger hubs et quartiers
+        HUBS = _RAW.get("hubs", [])
+        QUARTIERS = _RAW.get("quartiers", [])
+
+    else:
+        # ── Format legacy V13 : routes_geometry_v13_fixed2.json ──
+        logger.info("[Network] Format legacy V13 détecté")
+        _lignes_raw = _RAW.get("lignes") or _RAW.get("routes", {})
+
+        for _line_id, _line in _lignes_raw.items():
+            num = str(_line_id).upper().strip()
+            if not num:
+                continue
+            NETWORK[num] = _line
+
+            for stop in _line.get("arrets", _line.get("stops", [])):
+                nom = stop.get("nom", stop.get("name", ""))
+                if nom:
+                    _ARRETS_INDEX[nom.lower()] = nom
+
+            for _alias in _line.get("aliases_terrain", []):
+                if _alias and _alias.lower() not in _ARRETS_INDEX:
+                    _ARRETS_INDEX[_alias.lower()] = _alias
 
     logger.info(
         f"[Network] ✅ {len(NETWORK)} lignes · "
-        f"{len(_ARRETS_INDEX)} arrêts+aliases uniques chargés ({JSON_PATH})"
+        f"{len(_ARRETS_INDEX)} arrêts+noms uniques · "
+        f"{len(HUBS)} hubs · {len(QUARTIERS)} quartiers "
+        f"({JSON_PATH})"
     )
 
 except FileNotFoundError:
@@ -127,20 +183,29 @@ def _build_graph_data() -> dict:
         raw_stops = line.get("arrets", line.get("stops", []))
         for s in raw_stops:
             stops_compat.append({
-                "nom":                     s.get("nom",  s.get("name", "")),
+                "nom":                     s.get("nom", s.get("name", "")),
                 "lat":                     s.get("lat"),
                 "lon":                     s.get("lon"),
                 "travel_time_to_next_sec": s.get("temps_vers_suivant_sec",
-                                                   s.get("travel_time_to_next_sec")),
+                                                  s.get("travel_time_to_next_sec")),
+                "noms":                    s.get("noms", []),
             })
+
+        # Collecter tous les noms alternatifs comme aliases_terrain
+        aliases = []
+        for s in raw_stops:
+            for nom in s.get("noms", [])[1:]:  # skip le premier (= nom principal)
+                if nom:
+                    aliases.append(nom)
+
         lines_list.append({
             "number":          line_id,
-            "name":            line.get("nom",       line.get("name", "")),
+            "name":            line.get("nom", line.get("name", "")),
             "category":        line.get("categorie", line.get("category", line.get("service", ""))),
             "terminus_a":      line.get("terminus_a", ""),
             "terminus_b":      line.get("terminus_b", ""),
             "stops":           stops_compat,
-            "aliases_terrain": line.get("aliases_terrain", []),
+            "aliases_terrain": aliases,
         })
     return {"categories": {"all": lines_list}}
 
@@ -189,9 +254,31 @@ def ambiguous_lines(prefix: str) -> list[str]:
     return []
 
 
+def get_hubs() -> list[dict]:
+    return HUBS
+
+
+def get_quartiers() -> list[dict]:
+    return QUARTIERS
+
+
+def find_quartier(nom: str) -> dict | None:
+    """Trouve un quartier par nom (fuzzy)."""
+    nom_lower = nom.lower().strip()
+    for q in QUARTIERS:
+        if q["nom"].lower() == nom_lower:
+            return q
+    # Fuzzy
+    for q in QUARTIERS:
+        if nom_lower in q["nom"].lower() or q["nom"].lower() in nom_lower:
+            return q
+    return None
+
+
 def get_unified_index() -> dict[str, dict]:
     """
-    Index fusionné officiel + aliases terrain, lazy-loaded.
+    Index fusionné : tous les noms[] de chaque arrêt, lazy-loaded.
+    En V3 les noms[] remplacent les aliases_terrain.
     """
     global _UNIFIED_INDEX
     if _UNIFIED_INDEX is not None:
@@ -202,46 +289,36 @@ def get_unified_index() -> dict[str, dict]:
     for line_id, line in NETWORK.items():
         raw_stops = line.get("arrets", line.get("stops", []))
 
-        # 1. Arrêts officiels
         for stop in raw_stops:
+            lat = stop.get("lat")
+            lon = stop.get("lon")
+
+            # Indexer le nom principal
             nom = stop.get("nom", stop.get("name", ""))
-            if not nom:
-                continue
-            key = _normalize_key(nom)
-            if key not in index:
-                index[key] = {
-                    "nom_officiel": nom,
-                    "ligne":        line_id,
-                    "lat":          stop.get("lat"),
-                    "lon":          stop.get("lon"),
-                    "source":       "officiel",
-                }
+            if nom:
+                key = _normalize_key(nom)
+                if key not in index:
+                    index[key] = {
+                        "nom_officiel": nom,
+                        "ligne":        line_id,
+                        "lat":          lat,
+                        "lon":          lon,
+                        "source":       "officiel",
+                    }
 
-        # 2. Aliases terrain
-        for alias in line.get("aliases_terrain", []):
-            if not alias:
-                continue
-            key = _normalize_key(alias)
-            if key in index:
-                continue
-
-            matched = _find_best_official_stop(alias, raw_stops)
-            if matched:
-                nom_officiel = matched.get("nom", matched.get("name", alias))
-                lat = matched.get("lat")
-                lon = matched.get("lon")
-            else:
-                nom_officiel = alias
-                lat = None
-                lon = None
-
-            index[key] = {
-                "nom_officiel": nom_officiel,
-                "ligne":        line_id,
-                "lat":          lat,
-                "lon":          lon,
-                "source":       "terrain",
-            }
+            # Indexer tous les noms alternatifs (V3 noms[])
+            for alt_nom in stop.get("noms", [])[1:]:
+                if not alt_nom:
+                    continue
+                key = _normalize_key(alt_nom)
+                if key not in index:
+                    index[key] = {
+                        "nom_officiel": nom or alt_nom,
+                        "ligne":        line_id,
+                        "lat":          lat,
+                        "lon":          lon,
+                        "source":       "terrain",
+                    }
 
     _UNIFIED_INDEX = index
 

@@ -28,7 +28,7 @@ from services import telegram as telegram_service
 from services.websocket import handle_websocket
 from db import queries
 
-
+from api.stops import router as stops_router
 from agent.xetu_agent import run as xetu_run
 from agent.router import extract_qualites
 from agent.normalizer import normalize
@@ -125,6 +125,7 @@ app.include_router(report_router)
 app.include_router(push_router)
 app.include_router(tracking_router)
 app.include_router(subscriptions_router)
+app.include_router(stops_router)
 
 
 # ═══════════════════════════════════════════════════════════

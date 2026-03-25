@@ -630,15 +630,31 @@ async function _apiSearchStops(q){
 /* ══ Fallback JSON local ══ */
 async function _loadStopsLocal(){
   if(_stopIndex) return _stopIndex;
-  var paths=['/data/routes_geometry_v13_fixed2.json','./data/routes_geometry_v13_fixed2.json','/routes_geometry_v13_fixed2.json'];
+  var paths=['/data/xetu_network_v3.json','./data/xetu_network_v3.json','/xetu_network_v3.json'];
   for(var i=0;i<paths.length;i++){
     try{
       var r=await fetch(paths[i]);if(!r.ok)continue;
-      var j=await r.json();var lignes=j.lignes||j;var stops={};
-      Object.keys(lignes).forEach(function(num){
-        var d=lignes[num];
-        _lignesInfo[num]={nom:d.nom||('Ligne '+num),terminus_a:d.terminus_a||'',terminus_b:d.terminus_b||''};
-        (d.arrets||[]).forEach(function(a){var nom=(a.nom||'').trim();if(!nom)return;if(!stops[nom])stops[nom]={lignes:[],lat:a.lat,lon:a.lon};if(stops[nom].lignes.indexOf(num)<0)stops[nom].lignes.push(num);});
+      var j=await r.json();
+      var metaLignes=j.lignes||{};
+      var arretsData=j.arrets||j.lignes||j;
+      var stops={};
+      Object.keys(arretsData).forEach(function(lid){
+        var num=lid.replace('ligne_','').toUpperCase();
+        var meta=metaLignes[lid]||{};
+        _lignesInfo[num]={nom:meta.nom_officiel||('Ligne '+num),terminus_a:meta.terminus_depart||'',terminus_b:meta.terminus_arrivee||''};
+        var arrets=Array.isArray(arretsData[lid])?arretsData[lid]:[];
+        arrets.forEach(function(a){
+          var nom=(a.nom_principal||a.nom||'').trim();
+          if(!nom)return;
+          if(!stops[nom])stops[nom]={lignes:[],lat:a.lat,lon:a.lng||a.lon};
+          if(stops[nom].lignes.indexOf(num)<0)stops[nom].lignes.push(num);
+          (a.noms||[]).forEach(function(n){
+            if(n&&n!==nom){
+              if(!stops[n])stops[n]={lignes:[],lat:a.lat,lon:a.lng||a.lon};
+              if(stops[n].lignes.indexOf(num)<0)stops[n].lignes.push(num);
+            }
+          });
+        });
       });
       _stopIndex={stops:stops};return _stopIndex;
     }catch(e){continue;}

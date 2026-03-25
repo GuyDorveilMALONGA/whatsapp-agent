@@ -1,26 +1,22 @@
 /**
- * js/api.js — V1.2 App Passager
+ * js/api.js — V1.3 App Passager
  *
- * CHG-1 (FIX B1) : _mapBuses() calcule traceStartIdx
- *   Snap du point GPS du signalement (b.lat, b.lon) sur le segment
- *   le plus proche du tracé GTFS via projection orthogonale.
- *   home.js _startAnim() utilise bus.traceStartIdx ?? 0 comme point
- *   de départ — il était toujours undefined avant ce fix.
- *   Tracés GTFS L1 et L4 embarqués ici (même données que home.js,
- *   dupliqués pour éviter un import circulaire).
- *   Lignes sans tracé GTFS → traceStartIdx = 0 (comportement inchangé).
+ * MIGRATION V1.3 depuis V1.2 :
+ *   - routes_geometry_v13_fixed2.json → xetu_network_v3.json
+ *   - Format V3 : {"arrets": {"ligne_1": [...], ...}, "lignes": {"ligne_1": {...}}}
+ *   - Clés V3 "ligne_1" → "1", arrêts V3 lng → lon, nom_principal comme nom
  *
+ * CHG-1 (FIX B1) : _mapBuses() calcule traceStartIdx (inchangé)
  * V1.1 : routes_geometry_v13_fixed2.json (98 corrections + coupes boucles OSRM)
  */
 
 import { API_BASE, LIGNE_NAMES } from './constants.js';
 import { safeFetch } from './utils.js';
 
-// ── Cache routes v13 ──────────────────────────────────────
+// ── Cache routes ──────────────────────────────────────────
 let _routesCache = null;
 
 // ── Tracés GTFS L1 + L4 pour calcul traceStartIdx ────────
-// Dupliqués depuis home.js — à synchroniser si home.js change ses tracés.
 const _GTFS_TRACES = {
   '1': [
     [14.760337,-17.438687],[14.763941,-17.441183],[14.762826,-17.446516],
@@ -54,14 +50,6 @@ const _GTFS_TRACES = {
 
 /**
  * CHG-1 : Snap d'un point GPS sur le segment le plus proche d'un tracé.
- * Projection orthogonale sur chaque segment [a, b] — plus précis qu'un
- * simple plus proche voisin aux angles du tracé.
- * Distance euclidienne au carré (pas de sqrt — assez précis sur ~12km).
- *
- * @param {number} lat
- * @param {number} lon
- * @param {Array<[number, number]>} trace
- * @returns {number} index i tel que le point snappé est entre trace[i] et trace[i+1]
  */
 function _snapToTrace(lat, lon, trace) {
   if (!trace || trace.length < 2) return 0;
@@ -77,7 +65,6 @@ function _snapToTrace(lat, lon, trace) {
     const abLon   = blon - alon;
     const abLenSq = abLat * abLat + abLon * abLon;
 
-    // Paramètre t ∈ [0, 1] de la projection de (lat, lon) sur [a, b]
     let t = 0;
     if (abLenSq > 0) {
       t = ((lat - alat) * abLat + (lon - alon) * abLon) / abLenSq;
@@ -108,7 +95,6 @@ function _mapBuses(rawBuses) {
     .map(b => {
       if (!_busIdMap[b.ligne]) _busIdMap[b.ligne] = _busIdCounter++;
 
-      // CHG-1 : snap sur le tracé GTFS si disponible pour cette ligne
       const trace         = _GTFS_TRACES[String(b.ligne)];
       const traceStartIdx = trace
         ? _snapToTrace(b.lat, b.lon, trace)
@@ -136,18 +122,57 @@ function _mapLeaderboard(rawLb) {
   }));
 }
 
-// ── Routes v13 ────────────────────────────────────────────
+// ── Routes V3 ─────────────────────────────────────────────
+
+function _parseV3Routes(json) {
+  var raw = json.arrets || {};
+  var meta = json.lignes || {};
+  var routes = {};
+
+  Object.keys(raw).forEach(function(lid) {
+    var num = lid.replace('ligne_', '').toUpperCase();
+    var arrets = Array.isArray(raw[lid]) ? raw[lid] : [];
+    var m = meta[lid] || {};
+
+    routes[num] = {
+      nom:        m.nom_officiel || ('Ligne ' + num),
+      terminus_a: m.terminus_depart || '',
+      terminus_b: m.terminus_arrivee || '',
+      arrets: arrets.map(function(a) {
+        return {
+          nom: a.nom_principal || a.nom || '',
+          lat: a.lat,
+          lon: a.lng || a.lon,
+          noms: a.noms || [],
+        };
+      }),
+    };
+  });
+
+  return routes;
+}
+
+function _parseLegacyRoutes(json) {
+  return json.lignes || json.routes || {};
+}
 
 export async function loadRoutes() {
   if (_routesCache) return _routesCache;
   try {
-    const res = await fetch('./data/routes_geometry_v13_fixed2.json');
+    const res = await fetch('./data/xetu_network_v3.json');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const json = await res.json();
-    _routesCache = json.lignes || json.routes || {};
-    console.log(`[Api] routes_geometry_v13_fixed2 chargé — ${Object.keys(_routesCache).length} lignes`);
+
+    // Détection format V3 vs legacy
+    if (json.arrets && typeof json.arrets === 'object' && !Array.isArray(json.arrets)) {
+      _routesCache = _parseV3Routes(json);
+    } else {
+      _routesCache = _parseLegacyRoutes(json);
+    }
+
+    console.log(`[Api] Réseau chargé — ${Object.keys(_routesCache).length} lignes`);
   } catch (err) {
-    console.warn('[Api] Impossible de charger routes_geometry_v13_fixed2.json :', err.message);
+    console.warn('[Api] Impossible de charger xetu_network_v3.json :', err.message);
     _routesCache = {};
   }
   return _routesCache;

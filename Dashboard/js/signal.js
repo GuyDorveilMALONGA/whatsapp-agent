@@ -1,9 +1,11 @@
 /**
- * js/signal.js — V3.7
- * V3.7 : FIX _loadRoutes — wrapper j.lignes correct + fallback j
- *        FIX _loadArrets — résolution clé ligne robuste
- *        FIX _snapToStop — idem résolution clé
- *        Structure JSON : { lignes: { "1": { arrets: [{nom, lat, lon}] }, "4": {...} } }
+ * js/signal.js — V3.8
+ * MIGRATION V3.8 depuis V3.7 :
+ *   - routes_geometry_v13_fixed2.json → xetu_network_v3.json
+ *   - Format V3 : {"arrets": {"ligne_1": [...]}, "lignes": {"ligne_1": {...}}}
+ *   - Clés V3 "ligne_1" → "1", arrêts V3 lng → lon, nom_principal comme nom
+ *   - _resolveLineData adapté pour les deux formats
+ *   - Détection auto V3 vs legacy
  */
 
 import * as store  from './store.js';
@@ -279,8 +281,8 @@ function _selectLigne(ligne) {
 }
 
 // ── Résolution clé ligne dans le JSON ─────────────────────
-// Structure : { "1": {...}, "4": {...}, "16A": {...}, "TAF TAF": {...} }
-// Les clés sont exactement les numéros de ligne tels quels.
+// V3.8 : le cache _routesCache est déjà normalisé en clés uppercase ("1", "16A")
+// grâce à _parseV3Routes(). _resolveLineData() reste le même.
 
 function _resolveLineData(routes, ligne) {
   if (!routes || !ligne) return null;
@@ -288,7 +290,7 @@ function _resolveLineData(routes, ligne) {
   return routes[l]
       || routes[l.toUpperCase()]
       || routes[l.toLowerCase()]
-      || routes[String(parseInt(l))]   // "04" → "4"
+      || routes[String(parseInt(l))]
       || null;
 }
 
@@ -296,14 +298,46 @@ function _resolveLineData(routes, ligne) {
 
 let _routesCache = null;
 
+function _parseV3Routes(j) {
+  var raw = j.arrets || {};
+  var meta = j.lignes || {};
+  var routes = {};
+
+  Object.keys(raw).forEach(function(lid) {
+    var num = lid.replace('ligne_', '').toUpperCase();
+    var arrets = Array.isArray(raw[lid]) ? raw[lid] : [];
+    var m = meta[lid] || {};
+
+    routes[num] = {
+      nom:        m.nom_officiel || ('Ligne ' + num),
+      terminus_a: m.terminus_depart || '',
+      terminus_b: m.terminus_arrivee || '',
+      arrets: arrets.map(function(a) {
+        return {
+          nom: a.nom_principal || a.nom || '',
+          lat: a.lat,
+          lon: a.lng || a.lon,
+          noms: a.noms || [],
+        };
+      }),
+    };
+  });
+
+  return routes;
+}
+
+function _parseLegacyRoutes(j) {
+  return j.lignes || j.routes || j;
+}
+
 async function _loadRoutes() {
   if (_routesCache) return _routesCache;
 
   const paths = [
-    '/data/routes_geometry_v13_fixed2.json',
-    './data/routes_geometry_v13_fixed2.json',
-    '/routes_geometry_v13_fixed2.json',
-    './routes_geometry_v13_fixed2.json',
+    '/data/xetu_network_v3.json',
+    './data/xetu_network_v3.json',
+    '/xetu_network_v3.json',
+    './xetu_network_v3.json',
   ];
 
   for (const path of paths) {
@@ -311,8 +345,14 @@ async function _loadRoutes() {
       const r = await fetch(path);
       if (!r.ok) continue;
       const j = await r.json();
-      // Structure réelle : { version, generated_at, source, lignes: { "1": {...}, "4": {...} } }
-      _routesCache = j.lignes || j.routes || j;
+
+      // Détection format V3 vs legacy
+      if (j.arrets && typeof j.arrets === 'object' && !Array.isArray(j.arrets)) {
+        _routesCache = _parseV3Routes(j);
+      } else {
+        _routesCache = _parseLegacyRoutes(j);
+      }
+
       console.log('[Signal] Routes chargées depuis', path,
         '— lignes:', Object.keys(_routesCache).length);
       return _routesCache;
@@ -321,7 +361,7 @@ async function _loadRoutes() {
     }
   }
 
-  console.error('[Signal] Impossible de charger routes_geometry_v13_fixed2.json');
+  console.error('[Signal] Impossible de charger xetu_network_v3.json');
   _routesCache = {};
   return _routesCache;
 }
@@ -338,9 +378,17 @@ async function _loadArrets(ligne) {
     return;
   }
 
-  // Structure arrêt : { nom, lat, lon, confidence, temps_vers_suivant_sec }
   const stops = lineData.arrets || lineData.stops || [];
-  _arretsList = stops.map(s => s.nom || s.name).filter(Boolean);
+
+  // V3.8 : collecter le nom principal + tous les noms alternatifs pour l'autocomplete
+  const names = new Set();
+  stops.forEach(function(s) {
+    var nom = s.nom || s.name || '';
+    if (nom) names.add(nom);
+    (s.noms || []).forEach(function(n) { if (n) names.add(n); });
+  });
+
+  _arretsList = [...names];
   console.log('[Signal] Arrêts chargés — ligne', ligne, ':', _arretsList.length);
 }
 
